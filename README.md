@@ -46,9 +46,15 @@ g++ "TCP Chat9.0-snapshot2.cpp" -o TCP-Chat.exe ^
 - `-mwindows`：纯 GUI 程序，不弹出控制台窗口
 - Linux 下请移除 `-lws2_32 -lwinmm -lgdi32`，并链接系统 OpenGL/X11 相关库
 
+## 下载
+
+最新版本：**[9.0-snapshot2](https://github.com/Cyan3175/Cyanclay/releases/tag/9.0-snapshot2)**
+
+直接下载：[TCP-Chat-9.0-snapshot2.exe](https://github.com/Cyan3175/Cyanclay/releases/download/9.0-snapshot2/TCP-Chat-9.0-snapshot2.exe)
+
 ## 使用
 
-1. 双击运行 `TCP-Chat.exe`（或从 Releases 下载对应版本）
+1. 双击运行 `TCP-Chat.exe`（或从上方 Releases 链接下载对应版本）
 2. 选择模式：
    - **Start Server**：在本机启动聊天服务器，窗口标题显示「Chat Server」
    - **Start Client**：在上方输入框填入服务器 IP 后点击，窗口标题显示「Chat Client」

@@ -1,15 +1,18 @@
-// TCP Chat 9.0-snapshot4
+// TCP Chat 9.0-snapshot5
 // 图形化局域网聊天程序: 完整中文支持 + IPv6 + 私聊 + 文件传输
+//   消息滚动条 / 输入光标 / FPS 跟随显示器 / 传输进度条 / SHA-256 校验 / 自定义昵称
 // 依赖: raylib 5.5 + Winsock2(Windows) / BSD socket(Linux)
 // 协议: 换行分隔的 UTF-8 文本行, 字段以 '|' 分隔(末字段可含任意文本)
 //   MSG|<text>                客户端->服务器: 广播消息
 //   PMSG|<targetId>|<text>    客户端->服务器: 私聊(0=服务器)
 //   MSG|<id>|<name>|<text>    服务器->客户端: 广播
 //   PMSG|<id>|<name>|<text>   服务器->客户端: 私聊
+//   NAME|<nick>               客户端->服务器: 设置昵称(连接后首行)
 //   WELCOME|<id>|<name> / ROSTER|<id:name,...> / JOIN|<id>|<name> / LEAVE|<id>|<name>
+//   RENAME|<id>|<oldName>|<newName>  服务器->其他客户端: 昵称变更
 //   FILE_OFFER|<targetId>|<fileName>|<size>|<fileId>    (客户端->服务器)
 //   FILE_OFFER|<senderId>|<senderName>|<fileName>|<size>|<fileId>  (服务器->客户端)
-//   FILE_DATA|<fileId>|<base64> / FILE_DONE|<fileId>|<bytes> / FILE_ERROR|<fileId>|<msg>
+//   FILE_DATA|<fileId>|<base64> / FILE_DONE|<fileId>|<bytes>|<sha256hex> / FILE_ERROR|<fileId>|<msg>
 
 #include <iostream>
 #include <string>
@@ -21,6 +24,8 @@
 #include <cwchar>
 #include <cerrno>
 #include <chrono>
+#include <cmath>
+#include <algorithm>
 #include <fstream>
 #include <cstdlib>
 
@@ -172,6 +177,8 @@ constexpr int FILE_CHUNKS_PER_FRAME = 6;       // 每帧最多发 6 块
 // ==================== 全局状态 ====================
 std::mutex messagesMutex;
 std::vector<std::string> chatMessages;
+int g_chatScroll = 0;          // 消息区滚动偏移(0=底部/最新)
+bool g_scrollDragging = false; // 滚动条拖拽中
 
 Font g_font;
 bool g_fontLoaded = false;
@@ -385,6 +392,228 @@ bool Base64Decode(const std::string& s, std::string& out) {
     return true;
 }
 
+// ==================== SHA-256 ====================
+struct Sha256 {
+    uint32_t state[8];
+    uint64_t bitLen;
+    unsigned char buf[64];
+    size_t bufLen;
+
+    static uint32_t ROR(uint32_t x, int n) { return (x >> n) | (x << (32 - n)); }
+    static uint32_t GetBE32(const unsigned char* p) {
+        return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) | (uint32_t)p[3];
+    }
+    static void PutBE32(unsigned char* p, uint32_t v) {
+        p[0] = (unsigned char)(v >> 24); p[1] = (unsigned char)(v >> 16);
+        p[2] = (unsigned char)(v >> 8);  p[3] = (unsigned char)v;
+    }
+
+    void Init() {
+        state[0] = 0x6a09e667u; state[1] = 0xbb67ae85u; state[2] = 0x3c6ef372u; state[3] = 0xa54ff53au;
+        state[4] = 0x510e527fu; state[5] = 0x9b05688cu; state[6] = 0x1f83d9abu; state[7] = 0x5be0cd19u;
+        bitLen = 0;
+        bufLen = 0;
+    }
+
+    void Transform(const unsigned char block[64]) {
+        static const uint32_t K[64] = {
+            0x428a2f98u, 0x71374491u, 0xb5c0fbcfu, 0xe9b5dba5u, 0x3956c25bu, 0x59f111f1u, 0x923f82a4u, 0xab1c5ed5u,
+            0xd807aa98u, 0x12835b01u, 0x243185beu, 0x550c7dc3u, 0x72be5d74u, 0x80deb1feu, 0x9bdc06a7u, 0xc19bf174u,
+            0xe49b69c1u, 0xefbe4786u, 0x0fc19dc6u, 0x240ca1ccu, 0x2de92c6fu, 0x4a7484aau, 0x5cb0a9dcu, 0x76f988dau,
+            0x983e5152u, 0xa831c66du, 0xb00327c8u, 0xbf597fc7u, 0xc6e00bf3u, 0xd5a79147u, 0x06ca6351u, 0x14292967u,
+            0x27b70a85u, 0x2e1b2138u, 0x4d2c6dfcu, 0x53380d13u, 0x650a7354u, 0x766a0abbu, 0x81c2c92eu, 0x92722c85u,
+            0xa2bfe8a1u, 0xa81a664bu, 0xc24b8b70u, 0xc76c51a3u, 0xd192e819u, 0xd6990624u, 0xf40e3585u, 0x106aa070u,
+            0x19a4c116u, 0x1e376c08u, 0x2748774cu, 0x34b0bcb5u, 0x391c0cb3u, 0x4ed8aa4au, 0x5b9cca4fu, 0x682e6ff3u,
+            0x748f82eeu, 0x78a5636fu, 0x84c87814u, 0x8cc70208u, 0x90befffau, 0xa4506cebu, 0xbef9a3f7u, 0xc67178f2u
+        };
+        uint32_t w[64];
+        for (int i = 0; i < 16; ++i) w[i] = GetBE32(block + 4 * i);
+        for (int i = 16; i < 64; ++i) {
+            uint32_t s0 = ROR(w[i - 15], 7) ^ ROR(w[i - 15], 18) ^ (w[i - 15] >> 3);
+            uint32_t s1 = ROR(w[i - 2], 17) ^ ROR(w[i - 2], 19) ^ (w[i - 2] >> 10);
+            w[i] = w[i - 16] + s0 + w[i - 7] + s1;
+        }
+        uint32_t a = state[0], b = state[1], c = state[2], d = state[3];
+        uint32_t e = state[4], f = state[5], g = state[6], h = state[7];
+        for (int i = 0; i < 64; ++i) {
+            uint32_t S1 = ROR(e, 6) ^ ROR(e, 11) ^ ROR(e, 25);
+            uint32_t ch = (e & f) ^ (~e & g);
+            uint32_t t1 = h + S1 + ch + K[i] + w[i];
+            uint32_t S0 = ROR(a, 2) ^ ROR(a, 13) ^ ROR(a, 22);
+            uint32_t maj = (a & b) ^ (a & c) ^ (b & c);
+            uint32_t t2 = S0 + maj;
+            h = g; g = f; f = e; e = d + t1;
+            d = c; c = b; b = a; a = t1 + t2;
+        }
+        state[0] += a; state[1] += b; state[2] += c; state[3] += d;
+        state[4] += e; state[5] += f; state[6] += g; state[7] += h;
+    }
+
+    void Update(const void* data, size_t len) {
+        const unsigned char* p = (const unsigned char*)data;
+        bitLen += (uint64_t)len * 8;
+        if (bufLen > 0) {
+            size_t need = 64 - bufLen;
+            size_t take = len < need ? len : need;
+            memcpy(buf + bufLen, p, take);
+            bufLen += take;
+            p += take;
+            len -= take;
+            if (bufLen == 64) {
+                Transform(buf);
+                bufLen = 0;
+            }
+        }
+        while (len >= 64) {
+            Transform(p);
+            p += 64;
+            len -= 64;
+        }
+        if (len > 0) {
+            memcpy(buf, p, len);
+            bufLen = len;
+        }
+    }
+
+    void Final(unsigned char out[32]) {
+        uint64_t bits = bitLen;
+        buf[bufLen++] = 0x80;
+        if (bufLen > 56) {
+            while (bufLen < 64) buf[bufLen++] = 0;
+            Transform(buf);
+            bufLen = 0;
+        }
+        while (bufLen < 56) buf[bufLen++] = 0;
+        for (int i = 0; i < 8; ++i) buf[56 + i] = (unsigned char)(bits >> (56 - 8 * i));
+        Transform(buf);
+        for (int i = 0; i < 8; ++i) PutBE32(out + 4 * i, state[i]);
+    }
+
+    static std::string Hex(const unsigned char d[32]) {
+        static const char* hexdigits = "0123456789abcdef";
+        std::string s;
+        s.reserve(64);
+        for (int i = 0; i < 32; ++i) {
+            s += hexdigits[d[i] >> 4];
+            s += hexdigits[d[i] & 15];
+        }
+        return s;
+    }
+};
+
+// ==================== 光标/UTF-8 编辑工具 ====================
+// 前向声明(绘制工具定义在文件后方)
+void DrawTextC(const char* text, float x, float y, int size, Color color);
+int MeasureTextC(const char* text, int size);
+
+// 下一个/上一个 UTF-8 字符边界(字节偏移)
+size_t Utf8Next(const std::string& s, size_t p) {
+    if (p >= s.size()) return s.size();
+    unsigned char c = (unsigned char)s[p];
+    size_t len = c < 0x80 ? 1 : (c < 0xE0 ? 2 : (c < 0xF0 ? 3 : 4));
+    return std::min(s.size(), p + len);
+}
+
+size_t Utf8Prev(const std::string& s, size_t p) {
+    if (p == 0) return 0;
+    size_t q = p - 1;
+    while (q > 0 && ((unsigned char)s[q] & 0xC0) == 0x80) --q;
+    return q;
+}
+
+// 在 caret 处插入码点(UTF-8), caret 后移
+void InsertUtf8At(std::string& s, size_t& caret, uint32_t cp) {
+    std::string u;
+    AppendUtf8(u, cp);
+    s.insert(caret, u);
+    caret += u.size();
+}
+
+// 删除 caret 前一个字符
+void DelCharBefore(std::string& s, size_t& caret) {
+    if (caret == 0) return;
+    size_t q = Utf8Prev(s, caret);
+    s.erase(q, caret - q);
+    caret = q;
+}
+
+// 删除 caret 处字符
+void DelCharAt(std::string& s, size_t& caret) {
+    if (caret >= s.size()) return;
+    size_t q = Utf8Next(s, caret);
+    s.erase(caret, q - caret);
+}
+
+// 光标键处理(左右/Home/End)
+void HandleCaretKeys(const std::string& s, size_t& caret) {
+    if (IsKeyPressed(KEY_LEFT)) caret = Utf8Prev(s, caret);
+    if (IsKeyPressed(KEY_RIGHT)) caret = Utf8Next(s, caret);
+    if (IsKeyPressed(KEY_HOME)) caret = 0;
+    if (IsKeyPressed(KEY_END)) caret = s.size();
+}
+
+// 根据点击 x 坐标计算光标位置(取宽度最接近的字符边界)
+size_t CaretFromX(const std::string& s, int fontSize, float clickX, float textX) {
+    float target = clickX - textX;
+    std::vector<size_t> bounds;
+    bounds.push_back(0);
+    size_t p = 0;
+    while (p < s.size()) {
+        p = Utf8Next(s, p);
+        bounds.push_back(p);
+    }
+    size_t best = 0;
+    float bestDist = 1e9f;
+    for (size_t b : bounds) {
+        float w = (float)MeasureTextC(s.substr(0, b).c_str(), fontSize);
+        float d = fabsf(w - target);
+        if (d < bestDist) {
+            bestDist = d;
+            best = b;
+        }
+    }
+    return best;
+}
+
+// 绘制带光标的输入框文本
+void DrawFieldText(const std::string& s, size_t caret, float x, float y, Color textColor, bool focused) {
+    DrawTextC(s.c_str(), x, y, UI_FONT_SIZE, textColor);
+    if (focused && fmod(GetTime(), 1.0) < 0.5) {
+        float cx = x + (float)MeasureTextC(s.substr(0, caret).c_str(), UI_FONT_SIZE);
+        DrawRectangle((int)cx, (int)y + 2, 2, UI_FONT_SIZE - 2, DARKGRAY);
+    }
+}
+
+// 鼠标悬停在输入框上时切换为 I 型光标
+void UpdateIBeamCursor(const std::vector<Rectangle>& boxes) {
+    Vector2 m = GetMousePosition();
+    bool over = false;
+    for (const auto& r : boxes) {
+        if (CheckCollisionPointRec(m, r)) { over = true; break; }
+    }
+    SetMouseCursor(over ? MOUSE_CURSOR_IBEAM : MOUSE_CURSOR_DEFAULT);
+}
+
+// 昵称清理: 去除协议分隔符并限制长度
+std::string SanitizeName(const std::string& raw) {
+    std::string out;
+    size_t chars = 0;
+    size_t p = 0;
+    while (p < raw.size() && chars < 16) {
+        // 取一个码点
+        unsigned char c = (unsigned char)raw[p];
+        size_t len = c < 0x80 ? 1 : (c < 0xE0 ? 2 : (c < 0xF0 ? 3 : 4));
+        if (p + len > raw.size()) break;
+        std::string u = raw.substr(p, len);
+        if (u != "|" && u != "\n" && u != "\r") {
+            out += u;
+            ++chars;
+        }
+        p += len;
+    }
+    return out;
+}
+
 // ==================== 网络工具 ====================
 bool InitNetwork() {
 #ifdef _WIN32
@@ -434,6 +663,8 @@ void AddMessage(const std::string& msg) {
     if (chatMessages.size() > 100) {
         chatMessages.erase(chatMessages.begin());
     }
+    // 用户上翻查看历史时, 新消息到来保持视口稳定
+    if (g_chatScroll > 0) g_chatScroll = std::min(g_chatScroll + 1, 100000);
 }
 
 void ClearMessages() {
@@ -463,6 +694,11 @@ AppMode g_mode = AppMode::Select;
 
 // 选择模式
 std::string ipInput = "127.0.0.1";
+std::string nameInput;          // 自定义昵称(留空自动分配)
+size_t g_ipCaret = ipInput.size();
+size_t g_nameCaret = 0;
+enum class SelFocus { Name, Ip };
+SelFocus g_selFocus = SelFocus::Name;
 
 // 服务器模式
 SocketType listenSock = INVALID_SOCKET;
@@ -476,6 +712,7 @@ struct ClientInfo {
 std::vector<ClientInfo> g_clients;
 int g_nextClientId = 1;
 std::string serverInput;
+size_t g_serverCaret = 0;
 int g_serverTargetId = 0;  // 0=广播
 
 // 客户端模式
@@ -483,6 +720,7 @@ SocketType clientSock = INVALID_SOCKET;
 std::string g_clientRecvBuf;
 std::string g_clientSendBuf;
 std::string clientInput;
+size_t g_clientCaret = 0;
 int g_myId = 0;
 std::string g_myName;
 std::map<int, std::string> g_roster;  // id -> name
@@ -495,6 +733,7 @@ struct FileReceiveState {
     FILE* f = nullptr;
     long long size = 0, received = 0;
     std::string name, senderLabel;
+    Sha256 sha;   // 接收数据哈希
 };
 std::map<int, FileReceiveState> g_fileRecv;
 
@@ -506,6 +745,7 @@ struct FileSendState {
     long long size = 0, sent = 0;
     FILE* f = nullptr;
     int targetId = 0;
+    Sha256 sha;   // 发送数据哈希
 };
 FileSendState g_fileSend;
 int g_nextFileId = 1000;
@@ -780,6 +1020,7 @@ bool PrepareReceiveFile(int fileId, const std::string& fileNameUtf8, long long s
     st.received = 0;
     st.name = safeName;
     st.senderLabel = senderLabel;
+    st.sha.Init();
     g_fileRecv[fileId] = st;
     AddMessage(senderLabel + " 发来文件：" + safeName + "（" + SizeStr(size) + "）");
     LogEvent("FILE_START " + std::to_string(fileId) + " " + safeName + " " + std::to_string(size));
@@ -794,11 +1035,12 @@ bool ReceiveFileChunk(int fileId, const std::string& b64) {
     if (!raw.empty()) {
         fwrite(raw.data(), 1, raw.size(), it->second.f);
         it->second.received += (long long)raw.size();
+        it->second.sha.Update(raw.data(), raw.size());
     }
     return true;
 }
 
-void FinishReceiveFile(int fileId, long long bytes) {
+void FinishReceiveFile(int fileId, long long bytes, const std::string& shaHex) {
     auto it = g_fileRecv.find(fileId);
     if (it == g_fileRecv.end()) return;
     fclose(it->second.f);
@@ -806,15 +1048,20 @@ void FinishReceiveFile(int fileId, long long bytes) {
     std::string name = it->second.name;
     long long size = it->second.size;
     long long recv = it->second.received;
-    std::string sender = it->second.senderLabel;
+    unsigned char digest[32];
+    it->second.sha.Final(digest);
+    std::string actual = Sha256::Hex(digest);
     g_fileRecv.erase(it);
     if (bytes >= 0) recv = bytes;
-    if (recv == size) {
-        AddMessage("文件接收完成：" + name + "（" + SizeStr(size) + "）已保存到 received 目录");
-        LogEvent("FILE_SAVED " + WideToUtf8(path) + " " + std::to_string(size));
-    } else {
+    if (recv != size) {
         AddMessage("文件接收不完整：" + name + "（" + std::to_string(recv) + "/" + std::to_string(size) + " 字节）");
         LogEvent("FILE_INCOMPLETE " + name + " " + std::to_string(recv) + "/" + std::to_string(size));
+    } else if (actual != shaHex) {
+        AddMessage("文件接收完成：" + name + "，但 SHA-256 校验失败（文件可能已损坏）");
+        LogEvent("FILE_SAVED " + WideToUtf8(path) + " " + std::to_string(size) + " sha:mismatch");
+    } else {
+        AddMessage("文件接收完成：" + name + "（" + SizeStr(size) + "）已保存到 received 目录，SHA-256 校验通过");
+        LogEvent("FILE_SAVED " + WideToUtf8(path) + " " + std::to_string(size) + " sha:ok");
     }
 }
 
@@ -833,7 +1080,17 @@ void ServerHandleLine(const std::string& line, ClientInfo& from) {
     if (f.empty()) return;
     const std::string& t = f[0];
 
-    if (t == "MSG" && f.size() >= 2) {
+    if (t == "NAME" && f.size() >= 2) {
+        std::string newName = SanitizeName(f[1]);
+        if (!newName.empty() && newName != from.name) {
+            std::string oldName = from.name;
+            from.name = newName;
+            AddMessage(oldName + " 改名为 " + newName);
+            ServerSendToClient(from.id, "WELCOME|" + std::to_string(from.id) + "|" + newName + "\n");
+            ServerBroadcastOthers("RENAME|" + std::to_string(from.id) + "|" + oldName + "|" + newName + "\n", from.sock);
+            ServerBroadcastAll(RosterLine() + "\n");
+        }
+    } else if (t == "MSG" && f.size() >= 2) {
         AddMessage(from.name + "：" + f[1]);
         ServerBroadcastOthers("MSG|" + std::to_string(from.id) + "|" + from.name + "|" + f[1] + "\n", from.sock);
     } else if (t == "PMSG" && f.size() >= 3) {
@@ -870,16 +1127,17 @@ void ServerHandleLine(const std::string& line, ClientInfo& from) {
         } else if (g_fileRelayTarget.count(serverFileId)) {
             ServerSendToClient(g_fileRelayTarget[serverFileId], "FILE_DATA|" + std::to_string(serverFileId) + "|" + f[2] + "\n");
         }
-    } else if (t == "FILE_DONE" && f.size() >= 3) {
+    } else if (t == "FILE_DONE" && f.size() >= 4) {
         int clientFileId = (int)ParseLL(f[1]);
         long long bytes = ParseLL(f[2]);
+        std::string shaHex = f[3];
         auto mit = g_fileIdMap.find(std::make_pair(from.id, clientFileId));
         if (mit == g_fileIdMap.end()) return;
         int serverFileId = mit->second;
         if (g_fileRecv.count(serverFileId)) {
-            FinishReceiveFile(serverFileId, bytes);
+            FinishReceiveFile(serverFileId, bytes, shaHex);
         } else if (g_fileRelayTarget.count(serverFileId)) {
-            ServerSendToClient(g_fileRelayTarget[serverFileId], "FILE_DONE|" + std::to_string(serverFileId) + "|" + std::to_string(bytes) + "\n");
+            ServerSendToClient(g_fileRelayTarget[serverFileId], "FILE_DONE|" + std::to_string(serverFileId) + "|" + std::to_string(bytes) + "|" + shaHex + "\n");
             g_fileRelayTarget.erase(serverFileId);
         }
         g_fileIdMap.erase(mit);
@@ -934,6 +1192,11 @@ void ClientHandleLine(const std::string& line) {
         auto it = g_roster.find(id);
         AddMessage((it != g_roster.end() ? it->second : f[2]) + " 已离开");
         g_roster.erase(id);
+    } else if (t == "RENAME" && f.size() >= 4) {
+        int id = (int)ParseLL(f[1]);
+        std::string oldName = f[2], newName = f[3];
+        g_roster[id] = newName;
+        AddMessage(oldName + " 改名为 " + newName);
     } else if (t == "MSG" && f.size() >= 4) {
         AddMessage(f[2] + "：" + f[3]);
     } else if (t == "PMSG" && f.size() >= 4) {
@@ -943,8 +1206,8 @@ void ClientHandleLine(const std::string& line) {
         PrepareReceiveFile(fileId, f[3], ParseLL(f[4]), f[2]);
     } else if (t == "FILE_DATA" && f.size() >= 3) {
         ReceiveFileChunk((int)ParseLL(f[1]), f[2]);
-    } else if (t == "FILE_DONE" && f.size() >= 3) {
-        FinishReceiveFile((int)ParseLL(f[1]), ParseLL(f[2]));
+    } else if (t == "FILE_DONE" && f.size() >= 4) {
+        FinishReceiveFile((int)ParseLL(f[1]), ParseLL(f[2]), f[3]);
     } else if (t == "FILE_ERROR" && f.size() >= 3) {
         int fileId = (int)ParseLL(f[1]);
         std::string msg = f.size() > 2 ? f[2] : "对方取消";
@@ -993,6 +1256,7 @@ void StartFileSend(const std::wstring& path, int targetId) {
     g_fileSend.sent = 0;
     g_fileSend.f = f;
     g_fileSend.targetId = targetId;
+    g_fileSend.sha.Init();
 
     std::string offer;
     if (g_mode == AppMode::Client) {
@@ -1022,6 +1286,7 @@ void PumpFileSend() {
         std::vector<unsigned char> raw(FILE_CHUNK_RAW);
         size_t n = fread(raw.data(), 1, raw.size(), g_fileSend.f);
         if (n > 0) {
+            g_fileSend.sha.Update(raw.data(), n);
             std::string b64 = Base64Encode(raw.data(), n);
             std::string line = "FILE_DATA|" + std::to_string(g_fileSend.fileId) + "|" + b64 + "\n";
             if (g_mode == AppMode::Client) {
@@ -1033,8 +1298,10 @@ void PumpFileSend() {
             ++chunks;
         }
         if (n < raw.size()) {
-            // 文件结束
-            std::string done = "FILE_DONE|" + std::to_string(g_fileSend.fileId) + "|" + std::to_string(g_fileSend.sent) + "\n";
+            // 文件结束: 附上 SHA-256 供接收端校验
+            unsigned char digest[32];
+            g_fileSend.sha.Final(digest);
+            std::string done = "FILE_DONE|" + std::to_string(g_fileSend.fileId) + "|" + std::to_string(g_fileSend.sent) + "|" + Sha256::Hex(digest) + "\n";
             if (g_mode == AppMode::Client) {
                 g_clientSendBuf += done;
                 LogEvent("SEND " + done);
@@ -1180,6 +1447,13 @@ void DoStartClient() {
         g_mode = AppMode::Client;
         SetWindowTitleC(L"聊天客户端", "Chat Client");
         AddMessage("正在连接服务器 " + ipInput + " ...");
+        if (!nameInput.empty()) {
+            std::string nick = SanitizeName(nameInput);
+            if (!nick.empty()) {
+                g_clientSendBuf += "NAME|" + nick + "\n";
+                LogEvent("SEND NAME|" + nick);
+            }
+        }
     } else {
         AddMessage("无法连接到服务器 " + ipInput + "，请检查地址和端口");
     }
@@ -1267,22 +1541,40 @@ void UpdateSelectFrame() {
     int screenWidth = GetScreenWidth();
     float margin = 20;
     float titleY = margin;
-    float labelY = titleY + 40;
-    float inputBoxY = labelY + 25;
-    float buttonY = inputBoxY + 50;
+    float nameLabelY = 60, nameBoxY = 85;
+    float ipLabelY = 140, ipBoxY = 165;
+    float buttonY = 235;
 
-    for (uint32_t cp : TakeInputCodepoints()) {
-        if (IsHostChar(cp)) AppendUtf8(ipInput, cp);
-    }
-    if (IsKeyPressed(KEY_BACKSPACE) && !ipInput.empty()) Utf8PopChar(ipInput);
-
-    Rectangle inputBox = Rectangle{ margin, inputBoxY, (float)screenWidth - 2 * margin, 30 };
+    Rectangle nameBox = Rectangle{ margin, nameBoxY, (float)screenWidth - 2 * margin, 30 };
+    Rectangle ipBox = Rectangle{ margin, ipBoxY, (float)screenWidth - 2 * margin, 30 };
     float buttonWidth = 160, buttonHeight = 40, gap = 20;
     float totalButtonsWidth = 2 * buttonWidth + gap;
     float startX = (screenWidth - totalButtonsWidth) / 2;
     Rectangle serverBtn = Rectangle{ startX, buttonY, buttonWidth, buttonHeight };
     Rectangle clientBtn = Rectangle{ startX + buttonWidth + gap, buttonY, buttonWidth, buttonHeight };
 
+    // 输入(带插入光标)
+    std::string& curText = (g_selFocus == SelFocus::Name) ? nameInput : ipInput;
+    size_t& curCaret = (g_selFocus == SelFocus::Name) ? g_nameCaret : g_ipCaret;
+    HandleCaretKeys(curText, curCaret);
+    for (uint32_t cp : TakeInputCodepoints()) {
+        bool ok = (g_selFocus == SelFocus::Name) ? (cp >= 32 && cp != 127) : IsHostChar(cp);
+        if (ok) InsertUtf8At(curText, curCaret, cp);
+    }
+    if (IsKeyPressed(KEY_BACKSPACE)) DelCharBefore(curText, curCaret);
+    if (IsKeyPressed(KEY_DELETE)) DelCharAt(curText, curCaret);
+    if (IsKeyPressed(KEY_TAB)) g_selFocus = (g_selFocus == SelFocus::Name) ? SelFocus::Ip : SelFocus::Name;
+    if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER)) {
+        if (g_selFocus == SelFocus::Name) {
+            g_selFocus = SelFocus::Ip;
+            g_ipCaret = ipInput.size();
+        } else {
+            DoStartClient();
+            return;
+        }
+    }
+
+    // 鼠标: 按钮 / 输入框点击聚焦定位光标
     if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
         Vector2 mousePos = GetMousePosition();
         if (CheckCollisionPointRec(mousePos, serverBtn)) {
@@ -1293,7 +1585,16 @@ void UpdateSelectFrame() {
             DoStartClient();
             return;
         }
+        if (CheckCollisionPointRec(mousePos, nameBox)) {
+            g_selFocus = SelFocus::Name;
+            g_nameCaret = CaretFromX(nameInput, UI_FONT_SIZE, mousePos.x, nameBox.x + 5);
+        } else if (CheckCollisionPointRec(mousePos, ipBox)) {
+            g_selFocus = SelFocus::Ip;
+            g_ipCaret = CaretFromX(ipInput, UI_FONT_SIZE, mousePos.x, ipBox.x + 5);
+        }
     }
+
+    UpdateIBeamCursor({ nameBox, ipBox });
 
     BeginDrawing();
     ClearBackground(RAYWHITE);
@@ -1301,10 +1602,17 @@ void UpdateSelectFrame() {
     int titleWidth = MeasureTextC(title, UI_FONT_SIZE);
     DrawTextC(title, (screenWidth - titleWidth) / 2.0f, titleY, UI_FONT_SIZE, DARKGRAY);
 
-    DrawTextC("服务器地址（支持 IPv4 / IPv6 / 主机名）：", margin, labelY, UI_FONT_SIZE, DARKGRAY);
-    DrawRectangleRec(inputBox, LIGHTGRAY);
-    DrawRectangleLines((int)inputBox.x, (int)inputBox.y, (int)inputBox.width, (int)inputBox.height, GRAY);
-    DrawTextC(ipInput.c_str(), inputBox.x + 5, inputBox.y + 5, UI_FONT_SIZE, BLACK);
+    DrawTextC("昵称（留空自动分配）：", margin, nameLabelY, UI_FONT_SIZE, DARKGRAY);
+    DrawRectangleRec(nameBox, LIGHTGRAY);
+    DrawRectangleLines((int)nameBox.x, (int)nameBox.y, (int)nameBox.width, (int)nameBox.height,
+                       g_selFocus == SelFocus::Name ? DARKGRAY : GRAY);
+    DrawFieldText(nameInput, g_nameCaret, nameBox.x + 5, nameBox.y + 5, BLACK, g_selFocus == SelFocus::Name);
+
+    DrawTextC("服务器地址（支持 IPv4 / IPv6 / 主机名）：", margin, ipLabelY, UI_FONT_SIZE, DARKGRAY);
+    DrawRectangleRec(ipBox, LIGHTGRAY);
+    DrawRectangleLines((int)ipBox.x, (int)ipBox.y, (int)ipBox.width, (int)ipBox.height,
+                       g_selFocus == SelFocus::Ip ? DARKGRAY : GRAY);
+    DrawFieldText(ipInput, g_ipCaret, ipBox.x + 5, ipBox.y + 5, BLACK, g_selFocus == SelFocus::Ip);
 
     DrawRectangleRec(serverBtn, SKYBLUE);
     DrawTextCenteredInRect("启动服务器", serverBtn, UI_FONT_SIZE, BLACK);
@@ -1351,6 +1659,101 @@ void DrawUserPanel(int screenWidth, int screenHeight, int selectedId, const std:
         y += PANEL_ENTRY_H + 2;
     }
     (void)screenHeight;
+}
+
+// ==================== 进度条 ====================
+void DrawProgressBar(float x, float y, float w, float h, float frac, const std::string& label) {
+    if (frac < 0) frac = 0;
+    if (frac > 1) frac = 1;
+    DrawRectangleRec(Rectangle{ x, y, w, h }, LIGHTGRAY);
+    DrawRectangleRec(Rectangle{ x, y, w * frac, h }, SKYBLUE);
+    DrawRectangleLines((int)x, (int)y, (int)w, (int)h, GRAY);
+    DrawTextC(label.c_str(), x + 4, y + 1, 14, BLACK);
+}
+
+// 传输进度条(发送 + 接收, 绘制在输入区上方)
+void DrawTransferBars(int screenWidth, int screenHeight) {
+    float y = (float)screenHeight - 85;
+    float w = PanelX(screenWidth) - 20;
+    if (g_fileSend.active) {
+        float frac = g_fileSend.size > 0 ? (float)g_fileSend.sent / (float)g_fileSend.size : 0.0f;
+        std::string label = "发送中：" + g_fileSend.name + " " + std::to_string((int)(frac * 100)) + "%";
+        DrawProgressBar(10, y, w, 18, frac, label);
+        y -= 22;
+    }
+    int shown = 0;
+    for (auto it = g_fileRecv.rbegin(); it != g_fileRecv.rend() && shown < 2; ++it) {
+        float frac = it->second.size > 0 ? (float)it->second.received / (float)it->second.size : 0.0f;
+        std::string label = "接收中：" + it->second.name + "（" + it->second.senderLabel + "）" + std::to_string((int)(frac * 100)) + "%";
+        DrawProgressBar(10, y, w, 18, frac, label);
+        y -= 22;
+        ++shown;
+    }
+}
+
+// ==================== 滚动消息区 ====================
+constexpr int CHAT_LINE_H = 25;
+constexpr int CHAT_TOP = 40;
+
+// 绘制消息区(带滚动条/滚轮/拖拽/翻页) + 标题 + FPS
+void DrawChatMessages(int screenWidth, int screenHeight, const char* title) {
+    int maxMessagesY = screenHeight - 60;
+    int chatW = (int)PanelX(screenWidth) - 20;
+    int chatH = maxMessagesY - CHAT_TOP;
+    if (chatH < CHAT_LINE_H) chatH = CHAT_LINE_H;
+    int visible = chatH / CHAT_LINE_H;
+
+    int total = 0;
+    int maxOffset = 0;
+    {
+        std::lock_guard<std::mutex> lock(messagesMutex);
+        total = (int)chatMessages.size();
+        maxOffset = std::max(0, total - visible);
+        g_chatScroll = std::max(0, std::min(g_chatScroll, maxOffset));
+        int end = total - g_chatScroll;
+        int start = std::max(0, end - visible);
+        int y = CHAT_TOP;
+        for (int i = start; i < end; ++i) {
+            DrawTextC(chatMessages[i].c_str(), 10, (float)y, UI_FONT_SIZE, BLACK);
+            y += CHAT_LINE_H;
+        }
+    }
+
+    // 滚动条与拖拽
+    if (total > visible) {
+        int trackX = 10 + chatW - 12;
+        int trackW = 10;
+        int thumbH = std::max(20, chatH * visible / std::max(1, total));
+        int thumbY = CHAT_TOP + (maxOffset > 0 ? (chatH - thumbH) * g_chatScroll / maxOffset : 0);
+        DrawRectangle(trackX, CHAT_TOP, trackW, chatH, LIGHTGRAY);
+        DrawRectangle(trackX, thumbY, trackW, thumbH, GRAY);
+        Vector2 m = GetMousePosition();
+        Rectangle track = Rectangle{ (float)trackX, (float)CHAT_TOP, (float)trackW, (float)chatH };
+        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && CheckCollisionPointRec(m, track)) {
+            g_scrollDragging = true;
+        }
+        if (g_scrollDragging) {
+            if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
+                g_scrollDragging = false;
+            } else if (maxOffset > 0) {
+                float frac = (m.y - CHAT_TOP - thumbH / 2.0f) / (float)(chatH - thumbH);
+                g_chatScroll = std::max(0, std::min(maxOffset, (int)llroundf(frac * maxOffset)));
+            }
+        }
+    }
+
+    // 滚轮与翻页键
+    int wheel = (int)GetMouseWheelMove();
+    Vector2 m = GetMousePosition();
+    if (wheel != 0 && m.x >= 10 && m.x <= 10 + chatW && m.y >= CHAT_TOP && m.y <= CHAT_TOP + chatH) {
+        g_chatScroll = std::max(0, std::min(maxOffset, g_chatScroll - wheel * 3));
+    }
+    if (IsKeyPressed(KEY_PAGE_UP)) g_chatScroll = std::max(0, std::min(maxOffset, g_chatScroll + (visible - 1)));
+    if (IsKeyPressed(KEY_PAGE_DOWN)) g_chatScroll = std::max(0, std::min(maxOffset, g_chatScroll - (visible - 1)));
+
+    DrawTextC(title, 10, 10, UI_FONT_SIZE, DARKGRAY);
+    std::string fps = "FPS: " + std::to_string(GetFPS());
+    DrawTextC(fps.c_str(), PanelX(screenWidth) - 90, 10, 16, GRAY);
 }
 
 // 面板点击检测
@@ -1437,23 +1840,26 @@ void UpdateServerFrame() {
     // 文件发送泵
     PumpFileSend();
 
-    // 服务器输入
+    // 服务器输入(带插入光标)
+    HandleCaretKeys(serverInput, g_serverCaret);
     for (uint32_t cp : TakeInputCodepoints()) {
-        if (cp >= 32 && cp != 127) AppendUtf8(serverInput, cp);
+        if (cp >= 32 && cp != 127) InsertUtf8At(serverInput, g_serverCaret, cp);
     }
-    if (IsKeyPressed(KEY_BACKSPACE) && !serverInput.empty()) Utf8PopChar(serverInput);
+    if (IsKeyPressed(KEY_BACKSPACE)) DelCharBefore(serverInput, g_serverCaret);
+    if (IsKeyPressed(KEY_DELETE)) DelCharAt(serverInput, g_serverCaret);
     if ((IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER)) && !serverInput.empty()) {
         DoSendMessage(serverInput);
         serverInput.clear();
+        g_serverCaret = 0;
     }
 
-    // 面板点击
+    // 面板点击 / 发送文件按钮 / 输入框光标定位
     if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-        int hit = PanelHitTest(screenWidth, GetMousePosition());
+        Vector2 mousePos = GetMousePosition();
+        int hit = PanelHitTest(screenWidth, mousePos);
         if (hit >= 0) g_serverTargetId = hit;
-        // 发送文件按钮
         Rectangle fileBtn = Rectangle{ (float)screenWidth - 160, (float)screenHeight - 45, 150, 32 };
-        if (CheckCollisionPointRec(GetMousePosition(), fileBtn)) {
+        if (CheckCollisionPointRec(mousePos, fileBtn)) {
             if (g_serverTargetId <= 0) {
                 AddMessage("请先在右侧选择接收用户，再发送文件");
             } else {
@@ -1461,7 +1867,13 @@ void UpdateServerFrame() {
                 if (PickFile(path)) StartFileSend(path, g_serverTargetId);
             }
         }
+        Rectangle inputBox = Rectangle{ 10, (float)screenHeight - 28, PanelX(screenWidth) - 20, 22 };
+        if (CheckCollisionPointRec(mousePos, inputBox)) {
+            g_serverCaret = CaretFromX(serverInput, UI_FONT_SIZE, mousePos.x, 15);
+        }
     }
+
+    UpdateIBeamCursor({ Rectangle{ 10, (float)screenHeight - 28, PanelX(screenWidth) - 20, 22 } });
 
     // 测试钩子: F8 发送测试文件(仅环境变量设置时生效)
     if (IsKeyPressed(KEY_F8)) {
@@ -1472,21 +1884,12 @@ void UpdateServerFrame() {
     // 绘制
     BeginDrawing();
     ClearBackground(RAYWHITE);
-    DrawTextC("聊天服务器 - 消息记录：", 10, 10, UI_FONT_SIZE, DARKGRAY);
-    int y = 40;
-    int maxMessagesY = screenHeight - 60;
-    {
-        std::lock_guard<std::mutex> lock(messagesMutex);
-        for (const auto& msg : chatMessages) {
-            if (y > maxMessagesY) break;
-            DrawTextC(msg.c_str(), 10, (float)y, UI_FONT_SIZE, BLACK);
-            y += 25;
-        }
-    }
+    DrawChatMessages(screenWidth, screenHeight, "聊天服务器 - 消息记录：");
     DrawUserPanel(screenWidth, screenHeight, g_serverTargetId, "（服务器）");
+    DrawTransferBars(screenWidth, screenHeight);
     DrawTextC(("发送到：" + TargetLabel(g_serverTargetId) + "（回车发送）").c_str(), 10, (float)(screenHeight - 40), UI_FONT_SIZE, DARKGRAY);
     DrawRectangle(10, screenHeight - 20, (int)PanelX(screenWidth) - 20, 1, LIGHTGRAY);
-    DrawTextC(serverInput.c_str(), 10, (float)(screenHeight - 15), UI_FONT_SIZE, BLUE);
+    DrawFieldText(serverInput, g_serverCaret, 10, (float)(screenHeight - 15), BLUE, true);
     Rectangle fileBtn = Rectangle{ (float)screenWidth - 160, (float)screenHeight - 45, 150, 32 };
     DrawRectangleRec(fileBtn, ORANGE);
     DrawTextCenteredInRect("发送文件…", fileBtn, UI_FONT_SIZE, BLACK);
@@ -1544,26 +1947,36 @@ void UpdateClientFrame() {
     // 文件发送泵
     PumpFileSend();
 
-    // 输入
+    // 输入(带插入光标)
+    HandleCaretKeys(clientInput, g_clientCaret);
     for (uint32_t cp : TakeInputCodepoints()) {
-        if (cp >= 32 && cp != 127) AppendUtf8(clientInput, cp);
+        if (cp >= 32 && cp != 127) InsertUtf8At(clientInput, g_clientCaret, cp);
     }
-    if (IsKeyPressed(KEY_BACKSPACE) && !clientInput.empty()) Utf8PopChar(clientInput);
+    if (IsKeyPressed(KEY_BACKSPACE)) DelCharBefore(clientInput, g_clientCaret);
+    if (IsKeyPressed(KEY_DELETE)) DelCharAt(clientInput, g_clientCaret);
     if ((IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER)) && !clientInput.empty()) {
         DoSendMessage(clientInput);
         clientInput.clear();
+        g_clientCaret = 0;
     }
 
-    // 面板点击 / 发送文件按钮
+    // 面板点击 / 发送文件按钮 / 输入框光标定位
     if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-        int hit = PanelHitTest(screenWidth, GetMousePosition());
+        Vector2 mousePos = GetMousePosition();
+        int hit = PanelHitTest(screenWidth, mousePos);
         if (hit >= 0) g_clientTargetId = hit;
         Rectangle fileBtn = Rectangle{ (float)screenWidth - 160, (float)screenHeight - 45, 150, 32 };
-        if (CheckCollisionPointRec(GetMousePosition(), fileBtn)) {
+        if (CheckCollisionPointRec(mousePos, fileBtn)) {
             std::wstring path;
             if (PickFile(path)) StartFileSend(path, g_clientTargetId);
         }
+        Rectangle inputBox = Rectangle{ 10, (float)screenHeight - 28, PanelX(screenWidth) - 20, 22 };
+        if (CheckCollisionPointRec(mousePos, inputBox)) {
+            g_clientCaret = CaretFromX(clientInput, UI_FONT_SIZE, mousePos.x, 15);
+        }
     }
+
+    UpdateIBeamCursor({ Rectangle{ 10, (float)screenHeight - 28, PanelX(screenWidth) - 20, 22 } });
 
     // 测试钩子: F8 发送测试文件
     if (IsKeyPressed(KEY_F8)) {
@@ -1574,22 +1987,13 @@ void UpdateClientFrame() {
     // 绘制
     BeginDrawing();
     ClearBackground(RAYWHITE);
-    DrawTextC("聊天客户端 - 消息记录：", 10, 10, UI_FONT_SIZE, DARKGRAY);
-    int y = 40;
-    int maxMessagesY = screenHeight - 60;
-    {
-        std::lock_guard<std::mutex> lock(messagesMutex);
-        for (const auto& msg : chatMessages) {
-            if (y > maxMessagesY) break;
-            DrawTextC(msg.c_str(), 10, (float)y, UI_FONT_SIZE, BLACK);
-            y += 25;
-        }
-    }
+    DrawChatMessages(screenWidth, screenHeight, "聊天客户端 - 消息记录：");
     std::string selfLabel = "（我是 " + (g_myName.empty() ? "?" : g_myName) + "）";
     DrawUserPanel(screenWidth, screenHeight, g_clientTargetId, selfLabel);
+    DrawTransferBars(screenWidth, screenHeight);
     DrawTextC(("发送到：" + TargetLabel(g_clientTargetId) + "（回车发送）").c_str(), 10, (float)(screenHeight - 40), UI_FONT_SIZE, DARKGRAY);
     DrawRectangle(10, screenHeight - 20, (int)PanelX(screenWidth) - 20, 1, LIGHTGRAY);
-    DrawTextC(clientInput.c_str(), 10, (float)(screenHeight - 15), UI_FONT_SIZE, BLUE);
+    DrawFieldText(clientInput, g_clientCaret, 10, (float)(screenHeight - 15), BLUE, true);
     Rectangle fileBtn = Rectangle{ (float)screenWidth - 160, (float)screenHeight - 45, 150, 32 };
     DrawRectangleRec(fileBtn, ORANGE);
     DrawTextCenteredInRect("发送文件…", fileBtn, UI_FONT_SIZE, BLACK);
@@ -1626,13 +2030,20 @@ int main() {
         return 1;
     }
 
-    // 测试钩子: 预设服务器地址
+    // 测试钩子: 预设服务器地址 / 昵称
     const char* testIp = std::getenv("TCPCHAT_TEST_IP");
     if (testIp && *testIp) ipInput = testIp;
+    const char* testName = std::getenv("TCPCHAT_TEST_NAME");
+    if (testName && *testName) {
+        nameInput = testName;
+        g_nameCaret = nameInput.size();
+    }
 
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     InitWindow(DEFAULT_SCREEN_WIDTH, DEFAULT_SCREEN_HEIGHT, "TCP Chat");
-    SetTargetFPS(60);
+    // 目标帧率自动跟随当前显示器的刷新率
+    int refresh = GetMonitorRefreshRate(GetCurrentMonitor());
+    SetTargetFPS(refresh > 0 ? refresh : 60);
 
     g_font = LoadCjkFont();
 #ifdef _WIN32

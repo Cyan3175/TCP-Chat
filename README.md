@@ -1,6 +1,13 @@
-# TCP Chat 9.0（正式版）
+# TCP Chat 9.1
 
 一个基于 [raylib](https://www.raylib.com/) 和原生 socket（Windows 下为 Winsock2）编写的图形化局域网聊天程序，C++17 单文件实现，支持中文、IPv6、私聊、文件传输，并带完整的企业级增强功能。
+
+## 9.1 更新
+
+- **修复底部元素重叠**：输入框/提示行/按钮/进度条/消息区改为统一动态布局栈，任何窗口尺寸、任何字号、任意数量的传输进度条都不会互相遮挡
+- **默认字号 20 → 24**，一眼可读
+- **控件随字号缩放**：所有按钮（表情/搜索/发送文件/启动服务器/踢出/禁言）、输入框、面板条目、右键菜单、表情面板均按当前字号自动调整尺寸，`Ctrl+滚轮` 调大字号不再溢出控件边框
+- 字号调节范围扩大为 16–40
 
 ## 功能总览
 
@@ -30,7 +37,7 @@
 ### 🖥️ 界面与交互
 - **消息复制**：右键消息选「复制」（写入剪贴板）
 - **清屏**：`Ctrl+L` 清空本地聊天记录
-- **字体大小**：`Ctrl+滚轮` 调节（14–30px，自动重载字体）
+- **字体大小**：`Ctrl+滚轮` 调节（16–40px，自动重载字体，所有控件同步缩放）
 - **深色主题**：`F2` 切换深色/浅色
 - **最小化到托盘**：最小化后隐藏到系统托盘，左键恢复、右键退出
 - **消息通知**：窗口未激活时新消息闪烁任务栏并播放提示音
@@ -53,7 +60,7 @@
 | `Ctrl+F` | 打开/关闭搜索 |
 | `Ctrl+L` | 清空聊天记录 |
 | `Ctrl+E` | 表情面板 |
-| `Ctrl+滚轮` | 调整字体大小 |
+| `Ctrl+滚轮` | 调整字体大小（16–40） |
 | `Ctrl+Q` | 退出程序 |
 | `F2` | 深色/浅色主题 |
 | `Esc` | 关闭搜索/表情/回复/菜单 |
@@ -66,7 +73,7 @@
 ## 编译（Windows / MinGW-w64）
 
 ```powershell
-g++ "TCP Chat9.0.cpp" -o TCP-Chat.exe ^
+g++ "TCP Chat9.1.cpp" -o TCP-Chat.exe ^
   -I"raylib/include" -L"raylib/lib" ^
   -lraylib -lws2_32 -lwinmm -lgdi32 -lopengl32 -limm32 -lcomdlg32 -lshell32 ^
   -static -static-libgcc -static-libstdc++ -mwindows ^
@@ -77,15 +84,15 @@ g++ "TCP Chat9.0.cpp" -o TCP-Chat.exe ^
 
 ## 下载
 
-最新版本：**[9.0 正式版](https://github.com/Cyan3175/TCP-Chat/releases/tag/9.0)**
+最新版本：**[9.1](https://github.com/Cyan3175/TCP-Chat/releases/tag/9.1)**
 
-直接下载：[TCP-Chat-9.0.exe](https://github.com/Cyan3175/TCP-Chat/releases/download/9.0/TCP-Chat-9.0.exe)
+直接下载：[TCP-Chat-9.1.exe](https://github.com/Cyan3175/TCP-Chat/releases/download/9.1/TCP-Chat-9.1.exe)
 
-历史版本：[9.0-snapshot5](https://github.com/Cyan3175/TCP-Chat/releases/tag/9.0-snapshot5)、[9.0-snapshot4](https://github.com/Cyan3175/TCP-Chat/releases/tag/9.0-snapshot4)、[9.0-snapshot3](https://github.com/Cyan3175/TCP-Chat/releases/tag/9.0-snapshot3)、[9.0-snapshot2](https://github.com/Cyan3175/TCP-Chat/releases/tag/9.0-snapshot2)
+历史版本：[9.0 正式版](https://github.com/Cyan3175/TCP-Chat/releases/tag/9.0)、[9.0-snapshot5](https://github.com/Cyan3175/TCP-Chat/releases/tag/9.0-snapshot5)、[9.0-snapshot4](https://github.com/Cyan3175/TCP-Chat/releases/tag/9.0-snapshot4)、[9.0-snapshot3](https://github.com/Cyan3175/TCP-Chat/releases/tag/9.0-snapshot3)、[9.0-snapshot2](https://github.com/Cyan3175/TCP-Chat/releases/tag/9.0-snapshot2)
 
 ## 使用
 
-1. 双击运行 `TCP-Chat-9.0.exe`
+1. 双击运行 `TCP-Chat-9.1.exe`
 2. 填写昵称（可选）与密码（可选，服务器与客户端需一致），输入服务器地址
 3. 「启动服务器」或「启动客户端」
 4. 右侧面板：点击「【广播】」或用户名选择发送对象；底部房间框输入房间名加入房间
@@ -96,7 +103,7 @@ g++ "TCP Chat9.0.cpp" -o TCP-Chat.exe ^
 
 ## 版本
 
-版本号从源文件名提取（格式 `TCP Chat<版本>.cpp`）。当前版本：**9.0（正式版）**。
+版本号从源文件名提取（格式 `TCP Chat<版本>.cpp`）。当前版本：**9.1**。
 
 ## 许可证
 

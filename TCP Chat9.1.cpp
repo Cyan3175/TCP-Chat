@@ -1,4 +1,4 @@
-// TCP Chat 9.0 (正式版)
+// TCP Chat 9.1
 // 图形化局域网聊天程序: 完整中文支持 + IPv6 + 私聊 + 文件传输 + 时间戳/输入历史/多行输入/
 //   搜索/撤回/表情/回复/并行传输/断点续传/取消/拖放/速度显示/用户颜色/心跳/踢出禁言/密码/
 //   消息复制/清屏/字号/主题/托盘/通知/断线重连/ACK/简单加密/多房间
@@ -276,7 +276,7 @@ constexpr double CLIENT_TIMEOUT = 25.0;
 constexpr double RECONNECT_DELAY = 3.0;
 
 // ==================== 主题与字号 ====================
-int g_fontSize = 20;
+int g_fontSize = 24;
 
 struct ThemeColors {
     Color bg, panel, text, dim, sep, inputText, hl;
@@ -2239,9 +2239,9 @@ void DoRecallLast() {
 
 // ==================== 在线用户面板 ====================
 constexpr float PANEL_W = 200;
-constexpr float PANEL_ENTRY_H = 25;
 
 float PanelX(int screenWidth) { return (float)screenWidth - PANEL_W - 10; }
+float PanelEntryH() { return (float)(g_fontSize + 4); }
 
 std::vector<std::pair<int, std::string>> PanelEntries() {
     std::vector<std::pair<int, std::string>> entries;
@@ -2264,16 +2264,18 @@ void DrawUserPanel(int screenWidth, int screenHeight, int selectedId, const std:
     std::string roomLabel = "房间：" + (g_mode == AppMode::Server ? "大厅" : g_room);
     DrawTextC(roomLabel.c_str(), px, 55, g_fontSize - 4, g_theme.dim);
     if (g_mode == AppMode::Client) {
-        Rectangle roomBox = Rectangle{ px, 72, PANEL_W - 10, 22 };
+        float roomH = (float)(g_fontSize + 6);
+        Rectangle roomBox = Rectangle{ px, 72, PANEL_W - 10, roomH };
         DrawRectangleRec(roomBox, g_theme.panel);
         DrawRectangleLines((int)roomBox.x, (int)roomBox.y, (int)roomBox.width, (int)roomBox.height,
                            g_roomFocus ? g_theme.dim : g_theme.sep);
-        DrawFieldText(g_roomInput, g_roomCaret, roomBox.x + 4, roomBox.y + 2, g_theme.text, g_roomFocus);
+        DrawFieldText(g_roomInput, g_roomCaret, roomBox.x + 4, roomBox.y + 3, g_theme.text, g_roomFocus);
     }
     auto entries = PanelEntries();
+    float entryH = PanelEntryH();
     float y = 100;
     for (const auto& e : entries) {
-        Rectangle r = Rectangle{ px, y, PANEL_W - 10, PANEL_ENTRY_H };
+        Rectangle r = Rectangle{ px, y, PANEL_W - 10, entryH };
         if (e.first == selectedId) {
             DrawRectangleRec(r, g_theme.hl);
         } else {
@@ -2281,20 +2283,21 @@ void DrawUserPanel(int screenWidth, int screenHeight, int selectedId, const std:
         }
         // 用户颜色块
         if (e.first != 0) {
-            DrawRectangle((int)px + 6, (int)y + 6, 12, 12, UserColor(e.first));
+            DrawRectangle((int)px + 6, (int)y + (int)(entryH / 2 - 6), 12, 12, UserColor(e.first));
         }
         DrawTextC(e.second.c_str(), px + 24, y + 4, g_fontSize - 2, e.first == selectedId ? g_theme.text : g_theme.dim);
-        y += PANEL_ENTRY_H + 2;
+        y += entryH + 2;
     }
     // 服务器管理按钮
     if (g_mode == AppMode::Server && selectedId > 0 && FindClientById(selectedId)) {
         ClientInfo* c = FindClientById(selectedId);
-        Rectangle kickBtn = Rectangle{ px, y + 2, (PANEL_W - 10) / 2 - 3, 26 };
-        Rectangle muteBtn = Rectangle{ px + (PANEL_W - 10) / 2 + 3, y + 2, (PANEL_W - 10) / 2 - 3, 26 };
+        float kh = (float)(g_fontSize + 6);
+        Rectangle kickBtn = Rectangle{ px, y + 2, (PANEL_W - 10) / 2 - 3, kh };
+        Rectangle muteBtn = Rectangle{ px + (PANEL_W - 10) / 2 + 3, y + 2, (PANEL_W - 10) / 2 - 3, kh };
         DrawRectangleRec(kickBtn, Color{ 200, 70, 70, 255 });
         DrawTextCenteredInRect("踢出", kickBtn, g_fontSize - 2, WHITE);
         DrawRectangleRec(muteBtn, c->muted ? Color{ 60, 140, 60, 255 } : Color{ 180, 140, 40, 255 });
-        DrawTextCenteredInRect(c->muted ? "解除禁言" : "禁言", muteBtn, g_fontSize - 2, WHITE);
+        DrawTextCenteredInRect(c->muted ? "解禁" : "禁言", muteBtn, g_fontSize - 2, WHITE);
     }
     (void)screenHeight;
 }
@@ -2302,11 +2305,12 @@ void DrawUserPanel(int screenWidth, int screenHeight, int selectedId, const std:
 int PanelHitTest(int screenWidth, Vector2 mousePos) {
     float px = PanelX(screenWidth);
     auto entries = PanelEntries();
+    float entryH = PanelEntryH();
     float y = 100;
     for (const auto& e : entries) {
-        Rectangle r = Rectangle{ px, y, PANEL_W - 10, PANEL_ENTRY_H };
+        Rectangle r = Rectangle{ px, y, PANEL_W - 10, entryH };
         if (CheckCollisionPointRec(mousePos, r)) return e.first;
-        y += PANEL_ENTRY_H + 2;
+        y += entryH + 2;
     }
     return -1;
 }
@@ -2319,11 +2323,11 @@ void DrawProgressBar(float x, float y, float w, float h, float frac, const std::
     DrawRectangleRec(Rectangle{ x, y, w, h }, g_theme.panel);
     DrawRectangleRec(Rectangle{ x, y, w * frac, h }, g_theme.hl);
     DrawRectangleLines((int)x, (int)y, (int)w, (int)h, g_theme.sep);
-    DrawTextC(label.c_str(), x + 4, y + 1, 14, g_theme.text);
+    DrawTextC(label.c_str(), x + 4, y + 1, 16, g_theme.text);
     if (showCancel) {
-        Rectangle c = Rectangle{ x + w - 20, y + 1, 18, 16 };
+        Rectangle c = Rectangle{ x + w - 22, y + 2, 20, 16 };
         DrawRectangleRec(c, Color{ 200, 70, 70, 255 });
-        DrawTextC("x", c.x + 6, c.y - 1, 14, WHITE);
+        DrawTextC("x", c.x + 7, c.y - 1, 16, WHITE);
         if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && CheckCollisionPointRec(GetMousePosition(), c)) {
             if (cancelKind == 0) CancelFileSend(cancelFileId);
             else CancelFileReceive(cancelFileId);
@@ -2340,15 +2344,15 @@ void DrawTransferBars(int screenWidth, float topY) {
         if (shown >= 3) break;
         float frac = fs.size > 0 ? (float)fs.sent / (float)fs.size : 0.0f;
         std::string label = "发送中：" + fs.name + " " + std::to_string((int)(frac * 100)) + "% " + fs.speed.SpeedStr();
-        DrawProgressBar(10, y, w, 18, frac, label, true, fs.fileId, 0);
-        y -= 22;
+        DrawProgressBar(10, y, w, 20, frac, label, true, fs.fileId, 0);
+        y -= 24;
         ++shown;
     }
     for (auto it = g_fileRecv.rbegin(); it != g_fileRecv.rend() && shown < 6; ++it) {
         float frac = it->second.size > 0 ? (float)it->second.received / (float)it->second.size : 0.0f;
         std::string label = "接收中：" + it->second.name + "（" + it->second.senderLabel + "）" + std::to_string((int)(frac * 100)) + "% " + it->second.speed.SpeedStr();
-        DrawProgressBar(10, y, w, 18, frac, label, true, it->second.fileId, 1);
-        y -= 22;
+        DrawProgressBar(10, y, w, 20, frac, label, true, it->second.fileId, 1);
+        y -= 24;
         ++shown;
     }
 }
@@ -2360,6 +2364,40 @@ int CurrentInputLines() {
     int n = 1;
     for (char ch : s) if (ch == '\n') ++n;
     return std::min(n, MAX_INPUT_LINES);
+}
+
+// ==================== 底部统一布局(消除元素重叠) ====================
+// 从屏幕底部往上依次排布: 输入框 -> 提示行(发送到/回复) -> 按钮行 -> 传输进度条 -> 消息区
+struct ChatLayout {
+    float lineH = 0;         // 文本行高
+    float inputH = 0;        // 输入框高度
+    float inputTop = 0;      // 输入框顶部 y
+    float promptTop = 0;     // 提示行顶部 y
+    float buttonY = 0;       // 按钮行顶部 y
+    float buttonH = 30;      // 按钮高度(随字号缩放)
+    float barsStartY = 0;    // 最下方进度条的 y
+    int bars = 0;            // 进度条数量
+    float messageBottom = 0; // 消息区底边 y
+};
+
+ChatLayout ComputeChatLayout(int screenHeight, bool replyActive) {
+    ChatLayout L;
+    L.lineH = (float)(g_fontSize + 5);
+    int lines = CurrentInputLines();
+    L.inputH = lines * L.lineH;
+    L.inputTop = (float)screenHeight - 6 - L.inputH;
+    int promptLines = 1 + (replyActive ? 1 : 0);
+    L.promptTop = L.inputTop - promptLines * 24.0f;
+    L.buttonH = (float)(g_fontSize + 10);
+    L.buttonY = L.promptTop - L.buttonH - 4;
+    int bars = 0;
+    for (auto& fs : g_fileSends) if (fs.active) ++bars;
+    bars += (int)g_fileRecv.size();
+    L.bars = bars;
+    L.barsStartY = L.buttonY - 4;
+    L.messageBottom = L.barsStartY - bars * 24.0f - 6;
+    if (L.messageBottom < 100) L.messageBottom = 100;
+    return L;
 }
 
 // 绘制消息区(带滚动/搜索过滤/右键菜单/回复)
@@ -2480,7 +2518,7 @@ void DrawChatMessages(int screenWidth, float bottomY, const char* title) {
 // ==================== 右键菜单 ====================
 void DrawContextMenu() {
     if (!g_ctx.open) return;
-    float w = 130, h = 26;
+    float w = 130, h = (float)(g_fontSize + 4);
     float x = std::min(g_ctx.x, (float)GetScreenWidth() - w - 4);
     float y = std::min(g_ctx.y, (float)GetScreenHeight() - h * 3 - 4);
     std::vector<std::string> items = { "复制", "回复" };
@@ -2525,7 +2563,7 @@ void DrawContextMenu() {
 // ==================== 表情面板 ====================
 void DrawEmojiPanel(float x, float y) {
     const int cols = 8;
-    const float cell = 30;
+    const float cell = (float)(g_fontSize + 10);
     for (size_t i = 0; i < g_emojiList.size(); ++i) {
         int r = (int)i / cols, c = (int)i % cols;
         float cx = x + c * cell, cy = y + r * cell;
@@ -2644,19 +2682,25 @@ void UpdateSelectFrame() {
     int screenWidth = GetScreenWidth();
     float margin = 20;
     float titleY = margin;
-    float nameLabelY = 52, nameBoxY = 75;
-    float pwdLabelY = 122, pwdBoxY = 145;
-    float ipLabelY = 192, ipBoxY = 215;
-    float buttonY = 265;
+    float lh = (float)(g_fontSize + 6);
+    float nameLabelY = 52;
+    float nameBoxY = nameLabelY + lh - 6;
+    float pwdLabelY = nameBoxY + 46;
+    float pwdBoxY = pwdLabelY + lh - 6;
+    float ipLabelY = pwdBoxY + 46;
+    float ipBoxY = ipLabelY + lh - 6;
+    float buttonY = ipBoxY + 48;
 
-    Rectangle nameBox = Rectangle{ margin, nameBoxY, (float)screenWidth - 2 * margin, 28 };
-    Rectangle pwdBox = Rectangle{ margin, pwdBoxY, (float)screenWidth - 2 * margin, 28 };
-    Rectangle ipBox = Rectangle{ margin, ipBoxY, (float)screenWidth - 2 * margin, 28 };
-    float buttonWidth = 160, buttonHeight = 40, gap = 20;
-    float totalButtonsWidth = 2 * buttonWidth + gap;
-    float startX = (screenWidth - totalButtonsWidth) / 2;
-    Rectangle serverBtn = Rectangle{ startX, buttonY, buttonWidth, buttonHeight };
-    Rectangle clientBtn = Rectangle{ startX + buttonWidth + gap, buttonY, buttonWidth, buttonHeight };
+    Rectangle nameBox = Rectangle{ margin, nameBoxY, (float)screenWidth - 2 * margin, lh };
+    Rectangle pwdBox = Rectangle{ margin, pwdBoxY, (float)screenWidth - 2 * margin, lh };
+    Rectangle ipBox = Rectangle{ margin, ipBoxY, (float)screenWidth - 2 * margin, lh };
+    float buttonHeight = (float)(g_fontSize + 16);
+    float serverW = (float)MeasureTextC("启动服务器", g_fontSize) + 40;
+    float clientW = (float)MeasureTextC("启动客户端", g_fontSize) + 40;
+    float gap = 20;
+    float startX = (screenWidth - (serverW + clientW + gap)) / 2;
+    Rectangle serverBtn = Rectangle{ startX, buttonY, serverW, buttonHeight };
+    Rectangle clientBtn = Rectangle{ startX + serverW + gap, buttonY, clientW, buttonHeight };
 
     std::string& curText = (g_selFocus == SelFocus::Name) ? nameInput : (g_selFocus == SelFocus::Pwd ? passwordInput : ipInput);
     size_t& curCaret = (g_selFocus == SelFocus::Name) ? g_nameCaret : (g_selFocus == SelFocus::Pwd ? g_pwdCaret : g_ipCaret);
@@ -2715,20 +2759,20 @@ void UpdateSelectFrame() {
     DrawRectangleRec(nameBox, g_theme.panel);
     DrawRectangleLines((int)nameBox.x, (int)nameBox.y, (int)nameBox.width, (int)nameBox.height,
                        g_selFocus == SelFocus::Name ? g_theme.dim : g_theme.sep);
-    DrawFieldText(nameInput, g_nameCaret, nameBox.x + 5, nameBox.y + 4, g_theme.text, g_selFocus == SelFocus::Name);
+    DrawFieldText(nameInput, g_nameCaret, nameBox.x + 5, nameBox.y + 3, g_theme.text, g_selFocus == SelFocus::Name);
 
     DrawTextC("密码（可选，用于验证与加密，服务器和客户端需一致）：", margin, pwdLabelY, g_fontSize, g_theme.dim);
     DrawRectangleRec(pwdBox, g_theme.panel);
     DrawRectangleLines((int)pwdBox.x, (int)pwdBox.y, (int)pwdBox.width, (int)pwdBox.height,
                        g_selFocus == SelFocus::Pwd ? g_theme.dim : g_theme.sep);
     std::string masked(pwdBox.width > 0 ? passwordInput.size() : 0, '*');
-    DrawFieldText(masked, g_pwdCaret, pwdBox.x + 5, pwdBox.y + 4, g_theme.text, g_selFocus == SelFocus::Pwd);
+    DrawFieldText(masked, g_pwdCaret, pwdBox.x + 5, pwdBox.y + 3, g_theme.text, g_selFocus == SelFocus::Pwd);
 
     DrawTextC("服务器地址（支持 IPv4 / IPv6 / 主机名）：", margin, ipLabelY, g_fontSize, g_theme.dim);
     DrawRectangleRec(ipBox, g_theme.panel);
     DrawRectangleLines((int)ipBox.x, (int)ipBox.y, (int)ipBox.width, (int)ipBox.height,
                        g_selFocus == SelFocus::Ip ? g_theme.dim : g_theme.sep);
-    DrawFieldText(ipInput, g_ipCaret, ipBox.x + 5, ipBox.y + 4, g_theme.text, g_selFocus == SelFocus::Ip);
+    DrawFieldText(ipInput, g_ipCaret, ipBox.x + 5, ipBox.y + 3, g_theme.text, g_selFocus == SelFocus::Ip);
 
     DrawRectangleRec(serverBtn, SKYBLUE);
     DrawTextCenteredInRect("启动服务器", serverBtn, g_fontSize, BLACK);
@@ -3001,52 +3045,62 @@ void UpdateServerFrame() {
         if (sent > 0) AddMessageSimple(0, "系统", "已加入发送队列：" + std::to_string(sent) + " 个文件");
     }
 
-    // 鼠标: 面板 / 按钮 / 输入框 / 房间 / 右键消息
-    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-        Vector2 mousePos = GetMousePosition();
-        int hit = PanelHitTest(screenWidth, mousePos);
-        if (hit >= 0) g_serverTargetId = hit;
-        // 输入框点击定位光标
-        int lines = CurrentInputLines();
-        Rectangle inputBox = Rectangle{ 10, (float)screenHeight - 26 - (lines - 1) * (g_fontSize + 5), PanelX(screenWidth) - 20, (float)(lines * (g_fontSize + 5)) };
-        if (CheckCollisionPointRec(mousePos, inputBox)) {
-            g_serverCaret = CaretFromX(serverInput, g_fontSize, mousePos.x, 15);
-        }
-        // 服务器管理按钮
-        if (g_serverTargetId > 0 && FindClientById(g_serverTargetId)) {
-            ClientInfo* c = FindClientById(g_serverTargetId);
-            float px = PanelX(screenWidth);
-            float y = 100 + (PanelEntries().size()) * (PANEL_ENTRY_H + 2);
-            Rectangle kickBtn = Rectangle{ px, y + 2, (PANEL_W - 10) / 2 - 3, 26 };
-            Rectangle muteBtn = Rectangle{ px + (PANEL_W - 10) / 2 + 3, y + 2, (PANEL_W - 10) / 2 - 3, 26 };
-            if (CheckCollisionPointRec(mousePos, kickBtn)) {
-                ServerSendToClient(c->id, "KICK|已被服务器踢出\n");
-                AddMessageSimple(0, "系统", c->name + " 已被踢出");
-                CLOSE_SOCKET(c->sock);
-                ServerBroadcastOthers("LEAVE|" + std::to_string(c->id) + "|" + c->name + "\n", INVALID_SOCKET);
-                ServerBroadcastAll(RosterLine() + "\n");
-                for (size_t i = 0; i < g_clients.size(); ++i) {
-                    if (g_clients[i].id == c->id) { g_clients.erase(g_clients.begin() + (ptrdiff_t)i); break; }
+    // 鼠标: 面板 / 按钮 / 输入框 / 右键消息(统一布局, 与绘制区一致)
+    {
+        ChatLayout L = ComputeChatLayout(screenHeight, g_reply.active);
+        float emojiW = (float)MeasureTextC("表情", g_fontSize - 2) + 18;
+        float searchW = (float)MeasureTextC("搜索", g_fontSize - 2) + 18;
+        float fileW = (float)MeasureTextC("发送文件…", g_fontSize - 2) + 24;
+        Rectangle inputBox = Rectangle{ 10, L.inputTop, PanelX(screenWidth) - 20, L.inputH };
+        Rectangle emojiBtn = Rectangle{ 10, L.buttonY, emojiW, L.buttonH };
+        Rectangle searchBtn = Rectangle{ 12 + emojiW, L.buttonY, searchW, L.buttonH };
+        Rectangle fileBtn = Rectangle{ (float)screenWidth - fileW - 10, L.buttonY, fileW, L.buttonH };
+        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            Vector2 mousePos = GetMousePosition();
+            int hit = PanelHitTest(screenWidth, mousePos);
+            if (hit >= 0) g_serverTargetId = hit;
+            // 输入框点击定位光标
+            if (CheckCollisionPointRec(mousePos, inputBox)) {
+                g_serverCaret = CaretFromX(serverInput, g_fontSize, mousePos.x, 15);
+            }
+            // 表情/搜索按钮
+            if (CheckCollisionPointRec(mousePos, emojiBtn)) g_emojiOpen = !g_emojiOpen;
+            if (CheckCollisionPointRec(mousePos, searchBtn)) { g_searchActive = !g_searchActive; g_searchCaret = g_searchText.size(); }
+            // 服务器管理按钮
+            if (g_serverTargetId > 0 && FindClientById(g_serverTargetId)) {
+                ClientInfo* c = FindClientById(g_serverTargetId);
+                float px = PanelX(screenWidth);
+                float y = 100 + (PanelEntries().size()) * (PanelEntryH() + 2);
+                float kh = (float)(g_fontSize + 6);
+                Rectangle kickBtn = Rectangle{ px, y + 2, (PANEL_W - 10) / 2 - 3, kh };
+                Rectangle muteBtn = Rectangle{ px + (PANEL_W - 10) / 2 + 3, y + 2, (PANEL_W - 10) / 2 - 3, kh };
+                if (CheckCollisionPointRec(mousePos, kickBtn)) {
+                    ServerSendToClient(c->id, "KICK|已被服务器踢出\n");
+                    AddMessageSimple(0, "系统", c->name + " 已被踢出");
+                    CLOSE_SOCKET(c->sock);
+                    ServerBroadcastOthers("LEAVE|" + std::to_string(c->id) + "|" + c->name + "\n", INVALID_SOCKET);
+                    ServerBroadcastAll(RosterLine() + "\n");
+                    for (size_t i = 0; i < g_clients.size(); ++i) {
+                        if (g_clients[i].id == c->id) { g_clients.erase(g_clients.begin() + (ptrdiff_t)i); break; }
+                    }
+                    g_serverTargetId = 0;
+                } else if (CheckCollisionPointRec(mousePos, muteBtn)) {
+                    c->muted = !c->muted;
+                    ServerSendToClient(c->id, std::string("MUTED|") + (c->muted ? "1" : "0") + "\n");
+                    AddMessageSimple(0, "系统", c->name + (c->muted ? " 已被禁言" : " 已解除禁言"));
                 }
-                g_serverTargetId = 0;
-            } else if (CheckCollisionPointRec(mousePos, muteBtn)) {
-                c->muted = !c->muted;
-                ServerSendToClient(c->id, std::string("MUTED|") + (c->muted ? "1" : "0") + "\n");
-                AddMessageSimple(0, "系统", c->name + (c->muted ? " 已被禁言" : " 已解除禁言"));
+            }
+            // 发送文件按钮
+            if (CheckCollisionPointRec(mousePos, fileBtn)) {
+                if (g_serverTargetId <= 0) {
+                    AddMessageSimple(0, "系统", "请先在右侧选择接收用户，再发送文件");
+                } else {
+                    std::wstring path;
+                    if (PickFile(path)) StartFileSend(path, g_serverTargetId);
+                }
             }
         }
-        // 发送文件按钮
-        int lines2 = CurrentInputLines();
-        float btnY = (float)screenHeight - 60 - (lines2 - 1) * (g_fontSize + 5);
-        Rectangle fileBtn = Rectangle{ (float)screenWidth - 160, btnY, 150, 26 };
-        if (CheckCollisionPointRec(mousePos, fileBtn)) {
-            if (g_serverTargetId <= 0) {
-                AddMessageSimple(0, "系统", "请先在右侧选择接收用户，再发送文件");
-            } else {
-                std::wstring path;
-                if (PickFile(path)) StartFileSend(path, g_serverTargetId);
-            }
-        }
+        UpdateIBeamCursor({ inputBox });
     }
     // 右键消息
     if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
@@ -3071,77 +3125,67 @@ void UpdateServerFrame() {
 
     UpdateIBeamCursor({ Rectangle{ 10, (float)screenHeight - 26 - (CurrentInputLines() - 1) * (g_fontSize + 5), PanelX(screenWidth) - 20, 20 } });
 
-    // 布局
-    int lines = CurrentInputLines();
-    float lineH = (float)(g_fontSize + 5);
-    float inputTop = (float)screenHeight - 26 - (lines - 1) * lineH;
-    float btnY2 = inputTop - 34;
-    float bottomY = btnY2 - 4 - 22 * 2; // 预留两条进度条高度
-    int activeBars = 0;
-    for (auto& fs : g_fileSends) if (fs.active) ++activeBars;
-    activeBars += (int)g_fileRecv.size();
-    if (activeBars == 0) bottomY = btnY2 - 4;
+    // 布局与绘制(统一布局: 输入框 -> 提示 -> 按钮 -> 进度条 -> 消息区, 各区域互不重叠)
+    ChatLayout L = ComputeChatLayout(screenHeight, g_reply.active);
+    float emojiW = (float)MeasureTextC("表情", g_fontSize - 2) + 18;
+    float searchW = (float)MeasureTextC("搜索", g_fontSize - 2) + 18;
+    float fileW = (float)MeasureTextC("发送文件…", g_fontSize - 2) + 24;
+    Rectangle inputBox = Rectangle{ 10, L.inputTop, PanelX(screenWidth) - 20, L.inputH };
+    Rectangle emojiBtn = Rectangle{ 10, L.buttonY, emojiW, L.buttonH };
+    Rectangle searchBtn = Rectangle{ 12 + emojiW, L.buttonY, searchW, L.buttonH };
+    Rectangle fileBtn = Rectangle{ (float)screenWidth - fileW - 10, L.buttonY, fileW, L.buttonH };
 
-    // 绘制
     BeginDrawing();
     ClearBackground(g_theme.bg);
-    DrawChatMessages(screenWidth, bottomY, "聊天服务器 - 消息记录：");
+    DrawChatMessages(screenWidth, L.messageBottom, "聊天服务器 - 消息记录：");
     DrawUserPanel(screenWidth, screenHeight, g_serverTargetId, "（服务器）");
-    DrawTransferBars(screenWidth, btnY2 - 4);
+    DrawTransferBars(screenWidth, L.barsStartY);
     DrawContextMenu();
-    if (g_emojiOpen) DrawEmojiPanel(10, btnY2 - 96);
+    if (g_emojiOpen) DrawEmojiPanel(10, L.buttonY - 100);
 
-    // 回复提示
+    // 提示行(从 promptTop 依次向下排)
+    float py = L.promptTop;
     if (g_reply.active) {
         std::string rp = "回复 " + g_reply.name + "（Esc 取消）";
-        DrawTextC(rp.c_str(), 10, inputTop - 22, g_fontSize - 2, g_theme.dim);
+        DrawTextC(rp.c_str(), 10, py, g_fontSize - 2, g_theme.dim);
+        py += 24;
     }
-    // 发送对象
-    DrawTextC(("发送到：" + TargetLabel(g_serverTargetId) + "（回车发送，Shift+Enter 换行）").c_str(), 10, inputTop - 22 - (g_reply.active ? 22 : 0), g_fontSize - 2, g_theme.dim);
+    DrawTextC(("发送到：" + TargetLabel(g_serverTargetId) + "（回车发送，Shift+Enter 换行）").c_str(), 10, py, g_fontSize - 2, g_theme.dim);
+
     // 输入框(多行)
-    Rectangle inputRect = Rectangle{ 10, inputTop, PanelX(screenWidth) - 20, (float)(lines * lineH) };
-    DrawRectangleRec(inputRect, g_theme.panel);
-    DrawRectangleLines((int)inputRect.x, (int)inputRect.y, (int)inputRect.width, (int)inputRect.height, g_theme.sep);
+    DrawRectangleRec(inputBox, g_theme.panel);
+    DrawRectangleLines((int)inputBox.x, (int)inputBox.y, (int)inputBox.width, (int)inputBox.height, g_theme.sep);
     {
         // 逐行绘制输入内容与光标
         size_t pos = 0;
         int li = 0;
         std::string line;
-        float ly = inputTop + 2;
+        float ly = L.inputTop + 3;
         while (pos <= serverInput.size() && li < MAX_INPUT_LINES) {
             size_t nl = serverInput.find('\n', pos);
             line = serverInput.substr(pos, nl == std::string::npos ? std::string::npos : nl - pos);
-            DrawTextC(line.c_str(), inputRect.x + 5, ly, g_fontSize, g_theme.inputText);
-            // 光标: 计算 caret 所在行与列
+            DrawTextC(line.c_str(), inputBox.x + 5, ly, g_fontSize, g_theme.inputText);
             size_t lineStart = pos;
             size_t lineEnd = nl == std::string::npos ? serverInput.size() : nl;
             if (g_serverCaret >= lineStart && g_serverCaret <= lineEnd) {
                 if (fmod(GetTime(), 1.0) < 0.5) {
-                    float cx = inputRect.x + 5 + MeasureTextC(serverInput.substr(lineStart, g_serverCaret - lineStart).c_str(), g_fontSize);
+                    float cx = inputBox.x + 5 + MeasureTextC(serverInput.substr(lineStart, g_serverCaret - lineStart).c_str(), g_fontSize);
                     DrawRectangle((int)cx, (int)ly + 2, 2, g_fontSize - 2, g_theme.dim);
                 }
             }
-            ly += lineH;
+            ly += L.lineH;
             ++li;
             if (nl == std::string::npos) break;
             pos = nl + 1;
         }
     }
     // 按钮
-    Rectangle emojiBtn = Rectangle{ 10, btnY2, 44, 26 };
-    Rectangle searchBtn = Rectangle{ 60, btnY2, 44, 26 };
-    Rectangle fileBtn2 = Rectangle{ (float)screenWidth - 160, btnY2, 150, 26 };
     DrawRectangleRec(emojiBtn, g_theme.hl);
     DrawTextCenteredInRect("表情", emojiBtn, g_fontSize - 2, g_theme.text);
     DrawRectangleRec(searchBtn, g_theme.hl);
     DrawTextCenteredInRect("搜索", searchBtn, g_fontSize - 2, g_theme.text);
-    DrawRectangleRec(fileBtn2, ORANGE);
-    DrawTextCenteredInRect("发送文件…", fileBtn2, g_fontSize - 2, BLACK);
-    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-        Vector2 mp = GetMousePosition();
-        if (CheckCollisionPointRec(mp, emojiBtn)) g_emojiOpen = !g_emojiOpen;
-        if (CheckCollisionPointRec(mp, searchBtn)) { g_searchActive = !g_searchActive; g_searchCaret = g_searchText.size(); }
-    }
+    DrawRectangleRec(fileBtn, ORANGE);
+    DrawTextCenteredInRect("发送文件…", fileBtn, g_fontSize - 2, BLACK);
     EndDrawing();
 }
 
@@ -3272,32 +3316,42 @@ void UpdateClientFrame() {
         if (sent > 0) AddMessageSimple(0, "系统", "已加入发送队列：" + std::to_string(sent) + " 个文件");
     }
 
-    // 鼠标: 面板/房间/输入框/按钮
-    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-        Vector2 mousePos = GetMousePosition();
-        int hit = PanelHitTest(screenWidth, mousePos);
-        if (hit >= 0) g_clientTargetId = hit;
-        // 房间输入框
-        Rectangle roomBox = Rectangle{ PanelX(screenWidth), 72, PANEL_W - 10, 22 };
-        if (CheckCollisionPointRec(mousePos, roomBox)) {
-            g_roomFocus = true;
-            g_roomCaret = CaretFromX(g_roomInput, g_fontSize - 2, mousePos.x, roomBox.x + 4);
-        } else {
-            g_roomFocus = false;
+    // 鼠标: 面板/房间/输入框/按钮(统一布局, 与绘制区一致)
+    {
+        ChatLayout L = ComputeChatLayout(screenHeight, g_reply.active);
+        float emojiW = (float)MeasureTextC("表情", g_fontSize - 2) + 18;
+        float searchW = (float)MeasureTextC("搜索", g_fontSize - 2) + 18;
+        float fileW = (float)MeasureTextC("发送文件…", g_fontSize - 2) + 24;
+        Rectangle inputBox = Rectangle{ 10, L.inputTop, PanelX(screenWidth) - 20, L.inputH };
+        Rectangle emojiBtn = Rectangle{ 10, L.buttonY, emojiW, L.buttonH };
+        Rectangle searchBtn = Rectangle{ 12 + emojiW, L.buttonY, searchW, L.buttonH };
+        Rectangle fileBtn = Rectangle{ (float)screenWidth - fileW - 10, L.buttonY, fileW, L.buttonH };
+        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            Vector2 mousePos = GetMousePosition();
+            int hit = PanelHitTest(screenWidth, mousePos);
+            if (hit >= 0) g_clientTargetId = hit;
+            // 房间输入框
+            Rectangle roomBox = Rectangle{ PanelX(screenWidth), 72, PANEL_W - 10, (float)(g_fontSize + 6) };
+            if (CheckCollisionPointRec(mousePos, roomBox)) {
+                g_roomFocus = true;
+                g_roomCaret = CaretFromX(g_roomInput, g_fontSize - 2, mousePos.x, roomBox.x + 4);
+            } else {
+                g_roomFocus = false;
+            }
+            // 输入框点击定位光标
+            if (CheckCollisionPointRec(mousePos, inputBox)) {
+                g_clientCaret = CaretFromX(clientInput, g_fontSize, mousePos.x, 15);
+            }
+            // 表情/搜索按钮
+            if (CheckCollisionPointRec(mousePos, emojiBtn)) g_emojiOpen = !g_emojiOpen;
+            if (CheckCollisionPointRec(mousePos, searchBtn)) { g_searchActive = !g_searchActive; g_searchCaret = g_searchText.size(); }
+            // 发送文件按钮
+            if (CheckCollisionPointRec(mousePos, fileBtn)) {
+                std::wstring path;
+                if (PickFile(path)) StartFileSend(path, g_clientTargetId);
+            }
         }
-        // 输入框
-        int lines = CurrentInputLines();
-        Rectangle inputBox = Rectangle{ 10, (float)screenHeight - 26 - (lines - 1) * (g_fontSize + 5), PanelX(screenWidth) - 20, (float)(lines * (g_fontSize + 5)) };
-        if (CheckCollisionPointRec(mousePos, inputBox)) {
-            g_clientCaret = CaretFromX(clientInput, g_fontSize, mousePos.x, 15);
-        }
-        // 发送文件按钮
-        float btnY = (float)screenHeight - 60 - (lines - 1) * (g_fontSize + 5);
-        Rectangle fileBtn = Rectangle{ (float)screenWidth - 160, btnY, 150, 26 };
-        if (CheckCollisionPointRec(mousePos, fileBtn)) {
-            std::wstring path;
-            if (PickFile(path)) StartFileSend(path, g_clientTargetId);
-        }
+        UpdateIBeamCursor({ inputBox });
     }
     if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
         Vector2 mp = GetMousePosition();
@@ -3319,71 +3373,67 @@ void UpdateClientFrame() {
         if (tf) StartFileSend(AnsiToWide(tf), g_clientTargetId);
     }
 
-    // 布局
-    int lines = CurrentInputLines();
-    float lineH = (float)(g_fontSize + 5);
-    float inputTop = (float)screenHeight - 26 - (lines - 1) * lineH;
-    float btnY2 = inputTop - 34;
-    int activeBars = 0;
-    for (auto& fs : g_fileSends) if (fs.active) ++activeBars;
-    activeBars += (int)g_fileRecv.size();
-    float bottomY = btnY2 - 4 - (activeBars > 0 ? 22.0f * std::min(activeBars, 3) : 0.0f);
+    // 布局与绘制(统一布局: 输入框 -> 提示 -> 按钮 -> 进度条 -> 消息区, 各区域互不重叠)
+    ChatLayout L = ComputeChatLayout(screenHeight, g_reply.active);
+    float emojiW = (float)MeasureTextC("表情", g_fontSize - 2) + 18;
+    float searchW = (float)MeasureTextC("搜索", g_fontSize - 2) + 18;
+    float fileW = (float)MeasureTextC("发送文件…", g_fontSize - 2) + 24;
+    Rectangle inputBox = Rectangle{ 10, L.inputTop, PanelX(screenWidth) - 20, L.inputH };
+    Rectangle emojiBtn = Rectangle{ 10, L.buttonY, emojiW, L.buttonH };
+    Rectangle searchBtn = Rectangle{ 12 + emojiW, L.buttonY, searchW, L.buttonH };
+    Rectangle fileBtn = Rectangle{ (float)screenWidth - fileW - 10, L.buttonY, fileW, L.buttonH };
 
-    // 绘制
     BeginDrawing();
     ClearBackground(g_theme.bg);
-    DrawChatMessages(screenWidth, bottomY, "聊天客户端 - 消息记录：");
+    DrawChatMessages(screenWidth, L.messageBottom, "聊天客户端 - 消息记录：");
     std::string selfLabel = "（我是 " + (g_myName.empty() ? "?" : g_myName) + "）";
     DrawUserPanel(screenWidth, screenHeight, g_clientTargetId, selfLabel);
-    DrawTransferBars(screenWidth, btnY2 - 4);
+    DrawTransferBars(screenWidth, L.barsStartY);
     DrawContextMenu();
-    if (g_emojiOpen) DrawEmojiPanel(10, btnY2 - 96);
+    if (g_emojiOpen) DrawEmojiPanel(10, L.buttonY - 100);
 
+    // 提示行(从 promptTop 依次向下排)
+    float py = L.promptTop;
     if (g_reply.active) {
         std::string rp = "回复 " + g_reply.name + "（Esc 取消）";
-        DrawTextC(rp.c_str(), 10, inputTop - 22, g_fontSize - 2, g_theme.dim);
+        DrawTextC(rp.c_str(), 10, py, g_fontSize - 2, g_theme.dim);
+        py += 24;
     }
-    DrawTextC(("发送到：" + TargetLabel(g_clientTargetId) + "（回车发送，Shift+Enter 换行）").c_str(), 10, inputTop - 22 - (g_reply.active ? 22 : 0), g_fontSize - 2, g_theme.dim);
-    Rectangle inputRect = Rectangle{ 10, inputTop, PanelX(screenWidth) - 20, (float)(lines * lineH) };
-    DrawRectangleRec(inputRect, g_theme.panel);
-    DrawRectangleLines((int)inputRect.x, (int)inputRect.y, (int)inputRect.width, (int)inputRect.height, g_theme.sep);
+    DrawTextC(("发送到：" + TargetLabel(g_clientTargetId) + "（回车发送，Shift+Enter 换行）").c_str(), 10, py, g_fontSize - 2, g_theme.dim);
+
+    // 输入框(多行)
+    DrawRectangleRec(inputBox, g_theme.panel);
+    DrawRectangleLines((int)inputBox.x, (int)inputBox.y, (int)inputBox.width, (int)inputBox.height, g_theme.sep);
     {
         size_t pos = 0;
         int li = 0;
         std::string line;
-        float ly = inputTop + 2;
+        float ly = L.inputTop + 3;
         while (pos <= clientInput.size() && li < MAX_INPUT_LINES) {
             size_t nl = clientInput.find('\n', pos);
             line = clientInput.substr(pos, nl == std::string::npos ? std::string::npos : nl - pos);
-            DrawTextC(line.c_str(), inputRect.x + 5, ly, g_fontSize, g_theme.inputText);
+            DrawTextC(line.c_str(), inputBox.x + 5, ly, g_fontSize, g_theme.inputText);
             size_t lineStart = pos;
             size_t lineEnd = nl == std::string::npos ? clientInput.size() : nl;
             if (g_clientCaret >= lineStart && g_clientCaret <= lineEnd) {
                 if (fmod(GetTime(), 1.0) < 0.5) {
-                    float cx = inputRect.x + 5 + MeasureTextC(clientInput.substr(lineStart, g_clientCaret - lineStart).c_str(), g_fontSize);
+                    float cx = inputBox.x + 5 + MeasureTextC(clientInput.substr(lineStart, g_clientCaret - lineStart).c_str(), g_fontSize);
                     DrawRectangle((int)cx, (int)ly + 2, 2, g_fontSize - 2, g_theme.dim);
                 }
             }
-            ly += lineH;
+            ly += L.lineH;
             ++li;
             if (nl == std::string::npos) break;
             pos = nl + 1;
         }
     }
-    Rectangle emojiBtn = Rectangle{ 10, btnY2, 44, 26 };
-    Rectangle searchBtn = Rectangle{ 60, btnY2, 44, 26 };
-    Rectangle fileBtn2 = Rectangle{ (float)screenWidth - 160, btnY2, 150, 26 };
+    // 按钮
     DrawRectangleRec(emojiBtn, g_theme.hl);
     DrawTextCenteredInRect("表情", emojiBtn, g_fontSize - 2, g_theme.text);
     DrawRectangleRec(searchBtn, g_theme.hl);
     DrawTextCenteredInRect("搜索", searchBtn, g_fontSize - 2, g_theme.text);
-    DrawRectangleRec(fileBtn2, ORANGE);
-    DrawTextCenteredInRect("发送文件…", fileBtn2, g_fontSize - 2, BLACK);
-    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-        Vector2 mp = GetMousePosition();
-        if (CheckCollisionPointRec(mp, emojiBtn)) g_emojiOpen = !g_emojiOpen;
-        if (CheckCollisionPointRec(mp, searchBtn)) { g_searchActive = !g_searchActive; g_searchCaret = g_searchText.size(); }
-    }
+    DrawRectangleRec(fileBtn, ORANGE);
+    DrawTextCenteredInRect("发送文件…", fileBtn, g_fontSize - 2, BLACK);
     EndDrawing();
 }
 
@@ -3394,8 +3444,8 @@ void ProcessGlobalShortcuts() {
     int wheel = (int)GetMouseWheelMove();
     if (ctrl && wheel != 0) {
         int newSize = g_fontSize + (wheel > 0 ? 2 : -2);
-        if (newSize < 14) newSize = 14;
-        if (newSize > 30) newSize = 30;
+        if (newSize < 16) newSize = 16;
+        if (newSize > 40) newSize = 40;
         if (newSize != g_fontSize) {
             g_fontSize = newSize;
             ReloadFonts();

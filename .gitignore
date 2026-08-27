@@ -2,6 +2,9 @@
 .build/
 *.exe
 
+# Received files
+received/
+
 # Editor/OS files
 .vscode/
 .idea/

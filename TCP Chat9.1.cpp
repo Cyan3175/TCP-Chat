@@ -915,6 +915,54 @@ void SetWindowTitleC(const wchar_t* zh, const char* en) {
 #endif
 }
 
+// ==================== 文本换行与截断 ====================
+// 按最大像素宽度将文本拆分为多行(逐字符贪心, 兼容中英文与表情)
+std::vector<std::string> WrapText(const std::string& text, int size, float maxWidth) {
+    std::vector<std::string> lines;
+    std::string cur;
+    auto flush = [&]() {
+        lines.push_back(cur);
+        cur.clear();
+    };
+    size_t p = 0;
+    while (p <= text.size()) {
+        size_t nl = text.find('\n', p);
+        size_t end = (nl == std::string::npos) ? text.size() : nl;
+        size_t q = p;
+        while (q < end) {
+            size_t adv = 0;
+            Utf8Decode(text, q, adv);
+            std::string ch = text.substr(q, adv);
+            float w = MeasureTextC((cur + ch).c_str(), size);
+            if (w > maxWidth && !cur.empty()) flush();
+            cur += ch;
+            q += adv;
+        }
+        flush();
+        if (nl == std::string::npos) break;
+        p = nl + 1;
+    }
+    if (text.empty()) lines.push_back("");
+    while (lines.size() > 1 && lines.back().empty()) lines.pop_back();
+    return lines;
+}
+
+// 按像素宽度截断文本(超出部分以 ... 结尾)
+std::string TruncateToWidth(const std::string& s, int size, float maxW) {
+    if (MeasureTextC(s.c_str(), size) <= maxW) return s;
+    std::string out;
+    size_t p = 0;
+    while (p < s.size()) {
+        size_t adv = 0;
+        Utf8Decode(s, p, adv);
+        std::string ch = s.substr(p, adv);
+        if (MeasureTextC((out + ch + "...").c_str(), size) > maxW) break;
+        out += ch;
+        p += adv;
+    }
+    return out + "...";
+}
+
 // 绘制带光标的输入框文本
 void DrawFieldText(const std::string& s, size_t caret, float x, float y, Color textColor, bool focused) {
     DrawTextC(s.c_str(), x, y, g_fontSize, textColor);
@@ -2243,6 +2291,17 @@ constexpr float PANEL_W = 200;
 float PanelX(int screenWidth) { return (float)screenWidth - PANEL_W - 10; }
 float PanelEntryH() { return (float)(g_fontSize + 4); }
 
+// 房间输入框的 y(标题/自己/房间标签按字号动态排布, 避免重叠)
+float RoomBoxY() { return 3.0f * g_fontSize + 18; }
+
+// 面板条目起始 y
+float PanelEntriesStartY() {
+    if (g_mode == AppMode::Client) {
+        return RoomBoxY() + (g_fontSize + 6) + 8;
+    }
+    return RoomBoxY();
+}
+
 std::vector<std::pair<int, std::string>> PanelEntries() {
     std::vector<std::pair<int, std::string>> entries;
     entries.push_back(std::make_pair(0, std::string("【广播】")));
@@ -2256,24 +2315,31 @@ std::vector<std::pair<int, std::string>> PanelEntries() {
 
 void DrawUserPanel(int screenWidth, int screenHeight, int selectedId, const std::string& selfLabel) {
     float px = PanelX(screenWidth);
-    DrawTextC("在线用户", px, 10, g_fontSize, g_theme.dim);
+    // 头部按字号动态排布(标题/自己/房间标签/房间框/条目互不重叠)
+    float py = 10;
+    DrawTextC("在线用户", px, py, g_fontSize, g_theme.dim);
+    py += g_fontSize + 4;
     if (!selfLabel.empty()) {
-        DrawTextC(selfLabel.c_str(), px, 35, g_fontSize - 4, g_theme.dim);
+        std::string sl = TruncateToWidth(selfLabel, g_fontSize - 4, PANEL_W - 20);
+        DrawTextC(sl.c_str(), px, py, g_fontSize - 4, g_theme.dim);
     }
-    // 房间显示/输入
+    py += (g_fontSize - 4) + 6;
     std::string roomLabel = "房间：" + (g_mode == AppMode::Server ? "大厅" : g_room);
-    DrawTextC(roomLabel.c_str(), px, 55, g_fontSize - 4, g_theme.dim);
+    roomLabel = TruncateToWidth(roomLabel, g_fontSize - 4, PANEL_W - 20);
+    DrawTextC(roomLabel.c_str(), px, py, g_fontSize - 4, g_theme.dim);
+    py += (g_fontSize - 4) + 6;
     if (g_mode == AppMode::Client) {
         float roomH = (float)(g_fontSize + 6);
-        Rectangle roomBox = Rectangle{ px, 72, PANEL_W - 10, roomH };
+        Rectangle roomBox = Rectangle{ px, py, PANEL_W - 10, roomH };
         DrawRectangleRec(roomBox, g_theme.panel);
         DrawRectangleLines((int)roomBox.x, (int)roomBox.y, (int)roomBox.width, (int)roomBox.height,
                            g_roomFocus ? g_theme.dim : g_theme.sep);
         DrawFieldText(g_roomInput, g_roomCaret, roomBox.x + 4, roomBox.y + 3, g_theme.text, g_roomFocus);
+        py += roomH + 8;
     }
     auto entries = PanelEntries();
     float entryH = PanelEntryH();
-    float y = 100;
+    float y = py;
     for (const auto& e : entries) {
         Rectangle r = Rectangle{ px, y, PANEL_W - 10, entryH };
         if (e.first == selectedId) {
@@ -2285,7 +2351,9 @@ void DrawUserPanel(int screenWidth, int screenHeight, int selectedId, const std:
         if (e.first != 0) {
             DrawRectangle((int)px + 6, (int)y + (int)(entryH / 2 - 6), 12, 12, UserColor(e.first));
         }
-        DrawTextC(e.second.c_str(), px + 24, y + 4, g_fontSize - 2, e.first == selectedId ? g_theme.text : g_theme.dim);
+        // 名称按面板宽度截断, 防止溢出
+        std::string nm = TruncateToWidth(e.second, g_fontSize - 2, PANEL_W - 10 - 34);
+        DrawTextC(nm.c_str(), px + 24, y + 4, g_fontSize - 2, e.first == selectedId ? g_theme.text : g_theme.dim);
         y += entryH + 2;
     }
     // 服务器管理按钮
@@ -2306,7 +2374,7 @@ int PanelHitTest(int screenWidth, Vector2 mousePos) {
     float px = PanelX(screenWidth);
     auto entries = PanelEntries();
     float entryH = PanelEntryH();
-    float y = 100;
+    float y = PanelEntriesStartY();
     for (const auto& e : entries) {
         Rectangle r = Rectangle{ px, y, PANEL_W - 10, entryH };
         if (CheckCollisionPointRec(mousePos, r)) return e.first;
@@ -2403,13 +2471,21 @@ ChatLayout ComputeChatLayout(int screenHeight, bool replyActive) {
 // 绘制消息区(带滚动/搜索过滤/右键菜单/回复)
 void DrawChatMessages(int screenWidth, float bottomY, const char* title) {
     int chatW = (int)PanelX(screenWidth) - 20;
-    float viewH = bottomY - 40.0f;
+    // 消息区顶部 = 标题行 + 搜索行(随字号动态计算, 避免与头部文字重叠)
+    float chatTop = 10.0f + g_fontSize + (g_searchActive ? (g_fontSize + 4) : 8.0f);
+    float viewH = bottomY - chatTop;
     if (viewH < 20) viewH = 20;
     float lineH = (float)(g_fontSize + 5);
 
-    // 构建可见消息列表(房间过滤 + 搜索过滤)
-    std::vector<const ChatMessage*> visible;
-    std::vector<float> rowH;
+    // 构建可见消息列表(房间过滤 + 搜索过滤), 并预计算按宽度换行
+    struct VisMsg {
+        const ChatMessage* m;
+        std::vector<std::string> qlines;  // 引用行(已换行)
+        std::vector<std::string> tlines;  // 正文行(已换行)
+        float rowH;
+        float textX;
+    };
+    std::vector<VisMsg> visible;
     {
         std::lock_guard<std::mutex> lock(messagesMutex);
         for (const auto& m : chatMessages) {
@@ -2418,25 +2494,35 @@ void DrawChatMessages(int screenWidth, float bottomY, const char* title) {
                 if (m.text.find(g_searchText) == std::string::npos
                     && m.quote.find(g_searchText) == std::string::npos) continue;
             }
-            visible.push_back(&m);
-            int lines = 1;
-            for (char ch : m.text) if (ch == '\n') ++lines;
-            if (!m.quote.empty()) ++lines;
-            rowH.push_back(lines * lineH + 2);
+            VisMsg v;
+            v.m = &m;
+            // 文本起始 x = 头像 + 时间戳 + 名称
+            std::string ts = "[" + m.time + "] ";
+            std::string nm = m.senderName + "：";
+            v.textX = 28.0f + MeasureTextC(ts.c_str(), g_fontSize - 2) + 4
+                      + MeasureTextC(nm.c_str(), g_fontSize) + 4;
+            float maxW = (float)((int)PanelX(screenWidth) - 10) - v.textX - 10;
+            if (maxW < 40) maxW = 40;
+            if (!m.quote.empty()) v.qlines = WrapText(m.quote, g_fontSize - 2, maxW - 12);
+            v.tlines = WrapText(m.text, g_fontSize, maxW);
+            int lines = (int)v.qlines.size() + (int)v.tlines.size();
+            if (lines < 1) lines = 1;
+            v.rowH = lines * lineH + 2;
+            visible.push_back(v);
         }
     }
     float totalH = 0;
-    for (float h : rowH) totalH += h;
+    for (const auto& v : visible) totalH += v.rowH;
     float maxScroll = std::max(0.0f, totalH - viewH);
     g_chatScrollPx = std::max(0, std::min(g_chatScrollPx, (int)maxScroll));
 
     // 绘制
     g_msgRows.clear();
-    float y = 40.0f - g_chatScrollPx;
-    for (size_t i = 0; i < visible.size(); ++i) {
-        const ChatMessage& m = *visible[i];
-        float h = rowH[i];
-        if (y + h < 40 || y > bottomY) { y += h; continue; }
+    float y = chatTop - g_chatScrollPx;
+    for (const auto& v : visible) {
+        const ChatMessage& m = *v.m;
+        float h = v.rowH;
+        if (y + h < chatTop || y > bottomY) { y += h; continue; }
         float cy = y;
         // 头像色块 + 时间戳 + 名称
         Color uc = UserColor(m.senderId);
@@ -2447,29 +2533,14 @@ void DrawChatMessages(int screenWidth, float bottomY, const char* title) {
         cx += MeasureTextC(ts.c_str(), g_fontSize - 2) + 4;
         std::string nm = m.senderName + "：";
         DrawTextC(nm.c_str(), cx, cy, g_fontSize, uc);
-        cx += MeasureTextC(nm.c_str(), g_fontSize) + 4;
-        float textX = cx;
         float ty = cy;
-        if (!m.quote.empty()) {
-            std::string q = m.quote;
-            // 单行截断显示
-            size_t nl = q.find('\n');
-            if (nl != std::string::npos) q = q.substr(0, nl) + "...";
-            DrawTextC(q.c_str(), textX + 12, ty, g_fontSize - 2, g_theme.dim);
+        for (const auto& ql : v.qlines) {
+            DrawTextC(ql.c_str(), v.textX + 12, ty, g_fontSize - 2, g_theme.dim);
             ty += lineH;
         }
-        // 正文多行
-        {
-            size_t pos = 0;
-            std::string line;
-            while (pos <= m.text.size()) {
-                size_t nl = m.text.find('\n', pos);
-                line = m.text.substr(pos, nl == std::string::npos ? std::string::npos : nl - pos);
-                DrawTextC(line.c_str(), textX, ty, g_fontSize, g_theme.text);
-                ty += lineH;
-                if (nl == std::string::npos) break;
-                pos = nl + 1;
-            }
+        for (const auto& tl : v.tlines) {
+            DrawTextC(tl.c_str(), v.textX, ty, g_fontSize, g_theme.text);
+            ty += lineH;
         }
         g_msgRows.push_back(MsgRow{ m.msgId, m.senderId, cy, h });
         y += h;
@@ -2480,11 +2551,11 @@ void DrawChatMessages(int screenWidth, float bottomY, const char* title) {
         int trackX = 10 + chatW - 12;
         int trackW = 10;
         float thumbH = std::max(20.0f, viewH * viewH / std::max(1.0f, totalH));
-        float thumbY = 40.0f + (maxScroll > 0 ? (viewH - thumbH) * g_chatScrollPx / maxScroll : 0);
-        DrawRectangle(trackX, 40, trackW, (int)viewH, g_theme.panel);
+        float thumbY = chatTop + (maxScroll > 0 ? (viewH - thumbH) * g_chatScrollPx / maxScroll : 0);
+        DrawRectangle(trackX, (int)chatTop, trackW, (int)viewH, g_theme.panel);
         DrawRectangle(trackX, (int)thumbY, trackW, (int)thumbH, g_theme.sep);
         Vector2 m = GetMousePosition();
-        Rectangle track = Rectangle{ (float)trackX, 40, (float)trackW, viewH };
+        Rectangle track = Rectangle{ (float)trackX, chatTop, (float)trackW, viewH };
         if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && CheckCollisionPointRec(m, track)) {
             g_scrollDragging = true;
         }
@@ -2492,7 +2563,7 @@ void DrawChatMessages(int screenWidth, float bottomY, const char* title) {
             if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
                 g_scrollDragging = false;
             } else if (maxScroll > 0) {
-                float frac = (m.y - 40 - thumbH / 2.0f) / (viewH - thumbH);
+                float frac = (m.y - chatTop - thumbH / 2.0f) / (viewH - thumbH);
                 g_chatScrollPx = std::max(0, std::min((int)maxScroll, (int)llroundf(frac * maxScroll)));
             }
         }
@@ -2500,7 +2571,7 @@ void DrawChatMessages(int screenWidth, float bottomY, const char* title) {
     // 滚轮
     int wheel = (int)GetMouseWheelMove();
     Vector2 m = GetMousePosition();
-    if (wheel != 0 && m.x >= 10 && m.x <= 10 + chatW && m.y >= 40 && m.y <= bottomY) {
+    if (wheel != 0 && m.x >= 10 && m.x <= 10 + chatW && m.y >= chatTop && m.y <= bottomY) {
         g_chatScrollPx = std::max(0, std::min((int)maxScroll, g_chatScrollPx - wheel * 60));
     }
     if (IsKeyPressed(KEY_PAGE_UP)) g_chatScrollPx = std::max(0, std::min((int)maxScroll, g_chatScrollPx + (int)viewH - 40));
@@ -2509,10 +2580,15 @@ void DrawChatMessages(int screenWidth, float bottomY, const char* title) {
     DrawTextC(title, 10, 10, g_fontSize, g_theme.dim);
     if (g_searchActive) {
         std::string st = "搜索: " + g_searchText + "（" + std::to_string(visible.size()) + " 条匹配）";
-        DrawTextC(st.c_str(), 10, 34, g_fontSize - 4, g_theme.dim);
+        DrawTextC(st.c_str(), 10, 10 + g_fontSize + 2, g_fontSize - 4, g_theme.dim);
     }
+    // FPS: 空间不足(会与标题重叠)时自动隐藏
     std::string fps = "FPS: " + std::to_string(GetFPS());
-    DrawTextC(fps.c_str(), PanelX(screenWidth) - 90, 10, 16, g_theme.dim);
+    float titleW = (float)MeasureTextC(title, g_fontSize);
+    float fpsW = (float)MeasureTextC(fps.c_str(), 16);
+    if (10 + titleW + 20 + fpsW < PanelX(screenWidth) - 10) {
+        DrawTextC(fps.c_str(), PanelX(screenWidth) - 10 - fpsW, 10, 16, g_theme.dim);
+    }
 }
 
 // ==================== 右键菜单 ====================
@@ -3070,7 +3146,7 @@ void UpdateServerFrame() {
             if (g_serverTargetId > 0 && FindClientById(g_serverTargetId)) {
                 ClientInfo* c = FindClientById(g_serverTargetId);
                 float px = PanelX(screenWidth);
-                float y = 100 + (PanelEntries().size()) * (PanelEntryH() + 2);
+                float y = PanelEntriesStartY() + (PanelEntries().size()) * (PanelEntryH() + 2);
                 float kh = (float)(g_fontSize + 6);
                 Rectangle kickBtn = Rectangle{ px, y + 2, (PANEL_W - 10) / 2 - 3, kh };
                 Rectangle muteBtn = Rectangle{ px + (PANEL_W - 10) / 2 + 3, y + 2, (PANEL_W - 10) / 2 - 3, kh };
@@ -3331,7 +3407,7 @@ void UpdateClientFrame() {
             int hit = PanelHitTest(screenWidth, mousePos);
             if (hit >= 0) g_clientTargetId = hit;
             // 房间输入框
-            Rectangle roomBox = Rectangle{ PanelX(screenWidth), 72, PANEL_W - 10, (float)(g_fontSize + 6) };
+            Rectangle roomBox = Rectangle{ PanelX(screenWidth), RoomBoxY(), PANEL_W - 10, (float)(g_fontSize + 6) };
             if (CheckCollisionPointRec(mousePos, roomBox)) {
                 g_roomFocus = true;
                 g_roomCaret = CaretFromX(g_roomInput, g_fontSize - 2, mousePos.x, roomBox.x + 4);

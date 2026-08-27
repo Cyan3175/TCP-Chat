@@ -48,9 +48,9 @@ g++ "TCP Chat9.0-snapshot2.cpp" -o TCP-Chat.exe ^
 
 ## 下载
 
-最新版本：**[9.0-snapshot2](https://github.com/Cyan3175/Cyanclay/releases/tag/9.0-snapshot2)**
+最新版本：**[9.0-snapshot2](https://github.com/Cyan3175/TCP-Chat/releases/tag/9.0-snapshot2)**
 
-直接下载：[TCP-Chat-9.0-snapshot2.exe](https://github.com/Cyan3175/Cyanclay/releases/download/9.0-snapshot2/TCP-Chat-9.0-snapshot2.exe)
+直接下载：[TCP-Chat-9.0-snapshot2.exe](https://github.com/Cyan3175/TCP-Chat/releases/download/9.0-snapshot2/TCP-Chat-9.0-snapshot2.exe)
 
 ## 使用
 

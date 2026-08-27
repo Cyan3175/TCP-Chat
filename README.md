@@ -1,88 +1,102 @@
-# TCP Chat
+# TCP Chat 9.0（正式版）
 
-一个基于 [raylib](https://www.raylib.com/) 和原生 socket（Windows 下为 Winsock2）编写的图形化局域网聊天程序，使用 C++17 编写，单文件实现服务器与客户端两种模式，**完整支持中文**（中文界面、中文消息、中文输入法），支持 **IPv6**、**私聊**、**文件传输**，并带 **消息滚动条**、**输入光标**、**FPS 跟随显示器**、**传输进度条**、**SHA-256 文件校验** 与 **自定义昵称**。
+一个基于 [raylib](https://www.raylib.com/) 和原生 socket（Windows 下为 Winsock2）编写的图形化局域网聊天程序，C++17 单文件实现，支持中文、IPv6、私聊、文件传输，并带完整的企业级增强功能。
 
-## 特性
+## 功能总览
 
-- **一个程序，两种模式**：启动后可在图形界面中选择「启动服务器」或「启动客户端」
-- **服务器模式**：
-  - 监听端口 `5555`，IPv4/IPv6 双栈，支持最多 `10` 个客户端同时连接
-  - 广播消息、私聊转发、文件中转
-- **客户端模式**：
-  - 服务器地址支持 IPv4 / IPv6 / 主机名（默认 `127.0.0.1`）
-  - **自定义昵称**：启动前可填写昵称（留空自动分配「用户N」），连接后实时同步给所有用户
-- **文件传输**：
-  - 「发送文件…」按钮弹系统文件对话框，发送给当前选中对象
-  - Base64 分块（24KB/块）+ **SHA-256 完整性校验**，接收方校验通过才提示成功
-  - 接收方自动保存到 `received\` 目录，重名自动加后缀
-  - **实时进度条**：发送/接收进度条显示在输入区上方
-- **消息区**：
-  - **滚动条**：鼠标滚轮 / 拖拽滑块 / PageUp / PageDown 翻看历史，上翻时新消息不打断阅读
-  - 最近 `100` 条消息
-- **输入光标**：闪烁插入光标，左右/Home/End 键移动，鼠标点击定位，支持字符级删除（Backspace/Delete），悬停输入框显示 I 型鼠标指针
-- **性能**：目标帧率自动跟随当前显示器的刷新率（`GetMonitorRefreshRate`），右上角显示实时 FPS
-- **完整中文支持**：全中文界面、中文输入法（IME）、`Ctrl+V` 粘贴、系统中文字体自动加载
-- **图形界面**：基于 raylib，窗口可自由缩放
-- **跨平台**：源码同时支持 Windows / Linux，Windows 下静态链接，无需 DLL
+### 💬 聊天增强
+- **消息时间戳**：每条消息前显示 `[HH:MM:SS]`
+- **输入历史**：按 ↑/↓ 回溯已发送的消息（类似 shell 历史）
+- **多行消息**：`Enter` 发送，`Shift+Enter` 换行，输入框高度自动扩展（最多 5 行）
+- **消息搜索**：`Ctrl+F` 或「搜索」按钮，实时过滤显示匹配消息
+- **消息撤回**：右键自己的消息选「撤回」，`RECALL` 协议全端同步删除
+- **表情面板**：`Ctrl+E` 或「表情」按钮，24 个常用 emoji 点击插入（Segoe UI Emoji 渲染）
+- **消息引用/回复**：右键消息选「回复」，发送时附带引用，显示为缩进格式
 
-## 技术要点
+### 📁 文件传输增强
+- **多文件并行**：最多 3 个文件同时发送，各自独立进度条
+- **断点续传**：中断后自动从断点继续（`.part` 临时文件 + 偏移协商）
+- **取消传输**：发送/接收进度条上的 ✕ 按钮，`FILE_CANCEL` 协议双向取消
+- **拖放发送**：直接把文件拖进窗口即可发送
+- **速度显示**：进度条实时显示 KB/s
+- **SHA-256 校验**：传输完成自动校验完整性
 
-- 非阻塞 socket + 每连接发送队列（正确处理 `WSAEWOULDBLOCK`）+ 行重组接收（单行最大 1MB）
-- **通信协议**：换行分隔的 UTF-8 文本行，字段以 `|` 分隔
+### 👥 用户与状态
+- **用户颜色**：按用户 ID 分配颜色，显示在消息与用户列表中
+- **心跳机制**：服务器每 5 秒 PING，15 秒无响应自动判定离线
+- **踢出/禁言**：服务器端选中用户后可踢出或禁言
+- **访问密码 + 加密**：服务器可设密码，客户端验证后通信内容 XOR 流加密
 
-```
-MSG|<text>                客户端->服务器: 广播
-PMSG|<targetId>|<text>    客户端->服务器: 私聊(0=服务器)
-NAME|<nick>               客户端->服务器: 设置昵称(连接后首行)
-MSG|<id>|<name>|<text>    服务器->客户端: 广播
-PMSG|<id>|<name>|<text>   服务器->客户端: 私聊
-WELCOME|<id>|<name> / ROSTER|<id:name,...> / JOIN / LEAVE / RENAME|<id>|<old>|<new>
-FILE_OFFER|<...> / FILE_DATA|<fileId>|<base64> / FILE_DONE|<fileId>|<bytes>|<sha256hex> / FILE_ERROR
-```
+### 🖥️ 界面与交互
+- **消息复制**：右键消息选「复制」（写入剪贴板）
+- **清屏**：`Ctrl+L` 清空本地聊天记录
+- **字体大小**：`Ctrl+滚轮` 调节（14–30px，自动重载字体）
+- **深色主题**：`F2` 切换深色/浅色
+- **最小化到托盘**：最小化后隐藏到系统托盘，左键恢复、右键退出
+- **消息通知**：窗口未激活时新消息闪烁任务栏并播放提示音
+- **消息滚动条**：滚轮/拖拽/PageUp/PageDown，上翻时新消息不打断阅读
+- **输入光标**：闪烁插入光标，方向键移动、鼠标点击定位、I 型指针
 
-- **中文输入**（Windows）：raylib 5.5 RGFW 后端创建 ANSI 窗口，Unicode 字符消息会被系统破坏性转换；通过子类化窗口过程拦截 `WM_IME_COMPOSITION` + `ImmGetCompositionStringW` 读取 UTF-16 提交结果
-- **SHA-256**：内置无依赖实现（增量更新，边读边算），已与系统 `Get-FileHash` 交叉验证一致
+### 🔧 网络与协议
+- **断线自动重连**：客户端断开后每 3 秒重试，自动恢复昵称与房间
+- **消息 ACK**：服务器对每条消息回执并分配全局消息 ID（撤回/确认的基础）
+- **多房间**：右侧面板输入房间名加入/创建，消息按房间隔离广播
+- IPv4 / IPv6 双栈，支持主机名；完整中文输入法支持（IME）
 
-## 编译
+## 快捷键
 
-### 依赖
+| 快捷键 | 功能 |
+|---|---|
+| `Enter` | 发送消息（选择界面为切换字段/连接） |
+| `Shift+Enter` | 输入框内换行 |
+| `↑` / `↓` | 输入历史回溯 |
+| `Ctrl+F` | 打开/关闭搜索 |
+| `Ctrl+L` | 清空聊天记录 |
+| `Ctrl+E` | 表情面板 |
+| `Ctrl+滚轮` | 调整字体大小 |
+| `Ctrl+Q` | 退出程序 |
+| `F2` | 深色/浅色主题 |
+| `Esc` | 关闭搜索/表情/回复/菜单 |
+| `PageUp` / `PageDown` | 消息翻页 |
 
-- MinGW-w64（g++，C++17）
-- [raylib 5.5](https://github.com/raysan5/raylib/releases/tag/5.5)（下载 `raylib-5.5_win64_mingw-w64.zip`）
+## 通信协议
 
-### 命令（Windows / MinGW-w64）
+换行分隔的 UTF-8 文本行，字段以 `|` 分隔，消息正文与引用经 Base64 编码（支持多行与特殊字符）。详见源码头部注释。
+
+## 编译（Windows / MinGW-w64）
 
 ```powershell
-g++ "TCP Chat9.0-snapshot5.cpp" -o TCP-Chat.exe ^
+g++ "TCP Chat9.0.cpp" -o TCP-Chat.exe ^
   -I"raylib/include" -L"raylib/lib" ^
-  -lraylib -lws2_32 -lwinmm -lgdi32 -lopengl32 -limm32 -lcomdlg32 ^
+  -lraylib -lws2_32 -lwinmm -lgdi32 -lopengl32 -limm32 -lcomdlg32 -lshell32 ^
   -static -static-libgcc -static-libstdc++ -mwindows ^
   -O2 -std=c++17
 ```
 
+依赖：MinGW-w64 g++（C++17）+ [raylib 5.5](https://github.com/raysan5/raylib/releases/tag/5.5)（`raylib-5.5_win64_mingw-w64.zip`）。生成 exe 静态链接，双击即用，无任何 DLL 依赖。
+
 ## 下载
 
-最新版本：**[9.0-snapshot5](https://github.com/Cyan3175/TCP-Chat/releases/tag/9.0-snapshot5)**
+最新版本：**[9.0 正式版](https://github.com/Cyan3175/TCP-Chat/releases/tag/9.0)**
 
-直接下载：[TCP-Chat-9.0-snapshot5.exe](https://github.com/Cyan3175/TCP-Chat/releases/download/9.0-snapshot5/TCP-Chat-9.0-snapshot5.exe)
+直接下载：[TCP-Chat-9.0.exe](https://github.com/Cyan3175/TCP-Chat/releases/download/9.0/TCP-Chat-9.0.exe)
 
-历史版本：[9.0-snapshot4](https://github.com/Cyan3175/TCP-Chat/releases/tag/9.0-snapshot4)（IPv6/私聊/文件传输）、[9.0-snapshot3](https://github.com/Cyan3175/TCP-Chat/releases/tag/9.0-snapshot3)（中文支持）
+历史版本：[9.0-snapshot5](https://github.com/Cyan3175/TCP-Chat/releases/tag/9.0-snapshot5)、[9.0-snapshot4](https://github.com/Cyan3175/TCP-Chat/releases/tag/9.0-snapshot4)、[9.0-snapshot3](https://github.com/Cyan3175/TCP-Chat/releases/tag/9.0-snapshot3)、[9.0-snapshot2](https://github.com/Cyan3175/TCP-Chat/releases/tag/9.0-snapshot2)
 
 ## 使用
 
-1. 双击运行 `TCP-Chat.exe`
-2. 可选：在「昵称」输入框填写你的名字（留空自动分配）
-3. 选择「启动服务器」或输入服务器地址后「启动客户端」
-4. 右侧「在线用户」面板点击「【广播】」或某位用户选择发送对象
-5. 底部输入框输入消息，**Enter** 发送；**←/→/Home/End** 移动光标，**Backspace/Delete** 删除，**鼠标点击**定位光标
-6. 点击「发送文件…」发送文件；收发进度显示在输入区上方；收到的文件在 `received\` 目录
-7. 消息区可用**滚轮/拖拽滑块/PageUp/PageDown** 查看历史
+1. 双击运行 `TCP-Chat-9.0.exe`
+2. 填写昵称（可选）与密码（可选，服务器与客户端需一致），输入服务器地址
+3. 「启动服务器」或「启动客户端」
+4. 右侧面板：点击「【广播】」或用户名选择发送对象；底部房间框输入房间名加入房间
+5. 聊天：输入消息回车发送；右键消息可复制/回复/撤回；拖文件进窗口直接发送
+6. 传输进度条实时显示速度与百分比，✕ 可取消；收到文件保存到 `received\` 目录
 
 > 跨设备使用请确保双方在同一局域网内，且服务器防火墙放行 TCP 端口 `5555`。
 
 ## 版本
 
-版本号从源文件名提取（格式 `TCP Chat<版本>.cpp`）。当前版本：**9.0-snapshot5**。
+版本号从源文件名提取（格式 `TCP Chat<版本>.cpp`）。当前版本：**9.0（正式版）**。
 
 ## 许可证
 

@@ -1,4 +1,4 @@
-// TCP Chat 9.1
+// TCP Chat 9.2
 // 图形化局域网聊天程序: 完整中文支持 + IPv6 + 私聊 + 文件传输 + 时间戳/输入历史/多行输入/
 //   搜索/撤回/表情/回复/并行传输/断点续传/取消/拖放/速度显示/用户颜色/心跳/踢出禁言/密码/
 //   消息复制/清屏/字号/主题/托盘/通知/断线重连/ACK/简单加密/多房间
@@ -259,7 +259,8 @@ typedef int SocketType;
 #endif
 
 // ==================== 常量 ====================
-constexpr int PORT = 5555;
+constexpr int DEFAULT_PORT = 45678;   // 默认端口(避开 5555: ADB/安卓模拟器常用端口)
+constexpr int PORT_FALLBACK_RANGE = 100; // 端口被占用时自动向后尝试的范围
 constexpr int MAX_CLIENTS = 10;
 constexpr int BUFFER_SIZE = 16384;
 constexpr size_t MAX_LINE_LENGTH = 1024 * 1024;
@@ -1063,6 +1064,9 @@ enum class SelFocus { Name, Pwd, Ip };
 SelFocus g_selFocus = SelFocus::Name;
 
 // 服务器模式
+int g_serverPort = DEFAULT_PORT;   // 服务器实际监听端口
+int g_clientPort = DEFAULT_PORT;   // 客户端实际连接端口
+std::string g_clientHost = "127.0.0.1";
 SocketType listenSock = INVALID_SOCKET;
 struct ClientInfo {
     SocketType sock = INVALID_SOCKET;
@@ -2109,39 +2113,90 @@ bool PickFile(std::wstring& outPath) {
 
 // ==================== 服务器/客户端运行逻辑 ====================
 bool StartServer() {
-    listenSock = socket(AF_INET6, SOCK_STREAM, 0);
-    if (listenSock == INVALID_SOCKET) return false;
-    int opt = 1;
-    setsockopt(listenSock, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt));
-    int no = 0;
-    setsockopt(listenSock, IPPROTO_IPV6, IPV6_V6ONLY, (const char*)&no, sizeof(no));
-    sockaddr_in6 serverAddr;
-    memset(&serverAddr, 0, sizeof(serverAddr));
-    serverAddr.sin6_family = AF_INET6;
-    serverAddr.sin6_addr = in6addr_any;
-    serverAddr.sin6_port = htons(PORT);
-    if (bind(listenSock, (sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR_CODE) {
-        CLOSE_SOCKET(listenSock);
-        listenSock = INVALID_SOCKET;
-        return false;
+    // 从默认端口开始尝试; 被占用时自动向后找可用端口
+    for (int port = DEFAULT_PORT; port < DEFAULT_PORT + PORT_FALLBACK_RANGE; ++port) {
+        SocketType s = socket(AF_INET6, SOCK_STREAM, 0);
+        if (s == INVALID_SOCKET) return false;
+        int opt = 1;
+#ifdef _WIN32
+        // 独占端口: 若端口已被其他进程监听则绑定失败, 避免连接被“抢走”
+        setsockopt(s, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, (const char*)&opt, sizeof(opt));
+#else
+        setsockopt(s, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt));
+#endif
+        int no = 0;
+        setsockopt(s, IPPROTO_IPV6, IPV6_V6ONLY, (const char*)&no, sizeof(no));
+        sockaddr_in6 serverAddr;
+        memset(&serverAddr, 0, sizeof(serverAddr));
+        serverAddr.sin6_family = AF_INET6;
+        serverAddr.sin6_addr = in6addr_any;
+        serverAddr.sin6_port = htons((unsigned short)port);
+        if (bind(s, (sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR_CODE) {
+            CLOSE_SOCKET(s);
+            continue; // 端口被占用, 尝试下一个
+        }
+        if (listen(s, MAX_CLIENTS) == SOCKET_ERROR_CODE) {
+            CLOSE_SOCKET(s);
+            continue;
+        }
+        listenSock = s;
+        g_serverPort = port;
+        SetNonBlocking(listenSock);
+        return true;
     }
-    if (listen(listenSock, MAX_CLIENTS) == SOCKET_ERROR_CODE) {
-        CLOSE_SOCKET(listenSock);
-        listenSock = INVALID_SOCKET;
-        return false;
-    }
-    SetNonBlocking(listenSock);
-    return true;
+    return false;
 }
 
-bool ConnectClient(const std::string& host) {
+// 解析 "host" / "host:port" / "[ipv6]:port", 返回主机名与端口
+bool ParseHostPort(const std::string& input, std::string& host, int& port) {
+    host = input;
+    port = DEFAULT_PORT;
+    // 去除首尾空格
+    size_t b = host.find_first_not_of(" \t");
+    if (b == std::string::npos) return false;
+    size_t e2 = host.find_last_not_of(" \t");
+    host = host.substr(b, e2 - b + 1);
+    if (host.empty()) return false;
+    if (host.front() == '[') { // [ipv6]:port
+        size_t close = host.find(']');
+        if (close == std::string::npos) return false;
+        std::string addr = host.substr(1, close - 1);
+        std::string rest = host.substr(close + 1);
+        if (!rest.empty()) {
+            if (rest[0] != ':') return false;
+            std::string ps = rest.substr(1);
+            if (ps.find_first_not_of("0123456789") != std::string::npos) return false;
+            int p = std::atoi(ps.c_str());
+            if (p < 1 || p > 65535) return false;
+            port = p;
+        }
+        if (addr.empty()) return false;
+        host = addr;
+        return true;
+    }
+    size_t colon = host.rfind(':');
+    if (colon != std::string::npos && host.find(':') == colon) {
+        // 只有一个冒号: host:port 形式
+        std::string ps = host.substr(colon + 1);
+        if (!ps.empty()) {
+            if (ps.find_first_not_of("0123456789") != std::string::npos) return false;
+            int p = std::atoi(ps.c_str());
+            if (p < 1 || p > 65535) return false;
+            port = p;
+        }
+        host = host.substr(0, colon);
+    }
+    return !host.empty();
+}
+
+bool ConnectClient(const std::string& host, int port) {
     addrinfo hints;
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
     addrinfo* res = nullptr;
-    std::string port = std::to_string(PORT);
-    if (getaddrinfo(host.c_str(), port.c_str(), &hints, &res) != 0) {
+    std::string portStr = std::to_string(port);
+    if (getaddrinfo(host.c_str(), portStr.c_str(), &hints, &res) != 0) {
         return false;
     }
     SocketType sock = INVALID_SOCKET;
@@ -2197,15 +2252,21 @@ void DoStartServer() {
     serverInput.clear();
     g_serverTargetId = 0;
     g_serverPassword = passwordInput;
+    g_serverPort = DEFAULT_PORT;
     if (StartServer()) {
         g_mode = AppMode::Server;
-        SetWindowTitleC(L"聊天服务器", "Chat Server");
-        AddMessageSimple(0, "系统", "服务器已启动，监听端口 " + std::to_string(PORT) + "（IPv4/IPv6 双栈）");
+        std::wstring serverTitle = L"聊天服务器 : " + std::to_wstring(g_serverPort);
+        SetWindowTitleC(serverTitle.c_str(), "Chat Server");
+        if (g_serverPort != DEFAULT_PORT) {
+            AddMessageSimple(0, "系统", "默认端口 " + std::to_string(DEFAULT_PORT) + " 被占用，已改用端口 " + std::to_string(g_serverPort));
+        }
+        AddMessageSimple(0, "系统", "服务器已启动，监听端口 " + std::to_string(g_serverPort) + "（IPv4/IPv6 双栈）");
         if (!g_serverPassword.empty()) {
             AddMessageSimple(0, "系统", "已设置访问密码，通信将加密");
         }
     } else {
-        AddMessageSimple(0, "系统", "启动服务器失败：端口 " + std::to_string(PORT) + " 可能已被占用");
+        AddMessageSimple(0, "系统", "启动服务器失败：端口 " + std::to_string(DEFAULT_PORT) + "~" +
+            std::to_string(DEFAULT_PORT + PORT_FALLBACK_RANGE - 1) + " 均已被占用，请关闭占用程序后重试");
     }
 }
 
@@ -2215,10 +2276,18 @@ void DoStartClient() {
     g_clientTargetId = 0;
     g_clientPassword = passwordInput;
     g_room = "大厅";
-    if (ConnectClient(ipInput)) {
+    std::string host;
+    int port = DEFAULT_PORT;
+    if (!ParseHostPort(ipInput, host, port)) {
+        AddMessageSimple(0, "系统", "服务器地址格式不正确，请使用 IP 或 IP:端口");
+        return;
+    }
+    g_clientHost = host;
+    g_clientPort = port;
+    if (ConnectClient(g_clientHost, g_clientPort)) {
         g_mode = AppMode::Client;
         SetWindowTitleC(L"聊天客户端", "Chat Client");
-        AddMessageSimple(0, "系统", "正在连接服务器 " + ipInput + " ...");
+        AddMessageSimple(0, "系统", "正在连接服务器 " + g_clientHost + ":" + std::to_string(g_clientPort) + " ...");
         // 立即发送昵称与 AUTH(明文阶段)
         if (!nameInput.empty()) {
             std::string nick = SanitizeName(nameInput);
@@ -2231,7 +2300,7 @@ void DoStartClient() {
             g_clientSendBuf += "AUTH|" + g_clientPassword + "\n";
         }
     } else {
-        AddMessageSimple(0, "系统", "无法连接到服务器 " + ipInput + "，请检查地址和端口");
+        AddMessageSimple(0, "系统", "无法连接到服务器 " + g_clientHost + ":" + std::to_string(g_clientPort) + "，请检查地址和端口");
     }
 }
 
@@ -2844,7 +2913,7 @@ void UpdateSelectFrame() {
     std::string masked(pwdBox.width > 0 ? passwordInput.size() : 0, '*');
     DrawFieldText(masked, g_pwdCaret, pwdBox.x + 5, pwdBox.y + 3, g_theme.text, g_selFocus == SelFocus::Pwd);
 
-    DrawTextC("服务器地址（支持 IPv4 / IPv6 / 主机名）：", margin, ipLabelY, g_fontSize, g_theme.dim);
+    DrawTextC("服务器地址（可含端口，如 192.168.1.5:45678）：", margin, ipLabelY, g_fontSize, g_theme.dim);
     DrawRectangleRec(ipBox, g_theme.panel);
     DrawRectangleLines((int)ipBox.x, (int)ipBox.y, (int)ipBox.width, (int)ipBox.height,
                        g_selFocus == SelFocus::Ip ? g_theme.dim : g_theme.sep);
@@ -3275,8 +3344,8 @@ void UpdateClientFrame() {
         double nowT = GetTime();
         if (nowT >= g_reconnectAt) {
             g_reconnectAt = nowT + RECONNECT_DELAY;
-            if (ConnectClient(ipInput)) {
-                AddMessageSimple(0, "系统", "已重新连接到服务器 " + ipInput);
+            if (ConnectClient(g_clientHost, g_clientPort)) {
+                AddMessageSimple(0, "系统", "已重新连接到服务器 " + g_clientHost + ":" + std::to_string(g_clientPort));
                 if (!g_clientPassword.empty()) {
                     g_clientSendBuf += "AUTH|" + g_clientPassword + "\n";
                 }

@@ -1,6 +1,12 @@
-# TCP Chat 9.1
+# TCP Chat 9.2
 
 一个基于 [raylib](https://www.raylib.com/) 和原生 socket（Windows 下为 Winsock2）编写的图形化局域网聊天程序，C++17 单文件实现，支持中文、IPv6、私聊、文件传输，并带完整的企业级增强功能。
+
+## 9.2 更新
+
+- **修复客户端无法连接服务器**：默认端口由 5555 改为 45678（5555 是 ADB/安卓模拟器常用端口，如 LDPlayer 的 VBoxNetNAT 会长期占用，导致连接被“抢走”）；Windows 下改用 `SO_EXCLUSIVEADDRUSE` 独占端口绑定
+- **端口自动回退**：服务器启动时若默认端口被占用，自动向后寻找可用端口（45678–45777）并提示实际监听端口，窗口标题同步显示端口号
+- **客户端支持 `地址:端口`**：服务器地址框可直接填写 `192.168.1.5:45679` 或 `[IPv6]:端口`，不填端口时使用默认 45678
 
 ## 9.1 更新
 
@@ -75,7 +81,7 @@
 ## 编译（Windows / MinGW-w64）
 
 ```powershell
-g++ "TCP Chat9.1.cpp" -o TCP-Chat.exe ^
+g++ "TCP Chat9.2.cpp" -o TCP-Chat-9.2.exe ^
   -I"raylib/include" -L"raylib/lib" ^
   -lraylib -lws2_32 -lwinmm -lgdi32 -lopengl32 -limm32 -lcomdlg32 -lshell32 ^
   -static -static-libgcc -static-libstdc++ -mwindows ^
@@ -86,26 +92,26 @@ g++ "TCP Chat9.1.cpp" -o TCP-Chat.exe ^
 
 ## 下载
 
-最新版本：**[9.1](https://github.com/Cyan3175/TCP-Chat/releases/tag/9.1)**
+最新版本：**[9.2](https://github.com/Cyan3175/TCP-Chat/releases/tag/9.2)**
 
-直接下载：[TCP-Chat-9.1.exe](https://github.com/Cyan3175/TCP-Chat/releases/download/9.1/TCP-Chat-9.1.exe)
+直接下载：[TCP-Chat-9.2.exe](https://github.com/Cyan3175/TCP-Chat/releases/download/9.2/TCP-Chat-9.2.exe)
 
-历史版本：[9.0 正式版](https://github.com/Cyan3175/TCP-Chat/releases/tag/9.0)、[9.0-snapshot5](https://github.com/Cyan3175/TCP-Chat/releases/tag/9.0-snapshot5)、[9.0-snapshot4](https://github.com/Cyan3175/TCP-Chat/releases/tag/9.0-snapshot4)、[9.0-snapshot3](https://github.com/Cyan3175/TCP-Chat/releases/tag/9.0-snapshot3)、[9.0-snapshot2](https://github.com/Cyan3175/TCP-Chat/releases/tag/9.0-snapshot2)
+历史版本：[9.1](https://github.com/Cyan3175/TCP-Chat/releases/tag/9.1)、[9.0 正式版](https://github.com/Cyan3175/TCP-Chat/releases/tag/9.0)、[9.0-snapshot5](https://github.com/Cyan3175/TCP-Chat/releases/tag/9.0-snapshot5)、[9.0-snapshot4](https://github.com/Cyan3175/TCP-Chat/releases/tag/9.0-snapshot4)、[9.0-snapshot3](https://github.com/Cyan3175/TCP-Chat/releases/tag/9.0-snapshot3)、[9.0-snapshot2](https://github.com/Cyan3175/TCP-Chat/releases/tag/9.0-snapshot2)
 
 ## 使用
 
-1. 双击运行 `TCP-Chat-9.1.exe`
-2. 填写昵称（可选）与密码（可选，服务器与客户端需一致），输入服务器地址
-3. 「启动服务器」或「启动客户端」
+1. 双击运行 `TCP-Chat-9.2.exe`
+2. 填写昵称（可选）与密码（可选，服务器与客户端需一致），输入服务器地址（可含端口，如 `192.168.1.5:45679`；不填则使用默认端口 45678）
+3. 「启动服务器」或「启动客户端」（服务器端口被占用时会自动换用下一个可用端口，实际端口显示在窗口标题与消息区）
 4. 右侧面板：点击「【广播】」或用户名选择发送对象；底部房间框输入房间名加入房间
 5. 聊天：输入消息回车发送；右键消息可复制/回复/撤回；拖文件进窗口直接发送
 6. 传输进度条实时显示速度与百分比，✕ 可取消；收到文件保存到 `received\` 目录
 
-> 跨设备使用请确保双方在同一局域网内，且服务器防火墙放行 TCP 端口 `5555`。
+> 跨设备使用请确保双方在同一局域网内，且服务器防火墙放行 TCP 端口 `45678`（若自动换用了其他端口，请放行服务器窗口标题中显示的实际端口）。
 
 ## 版本
 
-版本号从源文件名提取（格式 `TCP Chat<版本>.cpp`）。当前版本：**9.1**。
+版本号从源文件名提取（格式 `TCP Chat<版本>.cpp`）。当前版本：**9.2**。
 
 ## 许可证
 

@@ -1,4 +1,4 @@
-// TCP Chat 9.3
+// TCP Chat 9.4
 // 图形化局域网聊天程序: 完整中文支持 + IPv6 + 私聊 + 文件传输 + 时间戳/输入历史/多行输入/
 //   搜索/撤回/表情/回复/并行传输/断点续传/取消/拖放/速度显示/用户颜色/心跳/踢出禁言/密码/
 //   消息复制/清屏/字号/主题/托盘/通知/断线重连/ACK/简单加密/多房间
@@ -312,9 +312,16 @@ struct ChatMessage {
     std::string quote;     // 引用文本(可空)
     std::string text;      // 正文(可多行)
     bool pendingAck = false;
+    // 换行缓存(仅绘制用, 9.4 性能优化: 宽度/字号未变化时直接复用, 不再逐帧重算)
+    int wrapCacheSize = 0;              // 缓存对应的字号(0 = 缓存无效)
+    float wrapCacheMaxW = -1.0f;        // 缓存对应的宽度桶
+    std::vector<std::string> wrapQuoteLines;
+    std::vector<std::string> wrapTextLines;
 };
 std::vector<ChatMessage> chatMessages;
 int g_chatScrollPx = 0;      // 消息区像素滚动偏移
+double g_wrapMaxMs = 0.0;   // 每帧换行计算最大耗时(性能诊断)
+long long g_wrapFrames = 0;
 bool g_scrollDragging = false;
 
 // 消息行(供点击/右键命中测试)
@@ -855,6 +862,25 @@ bool IsEmojiCp(uint32_t cp) {
     return cp >= 0x1F000 || (cp >= 0x2600 && cp <= 0x27BF);
 }
 
+// 单个码点宽度(栈上编码 UTF-8, 无内存分配; 高频调用, 9.4 性能优化)
+float MeasureCharW(uint32_t cp, int size) {
+    char buf[5];
+    int n = 0;
+    if (cp < 0x80) { buf[0] = (char)cp; n = 1; }
+    else if (cp < 0x800) {
+        buf[0] = (char)(0xC0 | (cp >> 6)); buf[1] = (char)(0x80 | (cp & 0x3F)); n = 2;
+    } else if (cp < 0x10000) {
+        buf[0] = (char)(0xE0 | (cp >> 12)); buf[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
+        buf[2] = (char)(0x80 | (cp & 0x3F)); n = 3;
+    } else {
+        buf[0] = (char)(0xF0 | (cp >> 18)); buf[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
+        buf[2] = (char)(0x80 | ((cp >> 6) & 0x3F)); buf[3] = (char)(0x80 | (cp & 0x3F)); n = 4;
+    }
+    buf[n] = 0;
+    Font f = (g_emojiLoaded && IsEmojiCp(cp)) ? g_emojiFont : g_font;
+    return MeasureTextEx(f, buf, (float)size, 1.0f).x;
+}
+
 // 混合字体绘制(中文用 g_font, 表情用 g_emojiFont)
 void DrawTextMixed(const char* text, float x, float y, int size, Color color) {
     std::string s = text;
@@ -866,7 +892,7 @@ void DrawTextMixed(const char* text, float x, float y, int size, Color color) {
         std::string ch = s.substr(p, adv);
         Font f = (g_emojiLoaded && IsEmojiCp(cp)) ? g_emojiFont : g_font;
         DrawTextEx(f, ch.c_str(), Vector2{ cx, y }, (float)size, 1.0f, color);
-        cx += MeasureTextEx(f, ch.c_str(), (float)size, 1.0f).x;
+        cx += MeasureCharW(cp, size);
         p += adv;
     }
 }
@@ -878,9 +904,7 @@ float MeasureTextMixed(const char* text, int size) {
     while (p < s.size()) {
         size_t adv = 0;
         uint32_t cp = Utf8Decode(s, p, adv);
-        std::string ch = s.substr(p, adv);
-        Font f = (g_emojiLoaded && IsEmojiCp(cp)) ? g_emojiFont : g_font;
-        w += MeasureTextEx(f, ch.c_str(), (float)size, 1.0f).x;
+        w += MeasureCharW(cp, size);
         p += adv;
     }
     return w;
@@ -918,12 +942,15 @@ void SetWindowTitleC(const wchar_t* zh, const char* en) {
 
 // ==================== 文本换行与截断 ====================
 // 按最大像素宽度将文本拆分为多行(逐字符贪心, 兼容中英文与表情)
+// 9.4: 增量测量累计宽度, O(n) 复杂度(原实现每次重测整行, 平方级放大导致窗口变宽时卡顿)
 std::vector<std::string> WrapText(const std::string& text, int size, float maxWidth) {
     std::vector<std::string> lines;
     std::string cur;
+    float curW = 0.0f;
     auto flush = [&]() {
         lines.push_back(cur);
         cur.clear();
+        curW = 0.0f;
     };
     size_t p = 0;
     while (p <= text.size()) {
@@ -932,11 +959,11 @@ std::vector<std::string> WrapText(const std::string& text, int size, float maxWi
         size_t q = p;
         while (q < end) {
             size_t adv = 0;
-            Utf8Decode(text, q, adv);
-            std::string ch = text.substr(q, adv);
-            float w = MeasureTextC((cur + ch).c_str(), size);
-            if (w > maxWidth && !cur.empty()) flush();
-            cur += ch;
+            uint32_t cp = Utf8Decode(text, q, adv);
+            float chW = MeasureCharW(cp, size);
+            if (curW + chW > maxWidth && !cur.empty()) flush();
+            AppendUtf8(cur, cp);
+            curW += chW;
             q += adv;
         }
         flush();
@@ -951,14 +978,17 @@ std::vector<std::string> WrapText(const std::string& text, int size, float maxWi
 // 按像素宽度截断文本(超出部分以 ... 结尾)
 std::string TruncateToWidth(const std::string& s, int size, float maxW) {
     if (MeasureTextC(s.c_str(), size) <= maxW) return s;
+    float dotsW = MeasureTextC("...", size);
     std::string out;
+    float w = 0.0f;
     size_t p = 0;
     while (p < s.size()) {
         size_t adv = 0;
-        Utf8Decode(s, p, adv);
-        std::string ch = s.substr(p, adv);
-        if (MeasureTextC((out + ch + "...").c_str(), size) > maxW) break;
-        out += ch;
+        uint32_t cp = Utf8Decode(s, p, adv);
+        float chW = MeasureCharW(cp, size);
+        if (w + chW + dotsW > maxW) break;
+        AppendUtf8(out, cp);
+        w += chW;
         p += adv;
     }
     return out + "...";
@@ -2555,6 +2585,7 @@ void DrawChatMessages(int screenWidth, float bottomY, const char* title) {
         float textX;
     };
     std::vector<VisMsg> visible;
+    double tWrap0 = GetTime();
     {
         std::lock_guard<std::mutex> lock(messagesMutex);
         for (const auto& m : chatMessages) {
@@ -2572,13 +2603,29 @@ void DrawChatMessages(int screenWidth, float bottomY, const char* title) {
                       + MeasureTextC(nm.c_str(), g_fontSize) + 4;
             float maxW = (float)((int)PanelX(screenWidth) - 10) - v.textX - 10;
             if (maxW < 40) maxW = 40;
-            if (!m.quote.empty()) v.qlines = WrapText(m.quote, g_fontSize - 2, maxW - 12);
-            v.tlines = WrapText(m.text, g_fontSize, maxW);
+            // 换行缓存: 宽度按 8px 桶量化, 拖动改变窗口大小时仅在跨桶时重算
+            float maxWBucket = std::floor(maxW / 8.0f) * 8.0f;
+            ChatMessage& mc = const_cast<ChatMessage&>(m);
+            if (mc.wrapCacheSize != g_fontSize || mc.wrapCacheMaxW != maxWBucket) {
+                mc.wrapQuoteLines.clear();
+                mc.wrapTextLines.clear();
+                if (!m.quote.empty()) mc.wrapQuoteLines = WrapText(m.quote, g_fontSize - 2, maxW - 12);
+                mc.wrapTextLines = WrapText(m.text, g_fontSize, maxW);
+                mc.wrapCacheSize = g_fontSize;
+                mc.wrapCacheMaxW = maxWBucket;
+            }
+            v.qlines = mc.wrapQuoteLines;
+            v.tlines = mc.wrapTextLines;
             int lines = (int)v.qlines.size() + (int)v.tlines.size();
             if (lines < 1) lines = 1;
             v.rowH = lines * lineH + 2;
             visible.push_back(v);
         }
+    }
+    {
+        double wrapMs = (GetTime() - tWrap0) * 1000.0;
+        if (wrapMs > g_wrapMaxMs) g_wrapMaxMs = wrapMs;
+        ++g_wrapFrames;
     }
     float totalH = 0;
     for (const auto& v : visible) totalH += v.rowH;
@@ -2817,6 +2864,7 @@ void WriteDebugDump() {
             for (const auto& e : g_eventLog) {
                 f << e << "\n";
             }
+            f << "WRAP_MAX_MS " << g_wrapMaxMs << " FRAMES " << g_wrapFrames << "\n";
             f.close();
         }
     }
@@ -3633,7 +3681,12 @@ int main() {
     }
 
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
-    InitWindow(DEFAULT_SCREEN_WIDTH, DEFAULT_SCREEN_HEIGHT, "TCP Chat");
+    int testWidth = DEFAULT_SCREEN_WIDTH, testHeight = DEFAULT_SCREEN_HEIGHT;
+    const char* envW = std::getenv("TCPCHAT_TEST_WIDTH");
+    const char* envH = std::getenv("TCPCHAT_TEST_HEIGHT");
+    if (envW && *envW) testWidth = std::atoi(envW);
+    if (envH && *envH) testHeight = std::atoi(envH);
+    InitWindow(testWidth, testHeight, "TCP Chat");
     int refresh = GetMonitorRefreshRate(GetCurrentMonitor());
     SetTargetFPS(refresh > 0 ? refresh : 60);
     SetExitKey(KEY_NULL); // ESC 由应用自行处理

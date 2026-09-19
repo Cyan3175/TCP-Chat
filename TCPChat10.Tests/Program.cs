@@ -35,6 +35,8 @@ if (args.Length >= 2 && args[0] == "clean")
     return 0;
 }
 
+if (args.Length >= 2 && args[0] == "ls") return await Probe.RunAsync(args[1].Trim('/'));
+
 // 离线部分(加密 / 设置持久化 / 字体列表)不依赖网络, 每次都跑
 int offlineFail = CryptoTest.Run();
 

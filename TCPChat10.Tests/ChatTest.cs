@@ -28,13 +28,33 @@ public static class ChatTest
 
     public static async Task<int> RunAsync()
     {
+        // 10.2 起程序不再自动新建目录, 测试目录由测试自己建(和真实用户一样: 目录得先在服务器上存在)
+        using (var setup = new WebDavClient(BaseUrl))
+            await setup.EnsureCollectionAsync(TestFolder);
+
         var settings = Make("张三");
         using var chat = new ChatService(settings);
 
-        Console.WriteLine("=== 1) 初始化(建目录) ===");
+        Console.WriteLine("=== 1) 初始化 ===");
         var (ok, msg) = await chat.InitializeAsync();
         Check(ok, "InitializeAsync -> " + msg);
         Check(!chat.EncryptionEnabled, "没填加密密码时不加密");
+
+        Console.WriteLine("=== 1b) 目录不存在时不再自动新建 ===");
+        var missing = TestFolder + "/_nope_" + Guid.NewGuid().ToString("N")[..6];
+        using (var missSvc = new ChatService(new AppSettings { ServerUrl = BaseUrl, ChatFolder = missing, Nickname = "测试" }))
+        {
+            var (okMissing, msgMissing) = await missSvc.InitializeAsync();
+            Check(!okMissing, "InitializeAsync 失败而不是偷偷建目录");
+            Check(msgMissing.Contains("不存在"), "提示目录不存在: " + msgMissing);
+        }
+        using (var probeDav = new WebDavClient(BaseUrl))
+        {
+            bool made;
+            try { made = (await probeDav.PropFindAsync(missing, 0)).Count > 0; }
+            catch { made = false; }    // 有的服务器对不存在的路径直接报错而不是 404
+            Check(!made, "服务器上确实没有多出这个目录");
+        }
 
         Console.WriteLine("=== 2) 发送明文消息 ===");
         var m1 = await chat.SendTextAsync("你好，这是第一条测试消息");

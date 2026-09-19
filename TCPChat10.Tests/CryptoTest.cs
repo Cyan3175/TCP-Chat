@@ -113,6 +113,40 @@ public static class CryptoTest
             try { Directory.Delete(tmpDir, true); } catch { }
         }
 
+        Console.WriteLine("=== F2) 设置文件位置 与 旧默认目录迁移 (10.2) ===");
+        var tmpDir2 = Path.Combine(Path.GetTempPath(), "tcpchat10_migrate_" + Guid.NewGuid().ToString("N")[..6]);
+        Directory.CreateDirectory(tmpDir2);
+        var tmpFile2 = Path.Combine(tmpDir2, "settings.json");
+        var oldEnv2 = Environment.GetEnvironmentVariable("TCPCHAT10_TEST_SETTINGS");
+        try
+        {
+            Environment.SetEnvironmentVariable("TCPCHAT10_TEST_SETTINGS", tmpFile2);
+            File.WriteAllText(tmpFile2, "{\"serverUrl\":\"https://dev.zhaohans.cn\",\"chatFolder\":\"nw集训/学生资料临存/聊天\",\"nickname\":\"老用户\"}");
+            var migrated = AppSettings.Load();
+            Check(migrated.ChatFolder == AppSettings.DefaultChatFolder,
+                  "10.0/10.1 的旧默认目录自动上移一级 -> " + migrated.ChatFolder);
+            Check(migrated.Nickname == "老用户", "其余设置项不受影响");
+
+            File.WriteAllText(tmpFile2, "{\"chatFolder\":\"\",\"serverUrl\":\"\"}");
+            var blank = AppSettings.Load();
+            Check(blank.ChatFolder == AppSettings.DefaultChatFolder && blank.ServerUrl == AppSettings.DefaultServerUrl,
+                  "空的目录/地址回落到默认值");
+
+            File.WriteAllText(tmpFile2, "{\"chatFolder\":\"nw集训/学生资料临存/别的地方\"}");
+            var kept = AppSettings.Load();
+            Check(kept.ChatFolder == "nw集训/学生资料临存/别的地方", "用户自己改过的目录不会被迁移");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("TCPCHAT10_TEST_SETTINGS", oldEnv2);
+            try { Directory.Delete(tmpDir2, true); } catch { }
+        }
+
+        Check(AppSettings.DefaultChatFolder == "nw集训/学生资料临存", "新默认聊天目录就是共享目录本身, 不再带 聊天 子文件夹");
+        Check(AppSettings.FilePath.EndsWith("settings.json", StringComparison.OrdinalIgnoreCase), "设置文件名: " + AppSettings.FilePath);
+        Check(string.Equals(Path.GetDirectoryName(AppSettings.FilePath), AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase),
+              "设置文件默认直接放在程序目录, 不再单独建文件夹");
+
         Console.WriteLine("=== G) 系统字体列表 ===");
         var fonts = FontList.GetInstalledFamilies();
         Check(fonts.Count > 10, "枚举到 " + fonts.Count + " 个字体族");

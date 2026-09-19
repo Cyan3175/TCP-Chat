@@ -3,7 +3,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:vm="using:TCPChat10.ViewModels"
-    Title="TCP Chat 10.1">
+    Title="TCP Chat 10.2">
 
     <Grid Background="{ThemeResource PageBrush}">
         <Grid.RowDefinitions>
@@ -23,7 +23,7 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <TextBlock Text="TCP Chat 10.1" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <TextBlock Text="TCP Chat 10.2" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                     <Ellipse x:Name="StatusDot" Width="9" Height="9" Fill="#9AA0A6" VerticalAlignment="Center" />

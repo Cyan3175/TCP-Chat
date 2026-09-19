@@ -47,7 +47,7 @@ public sealed partial class MainWindow : Window
         ApplyFont();
         UpdateLockText();
         MeText.Text = string.IsNullOrWhiteSpace(_settings.Nickname) ? "(未设置昵称)" : "我：" + _settings.Nickname;
-        Title = "TCP Chat 10.1 — " + _settings.ChatFolder;
+        Title = "TCP Chat 10.2 — " + _settings.ChatFolder;
 
         RootLoaded();
 
@@ -328,7 +328,9 @@ public sealed partial class MainWindow : Window
             var dlg = new ContentDialog
             {
                 Title = "无法连接",
-                Content = msg + "\n\n请检查设置里的服务器地址与聊天目录。",
+                Content = msg + "\n\n请检查设置里的服务器地址与聊天目录。\n" +
+                          "程序不会自己新建目录：消息文件直接放进该目录，所以目录要事先在服务器上存在，" +
+                          "或者改成已有的目录。",
                 CloseButtonText = "打开设置",
                 PrimaryButtonText = "重试",
                 XamlRoot = Content.XamlRoot,

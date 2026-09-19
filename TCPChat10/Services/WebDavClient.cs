@@ -10,7 +10,7 @@ namespace TCPChat10.Services;
 public sealed class WebDavEntry
 {
     public string Href { get; init; } = "";
-    /// <summary>相对根路径的路径, 已 URL 解码, 形如 "nw集训/学生资料临存/聊天"。</summary>
+    /// <summary>相对根路径的路径, 已 URL 解码, 形如 "nw集训/学生资料临存"。</summary>
     public string Path { get; init; } = "";
     public string Name { get; init; } = "";
     public bool IsCollection { get; init; }
@@ -29,29 +29,19 @@ public sealed class WebDavClient : IDisposable
     private readonly HttpClient _http;
 
     public string BaseUrl { get; }
-    public string UserName { get; private set; } = "";
 
     /// <summary>最近一次 PUT 的结果("200 OK" / "403 Forbidden" ...), 用于把失败原因显示给用户。</summary>
     public string LastPutStatus { get; private set; } = "";
-    public bool HasCredentials => !string.IsNullOrEmpty(UserName);
 
-    public WebDavClient(string baseUrl, string userName = "", string password = "")
+    /// <summary>匿名访问(10.2 起不再需要 WebDAV 账号)。</summary>
+    public WebDavClient(string baseUrl)
     {
         // 规范化: 末尾必须有一个斜杠
         BaseUrl = baseUrl.TrimEnd('/') + "/";
-        UserName = userName;
 
-        var handler = new HttpClientHandler
-        {
-            AllowAutoRedirect = true,
-            PreAuthenticate = true,
-        };
-        if (!string.IsNullOrEmpty(userName))
-        {
-            handler.Credentials = new NetworkCredential(userName, password);
-        }
+        var handler = new HttpClientHandler { AllowAutoRedirect = true };
         _http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(60) };
-        _http.DefaultRequestHeaders.UserAgent.ParseAdd("TCPChat10/10.1");
+        _http.DefaultRequestHeaders.UserAgent.ParseAdd("TCPChat10/10.2");
     }
 
     /// <summary>
@@ -62,13 +52,6 @@ public sealed class WebDavClient : IDisposable
         var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         cts.CancelAfter(TimeSpan.FromSeconds(seconds));
         return cts;
-    }
-
-    public void SetCredentials(string userName, string password)
-    {
-        UserName = userName;
-        // HttpClient 的凭据在构造时确定; 需要变更时重建 handler
-        // 这里简单起见重新创建底层 handler 不支持, 因此由上层重建 WebDavClient
     }
 
     // ---------- URL 处理 ----------

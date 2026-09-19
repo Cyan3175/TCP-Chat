@@ -28,8 +28,6 @@ public sealed partial class SettingsDialog : ContentDialog
         UrlBox.Text = settings.ServerUrl;
         FolderBox.Text = settings.ChatFolder;
         NickBox.Text = settings.Nickname;
-        UserBox.Text = settings.UserName;
-        PassBox.Password = settings.Password;
         CryptoBox.Password = settings.CryptoPassword;
         CryptoBox2.Password = settings.CryptoPassword;
         PollBox.Value = settings.PollSeconds;
@@ -81,7 +79,7 @@ public sealed partial class SettingsDialog : ContentDialog
 
     /// <summary>当前对话框里各控件的取值(用于自动化测试核对)。</summary>
     public string Describe() =>
-        $"url={UrlBox.Text} folder={FolderBox.Text} nick={NickBox.Text} user={UserBox.Text} " +
+        $"url={UrlBox.Text} folder={FolderBox.Text} nick={NickBox.Text} " +
         $"poll={PollBox.Value} days={DaysBox.Value} autoscroll={AutoScrollBox.IsChecked} theme={ThemeBox.SelectedIndex} " +
         $"fonts={_fontValues.Count - 1} font={SelectedFontValue()} crypto={CryptoBox.Password.Length switch { 0 => "off", _ => "on:" + CryptoBox.Password.Length + "位" }}";
 
@@ -122,8 +120,6 @@ public sealed partial class SettingsDialog : ContentDialog
         _settings.ServerUrl = url;
         _settings.ChatFolder = folder;
         _settings.Nickname = NickBox.Text.Trim();
-        _settings.UserName = UserBox.Text.Trim();
-        _settings.Password = PassBox.Password;
         _settings.CryptoPassword = CryptoBox.Password;
         _settings.PollSeconds = (int)Math.Clamp(PollBox.Value, 1, 120);
         _settings.HistoryDays = (int)Math.Clamp(DaysBox.Value, 1, 365);

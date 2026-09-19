@@ -14,15 +14,11 @@
             <TextBox x:Name="UrlBox" Header="WebDAV 地址" PlaceholderText="https://dev.zhaohans.cn" />
             <TextBox x:Name="FolderBox" Header="聊天目录"
                      PlaceholderText="nw集训/学生资料临存/聊天" />
-            <TextBlock Text="消息会以 msg_*.json 的形式写入该目录。目录不存在时会自动创建。"
+            <TextBlock Text="消息会以 msg_*.json 的形式直接写进这个目录（不会另建子文件夹），所以目录要事先在服务器上存在。"
                        FontSize="12" Opacity="0.65" TextWrapping="Wrap" />
 
             <TextBlock Text="身份" FontWeight="SemiBold" Margin="0,6,0,0" />
             <TextBox x:Name="NickBox" Header="昵称" PlaceholderText="显示在每条消息上" MaxLength="24" />
-
-            <TextBlock Text="服务器认证（可选，留空则匿名访问）" FontWeight="SemiBold" Margin="0,6,0,0" />
-            <TextBox x:Name="UserBox" Header="用户名" PlaceholderText="留空 = 匿名" />
-            <PasswordBox x:Name="PassBox" Header="密码" />
 
             <TextBlock Text="端到端加密" FontWeight="SemiBold" Margin="0,6,0,0" />
             <PasswordBox x:Name="CryptoBox" Header="加密密码（收发双方必须完全一致）"

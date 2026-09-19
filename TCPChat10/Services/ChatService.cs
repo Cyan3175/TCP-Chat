@@ -52,7 +52,7 @@ public sealed class ChatService : IDisposable
     {
         _settings = settings;
         Nickname = settings.Nickname;
-        _dav = new WebDavClient(settings.ServerUrl, settings.UserName, settings.Password);
+        _dav = new WebDavClient(settings.ServerUrl);
         _cipher = new MessageCipher(settings.CryptoPassword, CryptoSaltSeed);
     }
 
@@ -76,28 +76,34 @@ public sealed class ChatService : IDisposable
         Interlocked.Exchange(ref _undecryptable, 0);
     }
 
-    /// <summary>初始化: 测连通性并确保聊天目录存在。</summary>
+    /// <summary>
+    /// 初始化: 测连通性并确认聊天目录可用。
+    /// 10.2 起不再自动新建目录 —— 消息文件直接放进设置里那个目录, 服务器上不会被程序多建出文件夹。
+    /// </summary>
     public async Task<(bool ok, string message)> InitializeAsync(CancellationToken ct = default)
     {
         try
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
 
-            // 常见情况: 目录已存在 -> 一次 PROPFIND 就够。
-            // (旧实现每次启动都逐级 MKCOL, 服务器延迟高时要白等十几秒)
-            var probe = await _dav.PropFindAsync(_settings.ChatFolder, 0, ct);
-            if (probe.Count == 0)
+            // 目录不存在时不同服务器给的状态码不一样(404/409/500 都有), 统一按"目录不可用"处理,
+            // 再用根目录探一次区分"目录没建"和"服务器连不上"
+            bool folderOk;
+            try { folderOk = (await _dav.PropFindAsync(_settings.ChatFolder, 0, ct)).Count > 0; }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch { folderOk = false; }
+
+            if (!folderOk)
             {
-                Diag?.Invoke($"目录不存在或不可达, 尝试创建 {_settings.ChatFolder}");
-                await _dav.EnsureCollectionAsync(_settings.ChatFolder, ct);
-                probe = await _dav.PropFindAsync(_settings.ChatFolder, 0, ct);
-                if (probe.Count == 0)
-                {
-                    var root = await _dav.PropFindAsync("", 0, ct);
-                    return (false, root.Count == 0
-                        ? "无法访问服务器(请检查网络与服务器地址)"
-                        : "聊天目录不可用: " + _settings.ChatFolder);
-                }
+                bool serverOk;
+                try { serverOk = (await _dav.PropFindAsync("", 0, ct)).Count > 0; }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+                catch { serverOk = false; }
+
+                Diag?.Invoke("聊天目录不可用: " + _settings.ChatFolder);
+                return (false, serverOk
+                    ? "聊天目录不存在：" + _settings.ChatFolder
+                    : "无法访问服务器(请检查网络与服务器地址)");
             }
 
             Diag?.Invoke($"连接就绪, 耗时 {sw.ElapsedMilliseconds} ms" +

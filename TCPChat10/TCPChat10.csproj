@@ -5,19 +5,25 @@
     <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
     <RootNamespace>TCPChat10</RootNamespace>
-    <AssemblyName>TCP-Chat-10.1</AssemblyName>
+    <AssemblyName>TCP-Chat-10.2</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <Platforms>x64</Platforms>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <UseWinUI>true</UseWinUI>
     <WindowsPackageType>None</WindowsPackageType>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <!-- 发布成一个 exe: 解压/下载完直接双击, 不再是一堆文件的文件夹。
+         代价是首次启动会把自己解到 %TEMP%\.net\ 下(之后复用), 所以整体体积比文件夹版大一些。 -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <EnableMsixTooling>true</EnableMsixTooling>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
-    <Version>10.1.0</Version>
-    <AssemblyTitle>TCP Chat 10.1</AssemblyTitle>
+    <Version>10.2.0</Version>
+    <AssemblyTitle>TCP Chat 10.2</AssemblyTitle>
     <Product>TCP Chat</Product>
     <ApplicationIcon></ApplicationIcon>
   </PropertyGroup>

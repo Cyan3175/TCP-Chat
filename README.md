@@ -1,36 +1,38 @@
-# TCP Chat 10.1
+# TCP Chat 10.2
 
 用 **WinUI 3（Windows App SDK）** 重写的桌面聊天客户端。
 
 和 9.4 的 raylib 版最大的不同：**没有服务端**。程序把学校里已有的 **WebDAV 服务器**当作一块公共留言板 —— 每发一条消息就在远端目录里写一个 JSON 文件，每 2 秒列一次目录把新文件拉下来。不需要开端口、不需要装服务、不需要内网穿透。
 
-10.1 相比 10.0：**加入端到端加密（收发双方必须填同一个加密密码）**、**去掉文件传输**、**加入系统字体列表并可持久保存**。
+**10.2 的变化**：发布包变成**单个 exe**（不再是一堆文件的文件夹）；消息文件**直接写进你指定的目录**，程序不再自作主张新建文件夹；设置文件**直接放在 exe 旁边**；设置里**去掉了服务器认证（用户名/密码）**。
 
 ---
 
 ## 快速开始
 
-1. 双击 `TCP-Chat-10.1.exe`（自包含，无需安装 .NET 或 Windows App Runtime）
+1. 下载 `TCP-Chat-10.2.exe`，**放在哪个目录都行**，双击即可（自包含，无需安装 .NET 或 Windows App Runtime）
 2. 首次启动会问昵称，填完即可开始聊
-3. 默认连到 `https://dev.zhaohans.cn`，聊天目录 `nw集训/学生资料临存/聊天`
+3. 默认连到 `https://dev.zhaohans.cn`，消息目录 `nw集训/学生资料临存`（消息文件就放在这一层，不再建"聊天"子文件夹）
 4. **要保密就点「设置」→「端到端加密」，两边填一模一样的加密密码**
 
-> 换了电脑、换了目录，点右上角 **设置** 改 **WebDAV 地址** 和 **聊天目录** 即可；改这两项后需要重启程序生效。加密密码、字体、主题等都是改完立即生效并写进设置文件的。
+> - 配置文件 `settings.json` 就在 exe 旁边，和 exe 一起拷走即可；如果 exe 所在目录不可写（比如装在 `Program Files`），会自动退回 `%LOCALAPPDATA%\TCPChat10\`。
+> - 从 10.0/10.1 升级：第一次启动会自动把老设置（昵称、字体、加密密码等）搬过来，并把旧的默认目录 `…/学生资料临存/聊天` 改成上一级；老的 `%LOCALAPPDATA%\TCPChat10\` 可以自行删掉。
 
 ## 它是怎么工作的
 
 ```
   张三的电脑                     学校 WebDAV                   李四的电脑
  ┌──────────┐                 ┌────────────────┐              ┌──────────┐
- │ 发消息   │ ── PUT ───────▶ │ 聊天/           │ ◀── PROPFIND │ 轮询     │
+ │ 发消息   │ ── PUT ───────▶ │ 学生资料临存/   │ ◀── PROPFIND │ 轮询     │
  │ (加密)   │                 │  msg_<时间>_<随机>.json        │ (每 2 秒)│
  │ 收消息   │ ◀─ GET ──────── │  {v,id,from,time,enc}          │          │
  └──────────┘                 └────────────────┘              └──────────┘
 ```
 
 - **一条消息一个文件**：WebDAV 没有原子追加，所以不做"往一个日志文件里 append"，而是每条消息单独写 `msg_<unix毫秒>_<8位随机>.json`，天然无并发写冲突
+- **文件直接放在你填的那个目录里**：不建子文件夹、不建日期目录。目录必须先在服务器上存在，程序**不会**自动新建（免得在你的共享目录里凭空多出一个文件夹）
 - **文件名即排序键**：时间戳前缀让目录列表天然按时间有序
-- **同步**：定时对聊天目录发 `PROPFIND Depth:1`，只对没见过的文件名发 `GET`，收到后反序列化并插到正确的时间位置
+- **同步**：定时对消息目录发 `PROPFIND Depth:1`，只对没见过的文件名发 `GET`，收到后反序列化并插到正确的时间位置
 - **撤回**：`DELETE` 自己的消息文件
 
 ### 端到端加密
@@ -38,7 +40,7 @@
 | 项 | 说明 |
 |---|---|
 | 算法 | AES-256-GCM，带认证标签；密文被改动、被改名搬运都会解密失败 |
-| 密钥 | `PBKDF2-HMAC-SHA256(密码, 盐, 100000 次)` → 32 字节；盐 = `SHA256("TCPChat10/v2|crypto|" + 聊天目录)` 前 16 字节 |
+| 密钥 | `PBKDF2-HMAC-SHA256(密码, 盐, 100000 次)` → 32 字节；盐 = `SHA256("TCPChat10/v2|crypto|" + 消息目录)` 前 16 字节 |
 | 每条的随机数 | 每条消息一个随机 96 位 nonce，同一句话发两次密文也不同 |
 | 附加认证数据 | 消息文件名。密文被复制到别的文件名下就解不开 |
 | 上传内容 | `enc` 字段 = `AESGCM1:` + Base64(nonce‖密文‖tag)，**服务器上不存明文正文** |
@@ -46,7 +48,7 @@
 | 密码不一致 | 该条消息显示 🔒「无法解密：本机的加密密码与发送方不一致」，底栏统计条数，不会显示乱码 |
 | 换密码 | 设置里改完立即生效，程序会用新密码把服务器上的消息重新读一遍 |
 
-**收发双方必须填完全相同的加密密码**（连大小写、空格都要一样）。这个密码只用来保护消息内容，和"服务器认证"里的用户名/密码是两回事：后者是 WebDAV 账号，只决定能不能上传下载。
+**收发双方必须填完全相同的加密密码**（连大小写、空格都要一样）。这个密码只用来保护消息内容。
 
 ## 功能
 
@@ -68,10 +70,9 @@
 
 | 项 | 说明 |
 |---|---|
-| WebDAV 地址 | 例：`https://dev.zhaohans.cn` |
-| 聊天目录 | 服务器上的相对路径，例：`nw集训/学生资料临存/聊天`；不存在会自动逐级创建 |
+| WebDAV 地址 | 例：`https://dev.zhaohans.cn`，匿名访问（不需要账号） |
+| 消息目录 | 服务器上的相对路径，例：`nw集训/学生资料临存`；**消息文件直接放在这一层，目录要事先存在** |
 | 昵称 | 显示在消息上，仅作为身份标识 |
-| 服务器认证 用户名 / 密码 | 可选，服务器需要认证时填；留空为匿名访问 |
 | **加密密码 / 确认加密密码** | 端到端加密，收发双方必须完全一致；留空 = 明文发送。两次输入不一致时保存会被拦下 |
 | 同步周期 | 1–120 秒，默认 3 秒 |
 | 历史天数 | 1–365 天，默认只加载最近 7 天的消息 |
@@ -79,7 +80,7 @@
 | 主题 | 跟随系统 / 浅色 / 深色 |
 | **字体** | 本机已安装的字体族（约 200 个），第一项是"（系统默认）" |
 
-设置保存在 `%LOCALAPPDATA%\TCPChat10\settings.json`；自测模式（`TCPCHAT10_TEST_SETTINGS`）下读写都指向指定的测试文件，不碰真实设置。
+设置保存在 **exe 同目录的 `settings.json`**（目录不可写时退回 `%LOCALAPPDATA%\TCPChat10\settings.json`）；自测模式（`TCPCHAT10_TEST_SETTINGS`）下读写都指向指定的测试文件，不碰真实设置。
 
 ## 目录结构
 
@@ -88,15 +89,15 @@ TCPChat10/
   App.xaml(.cs)            应用入口、主题资源、崩溃日志
   Models/ChatMessage.cs    消息数据模型(JSON 结构, 含加密字段 enc)
   Services/
-    WebDavClient.cs        PROPFIND/GET/PUT/DELETE/MKCOL 极简客户端
+    WebDavClient.cs        PROPFIND/GET/PUT/DELETE 极简客户端(匿名)
     ChatService.cs         发送、轮询同步、撤回、加解密
     MessageCrypto.cs       AES-256-GCM 信封 + PBKDF2 密钥派生
     FontList.cs            EnumFontFamiliesEx 枚举系统字体
-    AppSettings.cs         设置读写(%LOCALAPPDATA%\TCPChat10\settings.json)
+    AppSettings.cs         设置读写(exe 同目录 settings.json)与老设置迁移
   ViewModels/MessageVm.cs  消息的显示模型(气泡/加密锁标记)
   Views/
     MainWindow.xaml(.cs)   主窗口
-    SettingsDialog.xaml   设置对话框(含字体下拉与加密密码)
+    SettingsDialog.xaml   设置对话框(字体下拉与加密密码)
 TCPChat10.Tests/           控制台回归测试(直接引用上面的源码)
 ```
 
@@ -106,31 +107,35 @@ TCPChat10.Tests/           控制台回归测试(直接引用上面的源码)
 
 ```powershell
 cd TCPChat10
-dotnet build -c Release          # 调试构建产物
-dotnet publish -c Release -o ..dist   # 自包含单目录产物
+dotnet build -c Release                  # 调试构建产物(文件夹形式, 便于反复启动)
+dotnet publish -c Release -o ..dist      # 发布: 只产出一个 TCP-Chat-10.2.exe
 ```
 
-关键工程设置：`WindowsPackageType=None`（免打包运行，双击 exe 即用）、`WindowsAppSDKSelfContained=true`（把 Windows App Runtime 打进去，目标机不需要预装任何运行时）。
+关键工程设置：
+
+- `WindowsPackageType=None`（免打包运行，双击 exe 即用）、`WindowsAppSDKSelfContained=true`（把 Windows App Runtime 打进去，目标机不需要预装任何运行时）
+- `PublishSingleFile` + `IncludeAllContentForSelfExtract` + `EnableCompressionInSingleFile`（发布成**单个 exe**；代价是首次启动会把自己解压到 `%TEMP%\.net\TCP-Chat-10.2\` 下，之后复用）
+- 设置文件位置用 `Environment.ProcessPath` 定位 exe 目录 —— 单文件发布时 `AppContext.BaseDirectory` 指向的是 `%TEMP%` 里的解压目录，不能用
 
 > WindowsAppSDK 版本必须 ≥ 2.5.1：1.7.x 上 `XamlCompiler.exe` 会静默退出码 1，构建直接失败。
 
 ## 测试
 
-### 控制台回归
-
 ```powershell
 cd TCPChat10.Tests
-dotnet run -c Release              # 离线 36 项 + 在线(打真实服务器)
+dotnet run -c Release              # 离线 46 项 + 在线 40 项(打真实服务器)
 dotnet run -c Release -- --offline # 只跑离线部分
 ```
 
-- **离线（39 项，不需要网络）**：密钥派生一致性、加解密往返、密码/目录/文件名不一致时解不开、篡改密文被 GCM 拦下、上行 JSON 不含明文、设置文件里字体与加密密码的持久化读写、系统字体列表（数量/去重/无竖排变体）、10.0 老消息兼容（附件字段被忽略、纯附件消息被识别为"无正文"）
-- **在线（37 项，打真实服务器）**：连通性、发文本、发带引用消息、**另一个全新实例能否读到**、二次同步不重复、**同密码对端能解密 / 不同密码与未设密码的客户端只会看到"无法解密"**、**换回正确密码重新同步即可解开**、10.0 老附件消息被跳过、删除消息（含加密消息）
+- **离线（46 项，不需要网络）**：密钥派生一致性、加解密往返、密码/目录/文件名不一致时解不开、篡改密文被 GCM 拦下、上行 JSON 不含明文、设置文件里字体与加密密码的持久化读写、设置文件位置与旧默认目录迁移、系统字体列表（数量/去重/无竖排变体）、10.0 老消息兼容（附件字段被忽略、纯附件消息被识别为"无正文"）
+- **在线（40 项，打真实服务器）**：连通性、**目录不存在时不再自动新建**、发文本、发带引用消息、**另一个全新实例能否读到**、二次同步不重复、**同密码对端能解密 / 不同密码与未设密码的客户端只会看到"无法解密"**、**换回正确密码重新同步即可解开**、10.0 老附件消息被跳过、删除消息（含加密消息）
 
-测试全部写在服务器上的 `_tcpchat_selftest` 目录里，跑完可以清掉：
+测试全部写在服务器上的 `_tcpchat_selftest` 目录里（目录由测试自己创建），跑完可以清掉：
 
 ```powershell
 dotnet run -c Release -- clean "nw集训/学生资料临存/_tcpchat_selftest" --rmdir
+dotnet run -c Release -- mkdir  "nw集训/学生资料临存/_tcpchat_selftest"   # 目录得先存在(程序不建目录)
+dotnet run -c Release -- ls     "nw集训/学生资料临存"                      # 看看服务器上现在有什么
 ```
 
 ### 界面自动化
@@ -140,22 +145,23 @@ dotnet run -c Release -- clean "nw集训/学生资料临存/_tcpchat_selftest" -
 ```powershell
 $env:TCPCHAT10_TEST_SETTINGS = "test_settings.json"   # 指向测试目录，避免污染真实聊天
 $env:TCPCHAT10_TEST_LOG      = "ui_test.log"
-$env:TCPCHAT10_AUTOTEST      = "crypto:两端一致;font:楷体;send:你好;waitmsg:1;scroll;shot:C:\shot.png;settings;dshot:C:\dlg.png;closedlg;quit"
-.\TCP-Chat-10.1.exe
+$env:TCPCHAT10_AUTOTEST      = "crypto:两端一致;font:楷体;send:你好;waitmsg:1;scroll;shot:C:\shot.png;settings;dshot:C:\dlg.png;dscroll:1;closedlg;quit"
+.\TCP-Chat-10.2.exe
 ```
 
 支持的动作：`wait:N` / `waitmsg:N` / `send:文本` / `sendq:引用|正文` / `font:字体名` / `fonts` / `crypto:密码` /
-`scroll` / `menu` / `hidemenu` / `settings` / `dshot:路径` / `closedlg` / `shot:路径` / `log:文本` / `quit`。
+`scroll` / `menu` / `hidemenu` / `settings` / `dshot:路径` / `dscroll:0~1` / `dfontdrop` / `closedlg` / `shot:路径` / `log:文本` / `quit`。
 
 ## 已知限制与注意事项
 
 - **加密只能保护正文**：昵称、时间、消息条数仍是明文，服务器管理员能看到"谁在什么时候发了多少条"。密码忘了就真解不开了（没有找回机制），换密码也不会重新加密历史消息
 - **同一目录 + 同一密码 = 同一把钥匙**：密码是双方共享的口令，谁拿到密码谁就能解密；没有做每用户密钥对/前向保密
-- **聊天目录是公开的**：只要知道 WebDAV 地址和目录名，任何人不登录也能读到消息文件（加密后读到的是密文）。**不要在正式目录里发隐私内容**，除非开了加密
-- **消息不是实时推送**：靠轮询，默认 3 秒，所以对方最多慢 3 秒看到（服务器本身偶发会把某个请求挂住几十秒，客户端对每个请求都设了超时，卡住会自动跳过并在下一轮重试）
+- **消息目录是公开的**：只要知道 WebDAV 地址和目录名，任何人不登录也能读到消息文件（加密后读到的是密文）。**不要在共享目录里发隐私内容**，除非开了加密
+- **程序不会自动新建目录**：目录填错或还没建，会直接提示"聊天目录不存在"，消息不会写到别的地方去
+- **单文件 exe 首次启动稍慢**：会把自己解压到 `%TEMP%\.net\TCP-Chat-10.2\`（约 235 MB，之后复用；换新版本会再解一份，旧的可以删）
+- **消息不是实时推送**：靠轮询，默认 3 秒，所以对方最多慢 3 秒看到（服务器本身偶发会把某个请求挂住几十秒，客户端对每个请求都设了超时，卡住会自动跳过并在下一轮重试；发送失败会自动重试两次，仍失败会在气泡上标出 HTTP 状态）
 - **历史只按文件名时间戳排**：客户端时钟不准会导致消息顺序错乱
 - **10.1 起不再支持发文件/图片**（10.0 的附件功能已移除）；服务器上 10.0 时期留下的 `att_*` 文件不会被读取，只有附件的旧消息也不会出现在列表里（不会变成空气泡），可以自行清理
-- 自包含发布体积约 156 MB（解压后），因为把 .NET 与 Windows App Runtime 都打进去了
 
 ## 9.4 及以前（raylib 版）
 

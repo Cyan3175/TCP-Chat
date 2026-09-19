@@ -284,6 +284,14 @@ public sealed class ChatService : IDisposable
                     var msg = JsonSerializer.Deserialize<ChatMessage>(text);
                     if (msg == null) { _seen[entry.Name] = 1; return; }
 
+                    // 10.0 的纯附件消息: 新版已经没有附件了, 直接忽略, 免得列表里出现空气泡
+                    if (!msg.IsEncrypted && string.IsNullOrWhiteSpace(msg.Text) && string.IsNullOrWhiteSpace(msg.Quote))
+                    {
+                        Diag?.Invoke("跳过没有正文的消息(10.0 的附件消息?): " + entry.Name);
+                        _seen[entry.Name] = 1;
+                        return;
+                    }
+
                     if (msg.IsEncrypted) Decrypt(msg, entry.Name);
 
                     _seen[entry.Name] = 1;              // 只有解析成功才算已读

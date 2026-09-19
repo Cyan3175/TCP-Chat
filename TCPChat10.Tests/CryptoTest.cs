@@ -124,6 +124,21 @@ public static class CryptoTest
         Check(!FontList.Exists("这个字体肯定不存在12345"), "FontList.Exists(不存在的字体) = false");
         Check(!FontList.Exists(""), "空字体名视为不存在(回退系统默认)");
 
+        Console.WriteLine("=== H) 兼容 10.0 的老消息 ===");
+        const string legacyAttach = "{\"v\":1,\"id\":\"1789800000000_aaaaaaaa\",\"from\":\"张三\"," +
+                                    "\"time\":\"2026-09-19T08:20:52+00:00\",\"text\":\"\"," +
+                                    "\"attach\":{\"name\":\"图.png\",\"path\":\"x/att_1_图.png\",\"size\":4855,\"kind\":2}}";
+        var legacy = JsonSerializer.Deserialize<TCPChat10.Models.ChatMessage>(legacyAttach);
+        Check(legacy != null && legacy.Enc == null, "10.0 的附件字段被安全忽略, 不抛异常");
+        Check(legacy != null && string.IsNullOrWhiteSpace(legacy.Text) && string.IsNullOrWhiteSpace(legacy.Quote),
+              "纯附件的老消息 = \"没有正文\", 同步时会被跳过");
+
+        const string legacyText = "{\"v\":1,\"id\":\"1789800000001_bbbbbbbb\",\"from\":\"李四\"," +
+                                  "\"time\":\"2026-09-19T08:21:00+00:00\",\"text\":\"老版本的明文消息\",\"quote\":\"被引用的那句\"}";
+        var lt = JsonSerializer.Deserialize<TCPChat10.Models.ChatMessage>(legacyText);
+        Check(lt != null && lt.Text == "老版本的明文消息" && lt.Quote == "被引用的那句" && !lt.IsEncrypted,
+              "10.0 的明文消息照常读取");
+
         Console.WriteLine();
         Console.WriteLine("==== 离线测试: " + _pass + " 通过, " + _fail + " 失败 ====");
         return _fail;

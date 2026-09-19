@@ -119,7 +119,25 @@ public static class ChatTest
               "改成正确密码后重新拉取即可解密");
         Check(stranger.UndecryptableCount == 0, "计数清零");
 
-        Console.WriteLine("=== 9) 删除自己发的消息 ===");
+        Console.WriteLine("=== 9) 10.0 的老附件消息被忽略 ===");
+        using (var davLegacy = new WebDavClient(BaseUrl))
+        {
+            var legacyName = "msg_" + DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + "_0badf00d.json";
+            var legacyJson = "{\"v\":1,\"id\":\"legacy\",\"from\":\"老版本\",\"time\":\"" +
+                             DateTimeOffset.UtcNow.ToString("o") + "\",\"text\":\"\"," +
+                             "\"attach\":{\"name\":\"x.bin\",\"path\":\"p\",\"size\":1,\"kind\":1}}";
+            Check(await davLegacy.PutTextAsync(WebDavClient.Combine(TestFolder, legacyName), legacyJson), "老格式消息文件已写入服务器");
+
+            using var fresh = new ChatService(Make("新版本客户端"));
+            var freshGot = new List<ChatMessage>();
+            fresh.MessageAdded += m => { lock (freshGot) freshGot.Add(m); };
+            await fresh.SyncOnceAsync();
+            Check(freshGot.All(m => m.RemoteName != legacyName), "纯附件的老消息不出现在列表里(不会变成空气泡)");
+            Check((await davLegacy.PropFindAsync(TestFolder, 1)).Any(e => e.Name == legacyName), "老消息文件仍留在服务器上, 只是不显示");
+            await davLegacy.DeleteAsync(WebDavClient.Combine(TestFolder, legacyName));
+        }
+
+        Console.WriteLine("=== 10) 删除自己发的消息 ===");
         bool del = await chat.DeleteMessageAsync(m1);
         Check(del, "DeleteMessageAsync 成功");
         bool delEnc = await sender.DeleteMessageAsync(em!);
@@ -128,7 +146,7 @@ public static class ChatTest
         Check(after.All(e => e.Name != m1.RemoteName), "服务器上已无该消息文件");
         Check(after.All(e => e.Name != em!.RemoteName), "服务器上已无该加密消息文件");
 
-        Console.WriteLine("=== 10) 目录最后状态 ===");
+        Console.WriteLine("=== 11) 目录最后状态 ===");
         foreach (var e in after.Where(e => !e.IsCollection).Take(12))
             Console.WriteLine("      " + e.Name + "  " + e.Length + " 字节");
 

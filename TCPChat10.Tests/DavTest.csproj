@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>davtest</AssemblyName>
+    <RootNamespace>DavTest</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="ChatTest.cs" />
+    <Compile Include="../TCPChat10/Services/WebDavClient.cs" Link="WebDavClient.cs" />
+    <Compile Include="../TCPChat10/Services/ChatService.cs" Link="ChatService.cs" />
+    <Compile Include="../TCPChat10/Services/AppSettings.cs" Link="AppSettings.cs" />
+    <Compile Include="../TCPChat10/Models/ChatMessage.cs" Link="ChatMessage.cs" />
+  </ItemGroup>
+</Project>

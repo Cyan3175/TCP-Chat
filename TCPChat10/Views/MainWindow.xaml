@@ -1,0 +1,144 @@
+<Window
+    x:Class="TCPChat10.Views.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:TCPChat10.ViewModels"
+    Title="TCP Chat 10.0">
+
+    <Grid Background="{ThemeResource PageBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- 顶栏 -->
+        <Border Grid.Row="0" Background="{ThemeResource PanelBrush}"
+                BorderThickness="0,0,0,1" BorderBrush="{ThemeResource LineBrush}" Padding="14,10">
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Text="TCP Chat 10.0" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <Ellipse x:Name="StatusDot" Width="9" Height="9" Fill="#9AA0A6" VerticalAlignment="Center" />
+                    <TextBlock x:Name="HeaderStatus" FontSize="12" VerticalAlignment="Center"
+                               Foreground="{ThemeResource MetaOtherBrush}" Text="正在连接…" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+                    <TextBlock x:Name="MeText" VerticalAlignment="Center" FontSize="12"
+                               Foreground="{ThemeResource MetaOtherBrush}" />
+                    <Button x:Name="BtnWhoAmI" Content="改昵称" Click="OnChangeNickClick" />
+                    <Button x:Name="BtnSettings" Content="设置" Click="OnSettingsClick" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- 消息列表 -->
+        <ListView x:Name="MessageList" Grid.Row="1"
+                  SelectionMode="None" Padding="14,10,14,10"
+                  Background="Transparent"
+                  ScrollViewer.HorizontalScrollMode="Disabled"
+                  ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+            <ListView.ItemContainerStyle>
+                <Style TargetType="ListViewItem">
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                    <Setter Property="Padding" Value="0" />
+                    <Setter Property="Margin" Value="0" />
+                    <Setter Property="MinHeight" Value="0" />
+                </Style>
+            </ListView.ItemContainerStyle>
+            <ListView.ItemTemplate>
+                <DataTemplate x:DataType="vm:MessageVm">
+                    <Grid HorizontalAlignment="{x:Bind Alignment}" Margin="{x:Bind BubbleMargin}"
+                          MaxWidth="760" RightTapped="OnMessageRightTapped">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="8"
+                                        HorizontalAlignment="{x:Bind Alignment}">
+                                <TextBlock Text="{x:Bind SenderText}" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{x:Bind SenderBrush}" />
+                                <TextBlock Text="{x:Bind TimeText}" FontSize="11" VerticalAlignment="Center"
+                                           Foreground="{x:Bind MetaBrush}" />
+                                <TextBlock Text="发送中…" FontSize="11" VerticalAlignment="Center"
+                                           Foreground="{x:Bind MetaBrush}" Visibility="{x:Bind PendingVisible, Mode=OneWay}" />
+                                <TextBlock Text="{x:Bind StatusText}" FontSize="11" VerticalAlignment="Center"
+                                           Foreground="#D9534F" Visibility="{x:Bind HasStatus, Mode=OneWay}" />
+                            </StackPanel>
+
+                            <Border Background="{x:Bind BubbleBrush}" CornerRadius="{x:Bind BubbleRadius}"
+                                    Padding="12,9" Margin="0,3,0,0">
+                                <StackPanel Spacing="7">
+                                    <Border Visibility="{x:Bind HasQuote}" Background="{ThemeResource QuoteBrush}"
+                                            CornerRadius="4" Padding="8,5" BorderThickness="3,0,0,0"
+                                            BorderBrush="{ThemeResource AccentBrush}">
+                                        <TextBlock Text="{x:Bind QuoteText}" TextWrapping="Wrap" FontSize="12"
+                                                   Opacity="0.8" MaxLines="3" TextTrimming="CharacterEllipsis" />
+                                    </Border>
+
+                                    <Image Source="{x:Bind ImageSource, Mode=OneWay}" Visibility="{x:Bind ImageVisible, Mode=OneWay}"
+                                           MaxHeight="340" MaxWidth="440" Stretch="Uniform"
+                                           HorizontalAlignment="Left" Tapped="OnImageTapped" />
+
+                                    <Border Visibility="{x:Bind CardVisible, Mode=OneWay}" Background="{ThemeResource QuoteBrush}"
+                                            CornerRadius="6" Padding="10,8">
+                                        <StackPanel Orientation="Horizontal" Spacing="10">
+                                            <TextBlock Text="{x:Bind AttachGlyph}" FontSize="22" VerticalAlignment="Center" />
+                                            <StackPanel VerticalAlignment="Center">
+                                                <TextBlock Text="{x:Bind AttachName}" FontSize="13" TextWrapping="NoWrap"
+                                                           TextTrimming="CharacterEllipsis" MaxWidth="320" />
+                                                <TextBlock Text="{x:Bind AttachSizeText}" FontSize="11" Opacity="0.7" />
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <TextBlock Text="{x:Bind BodyText}" Visibility="{x:Bind HasBody}"
+                                               TextWrapping="Wrap" FontSize="14" IsTextSelectionEnabled="True"
+                                               Foreground="{x:Bind BodyBrush}" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Grid>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+
+        <!-- 输入区 -->
+        <Border Grid.Row="2" Background="{ThemeResource PanelBrush}"
+                BorderThickness="0,1,0,0" BorderBrush="{ThemeResource LineBrush}" Padding="14,10">
+            <Grid ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <Button x:Name="BtnAttach" Content="📎 文件" Click="OnAttachClick"
+                        VerticalAlignment="Bottom" Height="40" />
+                <TextBox x:Name="InputBox" Grid.Column="1" MinHeight="40" MaxHeight="170"
+                         PlaceholderText="输入消息   Enter 发送 · Shift+Enter 换行"
+                         AcceptsReturn="True" TextWrapping="Wrap"
+                         VerticalAlignment="Bottom" KeyDown="OnInputKeyDown" />
+                <Button x:Name="BtnSend" Grid.Column="2" Content="发送" Click="OnSendClick"
+                        VerticalAlignment="Bottom" Height="40" MinWidth="84"
+                        Style="{StaticResource AccentButtonStyle}" />
+            </Grid>
+        </Border>
+
+        <!-- 状态栏 -->
+        <Border Grid.Row="3" Background="{ThemeResource PanelBrush}"
+                BorderThickness="0,1,0,0" BorderBrush="{ThemeResource LineBrush}" Padding="14,6">
+            <Grid>
+                <TextBlock x:Name="FooterText" FontSize="12" TextTrimming="CharacterEllipsis"
+                           Foreground="{ThemeResource MetaOtherBrush}" Text="就绪" />
+                <ProgressRing x:Name="BusyRing" Width="16" Height="16" IsActive="false"
+                              HorizontalAlignment="Right" />
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

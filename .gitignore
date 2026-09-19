@@ -2,6 +2,11 @@
 .build/
 *.exe
 
+# .NET / WinUI
+bin/
+obj/
+*.user
+
 # Received files
 received/
 

@@ -11,9 +11,12 @@
   <ItemGroup>
     <Compile Include="Program.cs" />
     <Compile Include="ChatTest.cs" />
+    <Compile Include="CryptoTest.cs" />
     <Compile Include="../TCPChat10/Services/WebDavClient.cs" Link="WebDavClient.cs" />
     <Compile Include="../TCPChat10/Services/ChatService.cs" Link="ChatService.cs" />
     <Compile Include="../TCPChat10/Services/AppSettings.cs" Link="AppSettings.cs" />
+    <Compile Include="../TCPChat10/Services/MessageCrypto.cs" Link="MessageCrypto.cs" />
+    <Compile Include="../TCPChat10/Services/FontList.cs" Link="FontList.cs" />
     <Compile Include="../TCPChat10/Models/ChatMessage.cs" Link="ChatMessage.cs" />
   </ItemGroup>
 </Project>

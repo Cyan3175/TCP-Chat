@@ -30,6 +30,9 @@ public sealed class WebDavClient : IDisposable
 
     public string BaseUrl { get; }
     public string UserName { get; private set; } = "";
+
+    /// <summary>最近一次 PUT 的结果("200 OK" / "403 Forbidden" ...), 用于把失败原因显示给用户。</summary>
+    public string LastPutStatus { get; private set; } = "";
     public bool HasCredentials => !string.IsNullOrEmpty(UserName);
 
     public WebDavClient(string baseUrl, string userName = "", string password = "")
@@ -48,7 +51,7 @@ public sealed class WebDavClient : IDisposable
             handler.Credentials = new NetworkCredential(userName, password);
         }
         _http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(60) };
-        _http.DefaultRequestHeaders.UserAgent.ParseAdd("TCPChat10/1.0");
+        _http.DefaultRequestHeaders.UserAgent.ParseAdd("TCPChat10/10.1");
     }
 
     /// <summary>
@@ -215,8 +218,9 @@ public sealed class WebDavClient : IDisposable
         var content = new ByteArrayContent(data);
         // 用 Parse 而不是构造函数: 后者不接受 "application/json; charset=utf-8" 这种带参数的写法
         content.Headers.ContentType = MediaTypeHeaderValue.Parse(contentType);
-        using var cts = WithTimeout(ct, 180);     // 上传大附件
+        using var cts = WithTimeout(ct, 60);
         using var resp = await _http.PutAsync(BuildUrl(path), content, cts.Token);
+        LastPutStatus = (int)resp.StatusCode + " " + resp.ReasonPhrase;
         return resp.IsSuccessStatusCode;
     }
 

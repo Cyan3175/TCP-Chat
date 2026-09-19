@@ -3,7 +3,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:vm="using:TCPChat10.ViewModels"
-    Title="TCP Chat 10.0">
+    Title="TCP Chat 10.1">
 
     <Grid Background="{ThemeResource PageBrush}">
         <Grid.RowDefinitions>
@@ -23,12 +23,14 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <TextBlock Text="TCP Chat 10.0" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <TextBlock Text="TCP Chat 10.1" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                     <Ellipse x:Name="StatusDot" Width="9" Height="9" Fill="#9AA0A6" VerticalAlignment="Center" />
                     <TextBlock x:Name="HeaderStatus" FontSize="12" VerticalAlignment="Center"
                                Foreground="{ThemeResource MetaOtherBrush}" Text="正在连接…" />
+                    <TextBlock x:Name="LockText" FontSize="12" VerticalAlignment="Center"
+                               Foreground="{ThemeResource MetaOtherBrush}" Text="未加密" />
                 </StackPanel>
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
@@ -65,6 +67,8 @@
                                            Foreground="{x:Bind SenderBrush}" />
                                 <TextBlock Text="{x:Bind TimeText}" FontSize="11" VerticalAlignment="Center"
                                            Foreground="{x:Bind MetaBrush}" />
+                                <TextBlock Text="🔒" FontSize="11" VerticalAlignment="Center"
+                                           Visibility="{x:Bind LockBadgeVisible}" />
                                 <TextBlock Text="发送中…" FontSize="11" VerticalAlignment="Center"
                                            Foreground="{x:Bind MetaBrush}" Visibility="{x:Bind PendingVisible, Mode=OneWay}" />
                                 <TextBlock Text="{x:Bind StatusText}" FontSize="11" VerticalAlignment="Center"
@@ -79,22 +83,6 @@
                                             BorderBrush="{ThemeResource AccentBrush}">
                                         <TextBlock Text="{x:Bind QuoteText}" TextWrapping="Wrap" FontSize="12"
                                                    Opacity="0.8" MaxLines="3" TextTrimming="CharacterEllipsis" />
-                                    </Border>
-
-                                    <Image Source="{x:Bind ImageSource, Mode=OneWay}" Visibility="{x:Bind ImageVisible, Mode=OneWay}"
-                                           MaxHeight="340" MaxWidth="440" Stretch="Uniform"
-                                           HorizontalAlignment="Left" Tapped="OnImageTapped" />
-
-                                    <Border Visibility="{x:Bind CardVisible, Mode=OneWay}" Background="{ThemeResource QuoteBrush}"
-                                            CornerRadius="6" Padding="10,8">
-                                        <StackPanel Orientation="Horizontal" Spacing="10">
-                                            <TextBlock Text="{x:Bind AttachGlyph}" FontSize="22" VerticalAlignment="Center" />
-                                            <StackPanel VerticalAlignment="Center">
-                                                <TextBlock Text="{x:Bind AttachName}" FontSize="13" TextWrapping="NoWrap"
-                                                           TextTrimming="CharacterEllipsis" MaxWidth="320" />
-                                                <TextBlock Text="{x:Bind AttachSizeText}" FontSize="11" Opacity="0.7" />
-                                            </StackPanel>
-                                        </StackPanel>
                                     </Border>
 
                                     <TextBlock Text="{x:Bind BodyText}" Visibility="{x:Bind HasBody}"
@@ -113,18 +101,15 @@
                 BorderThickness="0,1,0,0" BorderBrush="{ThemeResource LineBrush}" Padding="14,10">
             <Grid ColumnSpacing="8">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <Button x:Name="BtnAttach" Content="📎 文件" Click="OnAttachClick"
-                        VerticalAlignment="Bottom" Height="40" />
-                <TextBox x:Name="InputBox" Grid.Column="1" MinHeight="40" MaxHeight="170"
+                <TextBox x:Name="InputBox" MinHeight="40" MaxHeight="170"
                          PlaceholderText="输入消息   Enter 发送 · Shift+Enter 换行"
                          AcceptsReturn="True" TextWrapping="Wrap"
                          VerticalAlignment="Bottom" KeyDown="OnInputKeyDown" />
-                <Button x:Name="BtnSend" Grid.Column="2" Content="发送" Click="OnSendClick"
+                <Button x:Name="BtnSend" Grid.Column="1" Content="发送" Click="OnSendClick"
                         VerticalAlignment="Bottom" Height="40" MinWidth="84"
                         Style="{StaticResource AccentButtonStyle}" />
             </Grid>

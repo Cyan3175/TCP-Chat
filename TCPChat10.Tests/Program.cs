@@ -35,5 +35,17 @@ if (args.Length >= 2 && args[0] == "clean")
     return 0;
 }
 
+// 离线部分(加密 / 设置持久化 / 字体列表)不依赖网络, 每次都跑
+int offlineFail = CryptoTest.Run();
+
+// 在线部分打真实 WebDAV 服务器, 加 --offline 可以跳过
+if (args.Contains("--offline"))
+{
+    Console.WriteLine();
+    Console.WriteLine("==== 跳过在线测试 (--offline) ====");
+    return offlineFail == 0 ? 0 : 1;
+}
+
+Console.WriteLine();
 int rc = await ChatTest.RunAsync();
-return rc;
+return (offlineFail == 0 && rc == 0) ? 0 : 1;

@@ -10,8 +10,6 @@ using TCPChat10.Models;
 using TCPChat10.Services;
 using TCPChat10.ViewModels;
 using Windows.ApplicationModel.DataTransfer;
-using Windows.Storage;
-using Windows.Storage.Pickers;
 using Windows.System;
 using Windows.UI;
 
@@ -37,18 +35,19 @@ public sealed partial class MainWindow : Window
 
         _chat.MessageAdded += OnMessageAdded;
         _chat.MessageRemoved += OnMessageRemoved;
-        _chat.StatusChanged += s => DispatcherQueue.TryEnqueue(() => SetFooter(s));
         _chat.ErrorOccurred += s => DispatcherQueue.TryEnqueue(() => SetFooter("⚠ " + s));
 
         // 直接赋 ItemsSource: 避免 Window 上 x:Bind 的 OneTime 绑定在某些情况下不生效
         MessageList.ItemsSource = Messages;
 
         ResizeWindow(1120, 780);
-        this.AppWindow.Closing += (s, e) => { MessageVm.ShuttingDown = true; _chat.Stop(); };
+        this.AppWindow.Closing += (s, e) => _chat.Stop();
 
         ApplyTheme();
+        ApplyFont();
+        UpdateLockText();
         MeText.Text = string.IsNullOrWhiteSpace(_settings.Nickname) ? "(未设置昵称)" : "我：" + _settings.Nickname;
-        Title = "TCP Chat 10.0 — " + _settings.ChatFolder;
+        Title = "TCP Chat 10.1 — " + _settings.ChatFolder;
 
         RootLoaded();
 
@@ -57,7 +56,7 @@ public sealed partial class MainWindow : Window
         {
             // 自测模式下把同步诊断写进日志, 便于定位"消息没出来"这类问题
             _chat.Diag += AutoLog;
-            _chat.MessageAdded += m => AutoLog($"  + 收到 {m.RemoteName} from={m.From}");
+            _chat.MessageAdded += m => AutoLog($"  + 收到 {m.RemoteName} from={m.From}{(m.DecryptFailed ? " [解密失败]" : m.IsEncrypted ? " [已解密]" : "")}");
             _ = RunAutoTestAsync(script!);
         }
     }
@@ -66,7 +65,10 @@ public sealed partial class MainWindow : Window
     // 通过环境变量 TCPCHAT10_AUTOTEST 驱动, 动作以 ';' 分隔:
     //   wait:N          等待 N 秒
     //   send:文本       发送一条消息
-    //   attach:路径     发送一个附件
+    //   sendq:引用|正文 发送带引用的消息
+    //   font:字体名     改字体并保存(名字写 default 表示恢复系统默认)
+    //   fonts           打印系统字体数量
+    //   crypto:密码     改加密密码并保存(留空 = 关闭加密)
     //   shot:路径       把当前界面渲染成 PNG
     //   log:文本        输出一行到控制台
     //   quit            退出
@@ -100,16 +102,8 @@ public sealed partial class MainWindow : Window
                     var text = a[5..];
                     if (string.IsNullOrWhiteSpace(_settings.Nickname)) { _settings.Nickname = "测试用户"; _chat.Nickname = _settings.Nickname; }
                     var m = await _chat.SendTextAsync(text);
-                    if (m != null) { m.IsSelf = true; var lv = new MessageVm(m, _chat); Messages.Add(lv); ScrollToBottom(); }
+                    if (m != null) { m.IsSelf = true; var lv = new MessageVm(m); Messages.Add(lv); ScrollToBottom(); }
                     AutoLog("AUTO send -> " + (m != null ? "ok" : "fail"));
-                }
-                else if (a.StartsWith("attach:"))
-                {
-                    var path = a[7..];
-                    if (string.IsNullOrWhiteSpace(_settings.Nickname)) { _settings.Nickname = "测试用户"; _chat.Nickname = _settings.Nickname; }
-                    var m = await _chat.SendFileAsync(path);
-                    if (m != null) { m.IsSelf = true; var lv = new MessageVm(m, _chat); Messages.Add(lv); ScrollToBottom(); }
-                    AutoLog("AUTO attach -> " + (m != null ? "ok" : "fail"));
                 }
                 else if (a.StartsWith("sendq:"))
                 {
@@ -118,8 +112,29 @@ public sealed partial class MainWindow : Window
                     var qt = parts[0];
                     var bt = parts.Length > 1 ? parts[1] : "收到";
                     var m = await _chat.SendTextAsync(bt, qt);
-                    if (m != null) { m.IsSelf = true; Messages.Add(new MessageVm(m, _chat)); ScrollToBottom(); }
+                    if (m != null) { m.IsSelf = true; Messages.Add(new MessageVm(m)); ScrollToBottom(); }
                     AutoLog("AUTO sendq -> " + (m != null ? "ok" : "fail"));
+                }
+                else if (a.StartsWith("font:"))
+                {
+                    var name = a[5..].Trim();
+                    _settings.FontFamily = name.Equals("default", StringComparison.OrdinalIgnoreCase) ? "" : name;
+                    _settings.Save();
+                    ApplyFont();
+                    AutoLog("AUTO font -> " + (string.IsNullOrEmpty(_settings.FontFamily) ? "系统默认" : _settings.FontFamily));
+                }
+                else if (a == "fonts")
+                {
+                    var list = FontList.GetInstalledFamilies();
+                    AutoLog($"AUTO fonts -> 系统字体 {list.Count} 个: " + string.Join(" / ", list.Take(8)));
+                }
+                else if (a.StartsWith("crypto:"))
+                {
+                    _settings.CryptoPassword = a[7..];
+                    _settings.Save();
+                    RebuildCrypto();
+                    UpdateLockText();
+                    AutoLog("AUTO crypto -> " + (_chat.EncryptionEnabled ? "加密已启用" : "加密已关闭"));
                 }
                 else if (a == "settings")
                 {
@@ -133,6 +148,20 @@ public sealed partial class MainWindow : Window
                     var ok = _dlg != null && await CaptureElementAsync(_dlg, a[6..]);
                     AutoLog("AUTO dshot -> " + (ok ? "ok " + a[6..] : "fail"));
                 }
+                else if (a.StartsWith("dscroll:"))
+                {
+                    // 把设置对话框滚到指定位置(0=顶部 1=底部), 便于截图核对下半部分
+                    var frac = Math.Clamp(double.Parse(a[8..]), 0, 1);
+                    _dlg?.ScrollTo(frac);
+                    await Task.Delay(400);
+                    AutoLog($"AUTO dscroll {frac:F2} -> " + (_dlg == null ? "对话框未打开" : "ok"));
+                }
+                else if (a == "dfontdrop")
+                {
+                    _dlg?.OpenFontDropDown();
+                    await Task.Delay(300);
+                    AutoLog("AUTO dfontdrop -> 字体下拉已展开");
+                }
                 else if (a == "closedlg")
                 {
                     try { _dlg?.Hide(); } catch { }
@@ -142,7 +171,7 @@ public sealed partial class MainWindow : Window
                 }
                 else if (a == "menu")
                 {
-                    var target = Messages.LastOrDefault(v => v.Attach != null) ?? Messages.LastOrDefault();
+                    var target = Messages.LastOrDefault();
                     if (target != null)
                     {
                         _menu = BuildMessageMenu(target);
@@ -178,13 +207,15 @@ public sealed partial class MainWindow : Window
                     var path = a[5..];
                     await Task.Delay(900);         // 等一帧布局完成
                     AutoLog($"诊断: Messages={Messages.Count} ListItems={MessageList.Items.Count} " +
+                            $"字体={MessageList.FontFamily?.Source ?? "(默认)"} " +
                             $"ListView H={MessageList.ActualHeight:F0} W={MessageList.ActualWidth:F0}");
                     var ok = await CaptureAsync(path);
                     AutoLog("AUTO shot -> " + (ok ? "ok " + path : "fail"));
                 }
                 else if (a.StartsWith("log:"))
                 {
-                    AutoLog("AUTO " + a[4..] + "  [消息数=" + Messages.Count + "]");
+                    AutoLog("AUTO " + a[4..] + $"  [消息数={Messages.Count} 加密={(_chat.EncryptionEnabled ? "开" : "关")} " +
+                            $"解不开={_chat.UndecryptableCount}]");
                 }
                 else if (a == "quit")
                 {
@@ -331,7 +362,7 @@ public sealed partial class MainWindow : Window
         if (FindScrollViewer(MessageList) is ScrollViewer sv)
             sv.ChangeView(null, sv.ScrollableHeight, null, true);
 
-        // 容器高度要等一轮布局才确定(图片附件还会异步撑高),布局结束后再纠正一次
+        // 容器高度要等一轮布局才确定,布局结束后再纠正一次
         DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
         {
             MessageList.UpdateLayout();
@@ -357,7 +388,7 @@ public sealed partial class MainWindow : Window
         DispatcherQueue.TryEnqueue(() =>
         {
             if (Messages.Any(v => v.Key == (m.RemoteName.Length > 0 ? m.RemoteName : m.Id))) return;
-            var vm = new MessageVm(m, _chat);
+            var vm = new MessageVm(m);
 
             // 按时间插入到正确位置(轮询可能乱序)
             int idx = Messages.Count;
@@ -417,41 +448,12 @@ public sealed partial class MainWindow : Window
         {
             // 本地立即回显
             vm.IsSelf = true;
-            var local = new MessageVm(vm, _chat);
+            var local = new MessageVm(vm);
             Messages.Add(local);
+            UpdateFooter();
             ScrollToBottom();
         }
         InputBox.Focus(FocusState.Programmatic);
-    }
-
-    private async void OnAttachClick(object sender, RoutedEventArgs e)
-    {
-        if (string.IsNullOrWhiteSpace(_settings.Nickname))
-        {
-            await PromptNicknameAsync(false);
-            if (string.IsNullOrWhiteSpace(_settings.Nickname)) return;
-        }
-
-        var picker = new FileOpenPicker();
-        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
-        picker.ViewMode = PickerViewMode.List;
-        picker.SuggestedStartLocation = PickerLocationId.DocumentsLibrary;
-        picker.FileTypeFilter.Add("*");
-
-        var file = await picker.PickSingleFileAsync();
-        if (file == null) return;
-
-        BusyRing.IsActive = true;
-        var msg = await _chat.SendFileAsync(file.Path);
-        BusyRing.IsActive = false;
-        if (msg != null)
-        {
-            msg.IsSelf = true;
-            var local = new MessageVm(msg, _chat);
-            Messages.Add(local);
-            MessageList.ScrollIntoView(local);
-        }
     }
 
     private async void OnMessageRightTapped(object sender, RightTappedRoutedEventArgs e)
@@ -464,7 +466,7 @@ public sealed partial class MainWindow : Window
         await Task.CompletedTask;
     }
 
-    /// <summary>右键菜单(复制 / 引用 / 打开附件 / 另存为 / 撤回)。</summary>
+    /// <summary>右键菜单(复制 / 引用 / 撤回)。</summary>
     private MenuFlyout BuildMessageMenu(MessageVm vm)
     {
         var flyout = new MenuFlyout();
@@ -488,17 +490,6 @@ public sealed partial class MainWindow : Window
         };
         flyout.Items.Add(miQuote);
 
-        if (vm.Attach != null)
-        {
-            var miOpen = new MenuFlyoutItem { Text = "打开附件", Icon = new FontIcon { Glyph = "\uE8E5" } };
-            miOpen.Click += async (_, _) => await OpenAttachmentAsync(vm);
-            flyout.Items.Add(miOpen);
-
-            var miSave = new MenuFlyoutItem { Text = "另存为…", Icon = new FontIcon { Glyph = "\uE74E" } };
-            miSave.Click += async (_, _) => await SaveAttachmentAsync(vm);
-            flyout.Items.Add(miSave);
-        }
-
         if (vm.IsSelf)
         {
             flyout.Items.Add(new MenuFlyoutSeparator());
@@ -512,44 +503,6 @@ public sealed partial class MainWindow : Window
         }
 
         return flyout;
-    }
-
-    private async void OnImageTapped(object sender, TappedRoutedEventArgs e)
-    {
-        if (sender is not FrameworkElement fe || fe.DataContext is not MessageVm vm) return;
-        await OpenAttachmentAsync(vm);
-    }
-
-    private async Task OpenAttachmentAsync(MessageVm vm)
-    {
-        try
-        {
-            var path = await vm.EnsureLocalAsync();
-            if (path == null || !File.Exists(path)) { SetFooter("附件下载失败"); return; }
-            var file = await StorageFile.GetFileFromPathAsync(path);
-            await Launcher.LaunchFileAsync(file);
-        }
-        catch (Exception ex) { SetFooter("打开失败: " + ex.Message); }
-    }
-
-    private async Task SaveAttachmentAsync(MessageVm vm)
-    {
-        try
-        {
-            var path = await vm.EnsureLocalAsync();
-            if (path == null || !File.Exists(path)) { SetFooter("附件下载失败"); return; }
-            var picker = new FileSavePicker();
-            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-            WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
-            picker.SuggestedFileName = vm.AttachName;
-            var ext = Path.GetExtension(vm.AttachName);
-            if (!string.IsNullOrEmpty(ext)) picker.FileTypeChoices.Add(ext.TrimStart('.').ToUpperInvariant(), new List<string> { ext });
-            var target = await picker.PickSaveFileAsync();
-            if (target == null) return;
-            File.Copy(path, target.Path, true);
-            SetFooter("已保存到 " + target.Path);
-        }
-        catch (Exception ex) { SetFooter("保存失败: " + ex.Message); }
     }
 
     private async void OnChangeNickClick(object sender, RoutedEventArgs e) => await PromptNicknameAsync(false);
@@ -598,33 +551,58 @@ public sealed partial class MainWindow : Window
 
     private async Task ShowSettingsAsync()
     {
+        // 对话框保存时会直接改 _settings, 这里先把"当前生效"的值记下来
+        var oldCrypto = _settings.CryptoPassword;
+        var oldFont = _settings.FontFamily;
+
         var dlg = new SettingsDialog(_settings) { XamlRoot = Content.XamlRoot };
         var r = await dlg.ShowAsync();
-        if (r == ContentDialogResult.Primary)
+        if (r != ContentDialogResult.Primary) return;
+
+        var restart = dlg.NeedReconnect;
+        var cryptoChanged = !string.Equals(oldCrypto, _settings.CryptoPassword, StringComparison.Ordinal);
+        var fontChanged = !string.Equals(oldFont, _settings.FontFamily, StringComparison.Ordinal);
+        _settings.Save();
+
+        if (restart)
         {
-            var restart = dlg.NeedReconnect;
-            _settings.Save();
-            if (restart)
+            _chat.Stop();
+            Messages.Clear();
+            var dlg2 = new ContentDialog
             {
-                _chat.Stop();
-                Messages.Clear();
-                var dlg2 = new ContentDialog
-                {
-                    Title = "设置已保存",
-                    Content = "服务器或目录已更改，需要重新连接后生效。请重启程序。",
-                    CloseButtonText = "知道了",
-                    XamlRoot = Content.XamlRoot,
-                };
-                await dlg2.ShowAsync();
-            }
-            else
-            {
-                _chat.Nickname = _settings.Nickname;
-                ApplyTheme();
-                MeText.Text = string.IsNullOrWhiteSpace(_settings.Nickname) ? "(未设置昵称)" : "我：" + _settings.Nickname;
-                SetFooter("设置已保存");
-            }
+                Title = "设置已保存",
+                Content = "服务器或目录已更改，需要重新连接后生效。请重启程序。",
+                CloseButtonText = "知道了",
+                XamlRoot = Content.XamlRoot,
+            };
+            await dlg2.ShowAsync();
+            return;
         }
+
+        _chat.Nickname = _settings.Nickname;
+        ApplyTheme();
+        if (fontChanged) ApplyFont();
+        MeText.Text = string.IsNullOrWhiteSpace(_settings.Nickname) ? "(未设置昵称)" : "我：" + _settings.Nickname;
+
+        if (cryptoChanged)
+        {
+            RebuildCrypto();       // 密钥变了: 重新拉一遍消息
+            UpdateLockText();
+            SetFooter(_chat.EncryptionEnabled ? "加密密码已更新，正在用新密码重新读取消息…" : "已关闭加密，正在重新读取消息…");
+        }
+        else
+        {
+            SetFooter("设置已保存");
+        }
+        UpdateFooter();
+    }
+
+    /// <summary>加密密码变了: 重建密钥、清掉已读记录, 让下一轮同步重新拉取并解密。</summary>
+    private void RebuildCrypto()
+    {
+        Messages.Clear();
+        _chat.ApplyCryptoPassword(_settings.CryptoPassword);
+        BusyRing.IsActive = true;
     }
 
     /// <summary>把设置里的主题应用到整窗(0=跟随系统 1=浅色 2=深色)。</summary>
@@ -641,6 +619,17 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    /// <summary>把设置里的字体应用到消息列表与输入框(留空 = 系统默认字体)。</summary>
+    private void ApplyFont()
+    {
+        var family = string.IsNullOrWhiteSpace(_settings.FontFamily)
+            ? FontFamily.XamlAutoFontFamily
+            : new FontFamily(_settings.FontFamily);
+        MessageList.FontFamily = family;
+        InputBox.FontFamily = family;
+        FooterText.FontFamily = family;
+    }
+
     // ---------- 界面辅助 ----------
 
     private void SetStatus(bool ok, string text)
@@ -650,11 +639,29 @@ public sealed partial class MainWindow : Window
         HeaderStatus.Text = text;
     }
 
+    /// <summary>顶栏上显示当前是否启用端到端加密。</summary>
+    private void UpdateLockText()
+    {
+        if (_chat.EncryptionEnabled)
+        {
+            LockText.Text = "🔒 端到端加密已启用";
+            LockText.Foreground = new SolidColorBrush(Color.FromArgb(255, 0x3F, 0xA9, 0x5C));
+        }
+        else
+        {
+            LockText.Text = "未加密（明文发送）";
+            LockText.Foreground = (Brush)Application.Current.Resources["MetaOtherBrush"];
+        }
+    }
+
     private void SetFooter(string s) { FooterText.Text = s; }
 
     private void UpdateFooter()
     {
-        FooterText.Text = string.Format("共 {0} 条消息  ·  每 {1} 秒同步  ·  最近同步 {2:HH:mm:ss}  ·  {3}",
-            Messages.Count, _chat.PollSeconds, _lastSync, _settings.ChatFolder);
+        var bad = _chat.UndecryptableCount;
+        FooterText.Text = string.Format("共 {0} 条消息  ·  每 {1} 秒同步  ·  最近同步 {2:HH:mm:ss}  ·  {3}  ·  {4}{5}",
+            Messages.Count, _chat.PollSeconds, _lastSync, _settings.ChatFolder,
+            _chat.EncryptionEnabled ? "已加密" : "未加密",
+            bad > 0 ? "  ·  ⚠ " + bad + " 条无法解密（密码不一致）" : "");
     }
 }

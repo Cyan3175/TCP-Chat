@@ -15,6 +15,10 @@ public sealed class AppSettings
     [JsonPropertyName("historyDays")] public int HistoryDays { get; set; } = 7;
     [JsonPropertyName("autoScroll")] public bool AutoScroll { get; set; } = true;
     [JsonPropertyName("theme")] public int Theme { get; set; } = 0;   // 0=跟随系统 1=浅色 2=深色
+    [JsonPropertyName("fontFamily")] public string FontFamily { get; set; } = "";   // 空 = 系统默认字体
+
+    /// <summary>端到端加密密码: 收发双方必须完全一致, 留空表示不加密(明文发送)。</summary>
+    [JsonPropertyName("cryptoPassword")] public string CryptoPassword { get; set; } = "";
 
     private static string Dir => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TCPChat10");
@@ -54,12 +58,25 @@ public sealed class AppSettings
         return new AppSettings();
     }
 
+    // 测试钩子下保存到独立的文件, 否则写回真实设置
+    private static string SavePath
+    {
+        get
+        {
+            var overridePath = Environment.GetEnvironmentVariable("TCPCHAT10_TEST_SETTINGS");
+            return string.IsNullOrWhiteSpace(overridePath) ? FilePath : overridePath!;
+        }
+    }
+
     public void Save()
     {
         try
         {
             Directory.CreateDirectory(Dir);
-            File.WriteAllText(FilePath, JsonSerializer.Serialize(this, Opts));
+            var path = SavePath;
+            var dir = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+            File.WriteAllText(path, JsonSerializer.Serialize(this, Opts));
         }
         catch { /* 忽略保存失败 */ }
     }
@@ -69,17 +86,6 @@ public sealed class AppSettings
         get
         {
             var d = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TCPChat10");
-            Directory.CreateDirectory(d);
-            return d;
-        }
-    }
-
-    /// <summary>本地附件缓存目录。</summary>
-    public static string CacheDir
-    {
-        get
-        {
-            var d = Path.Combine(DataDir, "cache");
             Directory.CreateDirectory(d);
             return d;
         }

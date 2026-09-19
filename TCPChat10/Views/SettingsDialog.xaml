@@ -7,22 +7,31 @@
     CloseButtonText="取消"
     DefaultButton="Primary">
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="520">
+    <ScrollViewer x:Name="SettingsScroll" VerticalScrollBarVisibility="Auto" MaxHeight="560">
         <StackPanel Spacing="14" Width="460">
 
             <TextBlock Text="服务器" FontWeight="SemiBold" />
             <TextBox x:Name="UrlBox" Header="WebDAV 地址" PlaceholderText="https://dev.zhaohans.cn" />
             <TextBox x:Name="FolderBox" Header="聊天目录"
                      PlaceholderText="nw集训/学生资料临存/聊天" />
-            <TextBlock Text="消息会以 msg_*.json 的形式写入该目录；附件与消息同目录。目录不存在时会自动创建。"
+            <TextBlock Text="消息会以 msg_*.json 的形式写入该目录。目录不存在时会自动创建。"
                        FontSize="12" Opacity="0.65" TextWrapping="Wrap" />
 
             <TextBlock Text="身份" FontWeight="SemiBold" Margin="0,6,0,0" />
             <TextBox x:Name="NickBox" Header="昵称" PlaceholderText="显示在每条消息上" MaxLength="24" />
 
-            <TextBlock Text="认证（可选，留空则匿名访问）" FontWeight="SemiBold" Margin="0,6,0,0" />
+            <TextBlock Text="服务器认证（可选，留空则匿名访问）" FontWeight="SemiBold" Margin="0,6,0,0" />
             <TextBox x:Name="UserBox" Header="用户名" PlaceholderText="留空 = 匿名" />
             <PasswordBox x:Name="PassBox" Header="密码" />
+
+            <TextBlock Text="端到端加密" FontWeight="SemiBold" Margin="0,6,0,0" />
+            <PasswordBox x:Name="CryptoBox" Header="加密密码（收发双方必须完全一致）"
+                         PasswordChanged="OnCryptoChanged" />
+            <PasswordBox x:Name="CryptoBox2" Header="确认加密密码" PasswordChanged="OnCryptoChanged" />
+            <TextBlock x:Name="CryptoError" FontSize="12" Foreground="#D9534F" TextWrapping="Wrap"
+                       Visibility="Collapsed" Text="两次输入的加密密码不一致。" />
+            <TextBlock FontSize="12" Opacity="0.65" TextWrapping="Wrap"
+                       Text="留空 = 不加密，消息正文以明文写在服务器上。填了密码后，正文与引用会用 AES-256-GCM 加密后再上传；对方必须填一模一样的密码才看得到内容，密码不一致时那条消息显示“无法解密”。这个密码只用于消息内容，和上面的服务器账号密码是两回事。" />
 
             <TextBlock Text="同步" FontWeight="SemiBold" Margin="0,6,0,0" />
             <NumberBox x:Name="PollBox" Header="同步间隔（秒）" Minimum="1" Maximum="120"
@@ -37,6 +46,9 @@
                 <ComboBoxItem Content="浅色" />
                 <ComboBoxItem Content="深色" />
             </ComboBox>
+            <ComboBox x:Name="FontBox" Header="字体（列表实时预览）" HorizontalAlignment="Stretch" />
+            <TextBlock Text="字体列表来自本机已安装的字体，选完保存即生效并写进设置文件，下次启动照旧。"
+                       FontSize="12" Opacity="0.65" TextWrapping="Wrap" />
 
         </StackPanel>
     </ScrollViewer>

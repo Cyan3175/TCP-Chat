@@ -158,6 +158,9 @@ public static class CryptoTest
               GlassScale.FrostPercent(GlassScale.Min) >= 40 && GlassScale.FrostPercent(GlassScale.Max) <= 100,
               $"磨砂浓度 {GlassScale.FrostPercent(GlassScale.Min)}% ~ {GlassScale.FrostPercent(GlassScale.Max)}%");
 
+        Check(new AppSettings().GlassBackendMode == 0, "默认玻璃实现 = 自动探测");
+        Check(new AppSettings { GlassBackendMode = 2 }.GlassBackendMode == 2, "可以指定用折射后端");
+
         var tmpDir3 = Path.Combine(Path.GetTempPath(), "tcpchat10_glass_" + Guid.NewGuid().ToString("N")[..6]);
         Directory.CreateDirectory(tmpDir3);
         var tmpFile3 = Path.Combine(tmpDir3, "settings.json");
@@ -169,9 +172,13 @@ public static class CryptoTest
             var g1 = AppSettings.Load();
             Check(!g1.GlassEffect && g1.GlassQuality == 3, "玻璃开关与质量读回来: off / 3");
 
-            File.WriteAllText(tmpFile3, "{\"glassEffect\":true,\"glassQuality\":42}");
+            File.WriteAllText(tmpFile3, "{\"glassEffect\":true,\"glassQuality\":42,\"glassBackend\":2}");
             var g2 = AppSettings.Load();
             Check(g2.GlassEffect && g2.GlassQuality == GlassScale.Max, "超范围的质量在读取时夹到 " + GlassScale.Max);
+            Check(g2.GlassBackendMode == 2, "玻璃实现读回来: 折射");
+
+            File.WriteAllText(tmpFile3, "{\"glassBackend\":9}");
+            Check(AppSettings.Load().GlassBackendMode == 0, "越界的玻璃实现在读取时回到自动探测");
 
             File.WriteAllText(tmpFile3, "{\"glassEffect\":false,\"glassQuality\":-5}");
             var g3 = AppSettings.Load();

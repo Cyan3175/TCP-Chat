@@ -24,6 +24,9 @@
                     <Color x:Key="BubbleSelfColor">#2B6CB0</Color>
                     <Color x:Key="BubbleOtherColor">#FFFFFF</Color>
                     <Color x:Key="BubbleOtherEdgeColor">#26000000</Color>
+                    <Color x:Key="ControlKnobColor">#FFFFFF</Color>
+                    <Color x:Key="ControlOnColor">#34C759</Color>
+                    <Color x:Key="ControlTrackColor">#3C000000</Color>
 
                     <!-- 玻璃底下那层壁纸 -->
                     <LinearGradientBrush x:Key="WallpaperBrush" StartPoint="0,0" EndPoint="1,1">
@@ -49,6 +52,9 @@
                     <Color x:Key="BubbleSelfColor">#3B7CC4</Color>
                     <Color x:Key="BubbleOtherColor">#32323A</Color>
                     <Color x:Key="BubbleOtherEdgeColor">#40FFFFFF</Color>
+                    <Color x:Key="ControlKnobColor">#FFFFFF</Color>
+                    <Color x:Key="ControlOnColor">#30D158</Color>
+                    <Color x:Key="ControlTrackColor">#59FFFFFF</Color>
 
                     <!-- 玻璃底下那层壁纸 -->
                     <LinearGradientBrush x:Key="WallpaperBrush" StartPoint="0,0" EndPoint="1,1">

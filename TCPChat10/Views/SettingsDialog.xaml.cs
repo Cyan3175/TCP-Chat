@@ -43,7 +43,13 @@ public sealed partial class SettingsDialog : ContentDialog
         LoadFonts(settings.FontFamily);
 
         GlassBox.IsOn = settings.GlassEffect;
+        GlassQualityBox.Minimum = GlassScale.Min;
+        GlassQualityBox.Maximum = GlassScale.Max;
+        GlassQualityBox.StepFrequency = 1;
         GlassQualityBox.Value = GlassScale.Clamp(settings.GlassQuality);
+        GlassBackendBox.SelectedIndex = Math.Clamp(settings.GlassBackendMode, 0, 2);
+        GlassBox.IsOnChanged += OnGlassToggled;
+        GlassQualityBox.ValueChanged += OnGlassQualityChanged;
         UpdateGlassControls();
         _ready = true;
 
@@ -54,20 +60,29 @@ public sealed partial class SettingsDialog : ContentDialog
     private void UpdateGlassControls()
     {
         GlassQualityBox.IsEnabled = GlassBox.IsOn;
+        GlassQualityBox.Opacity = GlassBox.IsOn ? 1 : 0.45;
+        GlassQualityLabel.Opacity = GlassBox.IsOn ? 1 : 0.5;
+        GlassStateText.Text = GlassBox.IsOn ? "开" : "关";
         GlassHint.Opacity = GlassBox.IsOn ? 0.65 : 0.4;
+        UpdateQualityLabel();
     }
 
-    private void OnGlassToggled(object sender, RoutedEventArgs e)
+    private void UpdateQualityLabel()
+    {
+        var q = (int)Math.Round(GlassQualityBox.Value);
+        GlassQualityLabel.Text = $"玻璃质量：{q} 档 · 磨砂浓度约 {GlassScale.FrostPercent(q)}%";
+    }
+
+    private void OnGlassToggled(object? sender, bool on)
     {
         UpdateGlassControls();
-        if (_ready) _preview?.Invoke(GlassBox.IsOn, (int)GlassQualityBox.Value);
+        if (_ready) _preview?.Invoke(on, (int)GlassQualityBox.Value);
     }
 
-    private void OnGlassQualityChanged(object sender, RangeBaseValueChangedEventArgs e)
+    private void OnGlassQualityChanged(object? sender, double v)
     {
-        // 把档位和对应的模糊半径直接写在标题上, 不用猜
-        GlassQualityBox.Header = $"玻璃质量：{e.NewValue:F0} 档 · 磨砂浓度约 {GlassScale.FrostPercent((int)e.NewValue)}%";
-        if (_ready) _preview?.Invoke(GlassBox.IsOn, (int)e.NewValue);
+        UpdateQualityLabel();
+        if (_ready) _preview?.Invoke(GlassBox.IsOn, (int)v);
     }
 
     /// <summary>把系统已安装的字体填进下拉框, 每项用它自己的字体渲染, 顺便选中当前设置。</summary>
@@ -113,7 +128,7 @@ public sealed partial class SettingsDialog : ContentDialog
         $"url={UrlBox.Text} folder={FolderBox.Text} nick={NickBox.Text} " +
         $"poll={PollBox.Value} days={DaysBox.Value} autoscroll={AutoScrollBox.IsChecked} theme={ThemeBox.SelectedIndex} " +
         $"fonts={_fontValues.Count - 1} font={SelectedFontValue()} crypto={CryptoBox.Password.Length switch { 0 => "off", _ => "on:" + CryptoBox.Password.Length + "位" }} " +
-        $"glass={(GlassBox.IsOn ? "on" : "off")} quality={(int)GlassQualityBox.Value}";
+        $"glass={(GlassBox.IsOn ? "on" : "off")} quality={(int)GlassQualityBox.Value} backend={GlassBackendBox.SelectedIndex}";
 
     private string SelectedFontValue()
     {
@@ -160,5 +175,6 @@ public sealed partial class SettingsDialog : ContentDialog
         _settings.FontFamily = SelectedFontValue();
         _settings.GlassEffect = GlassBox.IsOn;
         _settings.GlassQuality = GlassScale.Clamp((int)GlassQualityBox.Value);
+        _settings.GlassBackendMode = Math.Clamp(GlassBackendBox.SelectedIndex, 0, 2);
     }
 }

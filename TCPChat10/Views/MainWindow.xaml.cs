@@ -43,12 +43,20 @@ public sealed partial class MainWindow : Window
         ResizeWindow(1120, 780);
         this.AppWindow.Closing += (s, e) => _chat.Stop();
 
+        // 启动时就定下用哪一套玻璃: Auto 会先探一次 D3D 设备, 拿不到就退回画刷
+        GlassRuntime.Init(Compositor, (GlassBackend)_settings.GlassBackendMode);
+        WallpaperLayer.SizeChanged += (_, _) =>
+        {
+            GlassRuntime.SetSource(WallpaperLayer);
+            if (_settings.GlassEffect) GlassRuntime.RefreshAll(_settings.GlassQuality, true);
+        };
+
         ApplyTheme();
         ApplyFont();
         ApplyGlass();
         UpdateLockText();
         MeText.Text = string.IsNullOrWhiteSpace(_settings.Nickname) ? "(未设置昵称)" : "我：" + _settings.Nickname;
-        Title = "TCP Chat 10.3 — " + _settings.ChatFolder;
+        Title = "TCP Chat 10.4 — " + _settings.ChatFolder;
 
         RootLoaded();
 
@@ -158,6 +166,20 @@ public sealed partial class MainWindow : Window
                     ApplyGlass();
                     AutoLog($"AUTO quality -> {_settings.GlassQuality} (磨砂浓度 {GlassScale.FrostPercent(_settings.GlassQuality)}%)");
                 }
+                else if (a.StartsWith("backend:"))
+                {
+                    var want = a[8..].Trim().ToLowerInvariant() switch
+                    {
+                        "brush" => GlassBackend.Brush,
+                        "refraction" => GlassBackend.Refraction,
+                        _ => GlassBackend.Auto,
+                    };
+                    _settings.GlassBackendMode = (int)want;
+                    _settings.Save();
+                    GlassRuntime.Init(Compositor, want);
+                    ApplyGlass();
+                    AutoLog($"AUTO backend -> {GlassRuntime.Active} ({GlassRuntime.Detail})");
+                }
                 else if (a == "settings")
                 {
                     _dlg = new SettingsDialog(_settings) { XamlRoot = Content.XamlRoot };
@@ -230,6 +252,7 @@ public sealed partial class MainWindow : Window
                     await Task.Delay(900);         // 等一帧布局完成
                     AutoLog($"诊断: Messages={Messages.Count} ListItems={MessageList.Items.Count} " +
                             $"字体={MessageList.FontFamily?.Source ?? "(默认)"} 玻璃={(_settings.GlassEffect ? "开" : "关")}/{_settings.GlassQuality} " +
+                            $"后端={GlassRuntime.Active} " +
                             $"ListView H={MessageList.ActualHeight:F0} W={MessageList.ActualWidth:F0}");
                     var ok = await CaptureAsync(path);
                     AutoLog("AUTO shot -> " + (ok ? "ok " + path : "fail"));
@@ -480,6 +503,18 @@ public sealed partial class MainWindow : Window
         InputBox.Focus(FocusState.Programmatic);
     }
 
+    /// <summary>气泡进可视树: 垫一层玻璃(真玻璃后端才有实际动作)。</summary>
+    private void OnBubbleLoaded(object sender, RoutedEventArgs e)
+    {
+        if (_settings.GlassEffect && sender is FrameworkElement fe) GlassRuntime.Attach(fe, _settings.GlassQuality);
+    }
+
+    /// <summary>气泡被回收/移出: 摘掉玻璃层。</summary>
+    private void OnBubbleUnloaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement fe) GlassRuntime.Detach(fe);
+    }
+
     private async void OnMessageRightTapped(object sender, RightTappedRoutedEventArgs e)
     {
         if (sender is not FrameworkElement fe || fe.DataContext is not MessageVm vm) return;
@@ -678,6 +713,17 @@ public sealed partial class MainWindow : Window
 
         WallpaperLayer.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
 
+        // 壁纸用程序自己画的那张位图: 屏幕上贴的和玻璃取样的是同一张, 天然对齐
+        WallpaperImage.Refresh();
+        WallpaperLayer.Background = new Microsoft.UI.Xaml.Media.ImageBrush
+        {
+            ImageSource = WallpaperImage.XamlSource,
+            Stretch = Stretch.UniformToFill,
+        };
+
+        // 折射后端取样的是壁纸层那块区域: 先告诉它在哪儿, 再往元素上垫玻璃
+        GlassRuntime.SetSource(WallpaperLayer);
+
         var background = on ? LiquidGlass.PanelTint(quality) : ThemeLookup.Brush("PanelBrush");
         var border = on ? LiquidGlass.PanelEdge(quality) : ThemeLookup.Brush("LineBrush");
 
@@ -685,10 +731,15 @@ public sealed partial class MainWindow : Window
         {
             bar.Background = background;
             bar.BorderBrush = border;
+            // 真玻璃后端: 在面板底下垫一层"背景模糊 + 边缘折射"; 画刷后端这里是空操作
+            if (on) GlassRuntime.Attach(bar, quality);
+            else GlassRuntime.Detach(bar);
         }
 
         // 已经显示出来的气泡要跟着换色(拖质量滑杆时能实时看到)
         foreach (var vm in Messages) vm.RefreshGlass();
+
+
     }
 
     // ---------- 界面辅助 ----------

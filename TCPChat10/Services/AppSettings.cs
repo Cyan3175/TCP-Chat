@@ -32,6 +32,12 @@ public sealed class AppSettings
     /// <summary>玻璃质量 1-10(磨砂浓度), 1 = 几乎全透明。</summary>
     [JsonPropertyName("glassQuality")] public int GlassQuality { get; set; } = GlassScale.Default;
 
+    /// <summary>
+    /// 玻璃实现方式(启动时二选一): 0 = 自动探测(能建 D3D 设备就用折射, 否则画刷),
+    /// 1 = 强制画刷(轻量, 任何环境都能用), 2 = 强制折射(Win2D 背景模糊 + 边缘折射)。
+    /// </summary>
+    [JsonPropertyName("glassBackend")] public int GlassBackendMode { get; set; } = 0;
+
     private static string Dir => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TCPChat10");
     private static string LocalFilePath => Path.Combine(Dir, "settings.json");
@@ -92,6 +98,7 @@ public sealed class AppSettings
         if (PollSeconds < 1) PollSeconds = 3;
         if (HistoryDays < 1) HistoryDays = 7;
         GlassQuality = GlassScale.Clamp(GlassQuality);
+        if (GlassBackendMode is < 0 or > 2) GlassBackendMode = 0;
         return this;
     }
 

@@ -2,6 +2,7 @@
     x:Class="TCPChat10.Views.SettingsDialog"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:ctl="using:TCPChat10.Controls"
     Title="设置"
     PrimaryButtonText="保存"
     CloseButtonText="取消"
@@ -46,11 +47,20 @@
             <TextBlock Text="字体列表来自本机已安装的字体，选完保存即生效并写进设置文件，下次启动照旧。"
                        FontSize="12" Opacity="0.65" TextWrapping="Wrap" />
 
-            <ToggleSwitch x:Name="GlassBox" Header="苹果液态玻璃效果" OnContent="开" OffContent="关"
-                          Toggled="OnGlassToggled" />
-            <Slider x:Name="GlassQualityBox" Header="玻璃质量" Minimum="1" Maximum="10"
-                    StepFrequency="1" TickFrequency="1" TickPlacement="Outside"
-                    ValueChanged="OnGlassQualityChanged" />
+            <TextBlock Text="苹果液态玻璃效果" FontWeight="SemiBold" Margin="0,4,0,0" />
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <ctl:GlassSwitch x:Name="GlassBox" VerticalAlignment="Center" />
+                <TextBlock x:Name="GlassStateText" VerticalAlignment="Center" Text="开" />
+            </StackPanel>
+
+            <TextBlock x:Name="GlassQualityLabel" Text="玻璃质量" Margin="0,4,0,0" />
+            <ctl:GlassSlider x:Name="GlassQualityBox" />
+
+            <ComboBox x:Name="GlassBackendBox" Header="玻璃实现（启动时决定，改完保存生效）" HorizontalAlignment="Stretch">
+                <ComboBoxItem Content="自动：能建 D3D 设备就用折射，否则画刷" />
+                <ComboBoxItem Content="画刷：轻量，任何环境都能用" />
+                <ComboBoxItem Content="折射：真背景模糊 + 边缘折射" />
+            </ComboBox>
             <TextBlock x:Name="GlassHint" FontSize="12" Opacity="0.65" TextWrapping="Wrap"
                        Text="打开后顶栏、输入区、状态栏和消息气泡会变成浮在彩色壁纸上的玻璃：半透明磨砂染色 + 上边缘高光 + 圆角悬浮。质量越高磨砂越厚（越朦胧、高光越亮），1 = 几乎全透明最清淡。拖动时主窗口会实时预览，保存后才写进设置文件。" />
 

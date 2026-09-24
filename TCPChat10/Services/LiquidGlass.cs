@@ -57,6 +57,31 @@ public static class LiquidGlass
         return Vertical(WithAlpha(color, top), WithAlpha(color, top * 0.25));
     }
 
+    // ---------- 控件(开关 / 滑杆) ----------
+
+    /// <summary>开关轨道: 关 = 中性玻璃, 开 = 染色(苹果那种绿)。</summary>
+    public static Brush ControlTrack(int quality, bool on)
+    {
+        var s = GlassScale.Strength(quality);
+        var color = ThemeLookup.Color(on ? "ControlOnColor" : "ControlTrackColor");
+        if (!Enabled)
+            return new SolidColorBrush(color);
+
+        var alpha = on ? 0.78 + 0.22 * s : 0.30 + 0.35 * s;
+        return Vertical(WithAlpha(color, alpha + 0.10), WithAlpha(color, alpha));
+    }
+
+    /// <summary>滑杆已填充的那一段。</summary>
+    public static Brush ControlFill(int quality)
+    {
+        var s = GlassScale.Strength(quality);
+        var color = ThemeLookup.Color("ControlOnColor");
+        return Vertical(WithAlpha(color, 0.90 + 0.10 * s), WithAlpha(color, 0.72 + 0.20 * s));
+    }
+
+    /// <summary>控件轨道的高光描边。</summary>
+    public static Brush ControlEdge(int quality) => PanelEdge(quality);
+
     private static Color WithAlpha(Color c, double alpha) =>
         Color.FromArgb((byte)Math.Clamp(alpha * 255, 0, 255), c.R, c.G, c.B);
 

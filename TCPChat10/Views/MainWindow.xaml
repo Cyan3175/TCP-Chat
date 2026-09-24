@@ -109,7 +109,7 @@
                 <TextBox x:Name="InputBox" MinHeight="40" MaxHeight="170"
                          PlaceholderText="输入消息   Enter 发送 · Shift+Enter / Ctrl+Enter 换行"
                          AcceptsReturn="True" TextWrapping="Wrap"
-                         VerticalAlignment="Bottom" KeyDown="OnInputKeyDown" />
+                         VerticalAlignment="Bottom" PreviewKeyDown="OnInputPreviewKeyDown" />
                 <Button x:Name="BtnSend" Grid.Column="1" Content="发送" Click="OnSendClick"
                         VerticalAlignment="Bottom" Height="40" MinWidth="84"
                         Style="{StaticResource AccentButtonStyle}" />

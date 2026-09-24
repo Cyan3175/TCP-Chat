@@ -43,6 +43,11 @@ public sealed partial class MainWindow : Window
         MessageList.ItemsSource = Messages;
 
         _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        // 兜底再挂一次: TextBox 内部把 Enter 标记成已处理时, 普通 XAML 事件收不到,
+        // 用 handledEventsToo 才能听见(正常情况下 PreviewKeyDown 已经处理掉了,
+        // 那次到这里时输入框已经清空, SendCurrentAsync 会直接返回, 不会重复发送)
+        InputBox.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(OnInputKeyDown), true);
+
         ResizeWindow(1120, 780);
         this.AppWindow.Closing += (s, e) => _chat.Stop();
 
@@ -160,14 +165,15 @@ public sealed partial class MainWindow : Window
                     InputBox.Text = "第一行";
                     InputBox.SelectionStart = InputBox.Text.Length;
                     var before = Messages.Count;
-                    var shiftHandled = await HandleEnterAsync(shift: true, ctrl: false);
+                    var shiftHandled = HandleEnterKey(shift: true, ctrl: false, out var shiftSend);
                     var afterShift = InputBox.Text.Replace("\r", "\\n");
-                    var ctrlHandled = await HandleEnterAsync(shift: false, ctrl: true);
+                    var ctrlHandled = HandleEnterKey(shift: false, ctrl: true, out var ctrlSend);
                     var afterCtrl = InputBox.Text.Replace("\r", "\\n");
-                    await HandleEnterAsync(shift: false, ctrl: false);
-                    AutoLog($"AUTO keytest Shift+Enter: handled={shiftHandled} 文本=[{afterShift}] | " +
-                            $"Ctrl+Enter: handled={ctrlHandled} 文本=[{afterCtrl}] | " +
-                            $"Enter: 发送后输入框=[{InputBox.Text}] 消息 {before}->{Messages.Count}");
+                    var enterHandled = HandleEnterKey(shift: false, ctrl: false, out var enterSend);
+                    if (enterSend) await SendCurrentAsync();
+                    AutoLog($"AUTO keytest Shift+Enter: handled={shiftHandled} 发送={shiftSend} 文本=[{afterShift}] | " +
+                            $"Ctrl+Enter: handled={ctrlHandled} 发送={ctrlSend} 文本=[{afterCtrl}] | " +
+                            $"Enter: handled={enterHandled} 发送={enterSend} 输入框=[{InputBox.Text}] 消息 {before}->{Messages.Count}");
                 }
                 else if (a == "settings")
                 {
@@ -248,7 +254,7 @@ public sealed partial class MainWindow : Window
                 else if (a.StartsWith("log:"))
                 {
                     AutoLog("AUTO " + a[4..] + $"  [消息数={Messages.Count} 加密={(_chat.EncryptionEnabled ? "开" : "关")} " +
-                            $"解不开={_chat.UndecryptableCount}]");
+                            $"解不开={_chat.UndecryptableCount} 输入框焦点={InputBox.FocusState} 文本=[{InputBox.Text.Replace("\r", "/")}]]");
                 }
                 else if (a == "quit")
                 {
@@ -459,33 +465,63 @@ public sealed partial class MainWindow : Window
 
     private async void OnSendClick(object sender, RoutedEventArgs e) => await SendCurrentAsync();
 
-    /// <summary>Enter 发送; Shift+Enter 与 Ctrl+Enter 都是换行。</summary>
-    private async void OnInputKeyDown(object sender, KeyRoutedEventArgs e)
+    /// <summary>
+    /// 回车键: Enter 发送, Shift+Enter / Ctrl+Enter 换行。
+    ///
+    /// 用 PreviewKeyDown(隧道路由)而不是 KeyDown: TextBox 自己会先把 Enter 当成换行处理掉,
+    /// 那个事件到不了我们手上(以前按键按了没反应就是这个原因)。
+    /// 注意 e.Handled 必须在 await 之前同步设好, 否则异步发送期间输入框还会插一个换行。
+    /// </summary>
+    private void OnInputPreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (e.Key != VirtualKey.Enter) return;
-        if (await HandleEnterAsync(IsKeyDown(VirtualKey.Shift), IsKeyDown(VirtualKey.Control)))
-            e.Handled = true;
+
+        var shift = IsKeyDown(VirtualKey.Shift);
+        var ctrl = IsKeyDown(VirtualKey.Control);
+        if (!HandleEnterKey(shift, ctrl, out var send)) return;
+
+        e.Handled = true;
+        if (send) _ = SendCurrentAsync();
     }
 
     /// <summary>
-    /// 回车键的统一处理: Enter = 发送, Shift+Enter / Ctrl+Enter = 换行。
-    /// 返回 true 表示这次按键已经被消化掉(不该再往输入框里插字符)。
+    /// 回车键的同步部分: 返回 false = 这次按键不归我们管(交给 TextBox 换行);
+    /// send = true 表示调用方该去发送了。
     /// </summary>
-    private async Task<bool> HandleEnterAsync(bool shift, bool ctrl)
+    private bool HandleEnterKey(bool shift, bool ctrl, out bool send)
     {
-        if (shift) return false;        // Shift+Enter: 交给 TextBox 自己换行
+        send = false;
+        if (shift) return false;         // Shift+Enter: TextBox 自己会换行
 
         if (ctrl)
         {
-            // Ctrl+Enter: TextBox 不一定会当换行处理, 这里手动插一个换行符
-            var caret = InputBox.SelectionStart;
-            InputBox.Text = InputBox.Text.Insert(caret, "\r");
-            InputBox.SelectionStart = caret + 1;
+            InsertNewline();             // Ctrl+Enter: TextBox 不认, 自己插一个换行
             return true;
         }
 
-        await SendCurrentAsync();
+        send = true;
         return true;
+    }
+
+    /// <summary>在光标处插一个换行符(WinUI 的 TextBox 内部用 \r 换行)。</summary>
+    private void InsertNewline()
+    {
+        var caret = InputBox.SelectionStart;
+        InputBox.Text = InputBox.Text.Insert(caret, "\r");
+        InputBox.SelectionStart = caret + 1;
+    }
+
+    /// <summary>
+    /// 兜底(handledEventsToo): 有的输入法/环境不走 PreviewKeyDown, 这里再收一次。
+    /// 只负责"发送", 换行一律交给预览处理器 —— 否则 Ctrl+Enter 会被插两个换行。
+    /// 预览处理器已经把输入框清空的情况, SendCurrentAsync 会因为文本为空直接返回, 不会重复发送。
+    /// </summary>
+    private void OnInputKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key != VirtualKey.Enter) return;
+        if (IsKeyDown(VirtualKey.Shift) || IsKeyDown(VirtualKey.Control)) return;
+        e.Handled = true;
+        _ = SendCurrentAsync();
     }
 
     private static bool IsKeyDown(VirtualKey key) =>

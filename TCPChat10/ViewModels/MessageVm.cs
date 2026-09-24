@@ -4,6 +4,7 @@ using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 using TCPChat10.Models;
+using TCPChat10.Services;
 using Windows.UI;
 
 namespace TCPChat10.ViewModels;
@@ -54,22 +55,28 @@ public sealed class MessageVm : INotifyPropertyChanged
     public CornerRadius BubbleRadius => IsSelf ? new CornerRadius(12, 12, 3, 12) : new CornerRadius(12, 12, 12, 3);
 
     public Brush BubbleBrush => IsSelf
-        ? new SolidColorBrush(Color.FromArgb(255, 0x2B, 0x6C, 0xB0))
-        : (Brush)Application.Current.Resources["BubbleOtherBrush"];
+        ? new SolidColorBrush(ThemeLookup.Color("BubbleSelfColor"))
+        : ThemeLookup.Brush("BubbleOtherBrush");
 
     public Brush BodyBrush => Model.DecryptFailed
-        ? (Brush)Application.Current.Resources["MetaOtherBrush"]
+        ? ThemeLookup.Brush("MetaOtherBrush")
         : IsSelf
             ? new SolidColorBrush(Colors.White)
-            : (Brush)Application.Current.Resources["BodyOtherBrush"];
+            : ThemeLookup.Brush("BodyOtherBrush");
+
+    /// <summary>引用块里的字: 跟着气泡正文的颜色走, 否则在蓝色气泡上会是黑字 / 深色下看不清。</summary>
+    public Brush QuoteBrush => BodyBrush;
+
+    /// <summary>发送失败等状态文字: 深浅色各一套红, 深色下不能再用暗红。</summary>
+    public Brush StatusBrush => ThemeLookup.Brush("ErrorBrush");
 
     public Brush MetaBrush => IsSelf
-        ? new SolidColorBrush(Color.FromArgb(200, 255, 255, 255))
-        : (Brush)Application.Current.Resources["MetaOtherBrush"];
+        ? new SolidColorBrush(Color.FromArgb(215, 255, 255, 255))
+        : ThemeLookup.Brush("MetaOtherBrush");
 
     public Brush SenderBrush => IsSelf
-        ? new SolidColorBrush(Color.FromArgb(235, 255, 255, 255))
-        : (Brush)Application.Current.Resources["AccentBrush"];
+        ? new SolidColorBrush(Color.FromArgb(245, 255, 255, 255))
+        : ThemeLookup.Brush("AccentBrush");
 
     public string Key => Model.RemoteName.Length > 0 ? Model.RemoteName : Model.Id;
 }

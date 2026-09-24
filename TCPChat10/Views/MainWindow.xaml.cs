@@ -20,6 +20,8 @@ public sealed partial class MainWindow : Window
     private readonly AppSettings _settings;
     private readonly ChatService _chat;
     private DateTimeOffset _lastSync = DateTimeOffset.Now;
+    /// <summary>窗口句柄(任务栏闪烁要用)。</summary>
+    private readonly IntPtr _hwnd;
 
     public ObservableCollection<MessageVm> Messages { get; } = new();
 
@@ -40,6 +42,7 @@ public sealed partial class MainWindow : Window
         // 直接赋 ItemsSource: 避免 Window 上 x:Bind 的 OneTime 绑定在某些情况下不生效
         MessageList.ItemsSource = Messages;
 
+        _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         ResizeWindow(1120, 780);
         this.AppWindow.Closing += (s, e) => _chat.Stop();
 
@@ -135,6 +138,36 @@ public sealed partial class MainWindow : Window
                     RebuildCrypto();
                     UpdateLockText();
                     AutoLog("AUTO crypto -> " + (_chat.EncryptionEnabled ? "加密已启用" : "加密已关闭"));
+                }
+                else if (a.StartsWith("theme:"))
+                {
+                    _settings.Theme = (int)Math.Clamp(double.Parse(a[6..]), 0, 2);
+                    _settings.Save();
+                    ApplyTheme();
+                    AutoLog("AUTO theme -> " + _settings.Theme + " (0=跟随系统 1=浅色 2=深色)");
+                }
+                else if (a.StartsWith("notify:"))
+                {
+                    var text = a[7..];
+                    MessageNotifier.Notify("通知自测", text);
+                    MessageNotifier.FlashTaskbar(_hwnd);
+                    await Task.Delay(1500);
+                    AutoLog($"AUTO notify -> {MessageNotifier.Status} | 弹出结果: {MessageNotifier.LastResult}");
+                }
+                else if (a == "keytest")
+                {
+                    // 验证 Enter / Shift+Enter / Ctrl+Enter 的分工
+                    InputBox.Text = "第一行";
+                    InputBox.SelectionStart = InputBox.Text.Length;
+                    var before = Messages.Count;
+                    var shiftHandled = await HandleEnterAsync(shift: true, ctrl: false);
+                    var afterShift = InputBox.Text.Replace("\r", "\\n");
+                    var ctrlHandled = await HandleEnterAsync(shift: false, ctrl: true);
+                    var afterCtrl = InputBox.Text.Replace("\r", "\\n");
+                    await HandleEnterAsync(shift: false, ctrl: false);
+                    AutoLog($"AUTO keytest Shift+Enter: handled={shiftHandled} 文本=[{afterShift}] | " +
+                            $"Ctrl+Enter: handled={ctrlHandled} 文本=[{afterCtrl}] | " +
+                            $"Enter: 发送后输入框=[{InputBox.Text}] 消息 {before}->{Messages.Count}");
                 }
                 else if (a == "settings")
                 {
@@ -335,6 +368,7 @@ public sealed partial class MainWindow : Window
                 PrimaryButtonText = "重试",
                 XamlRoot = Content.XamlRoot,
             };
+            ApplyThemeTo(dlg);
             var r = await dlg.ShowAsync();
             if (r == ContentDialogResult.Primary) RootLoaded();
             else await ShowSettingsAsync();
@@ -397,6 +431,14 @@ public sealed partial class MainWindow : Window
             while (idx > 0 && Messages[idx - 1].Model.Time > m.Time) idx--;
             Messages.Insert(idx, vm);
 
+            // 别人刚发来的消息: 弹系统通知 + 任务栏闪一下(历史消息、自己发的不打扰)
+            if (!m.IsSelf && DateTimeOffset.UtcNow - m.Time < TimeSpan.FromMinutes(2))
+            {
+                var body = m.DecryptFailed ? "🔒 无法解密：加密密码与发送方不一致" : m.Text;
+                MessageNotifier.Notify(m.From, body);
+                MessageNotifier.FlashTaskbar(_hwnd);
+            }
+
             _lastSync = DateTimeOffset.Now;
             BusyRing.IsActive = false;
             UpdateFooter();
@@ -417,16 +459,38 @@ public sealed partial class MainWindow : Window
 
     private async void OnSendClick(object sender, RoutedEventArgs e) => await SendCurrentAsync();
 
+    /// <summary>Enter 发送; Shift+Enter 与 Ctrl+Enter 都是换行。</summary>
     private async void OnInputKeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (e.Key != VirtualKey.Enter) return;
-        var shift = Microsoft.UI.Input.InputKeyboardSource
-            .GetKeyStateForCurrentThread(VirtualKey.Shift);
-        bool shiftDown = shift.HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
-        if (shiftDown) return;      // Shift+Enter 换行
-        e.Handled = true;
-        await SendCurrentAsync();
+        if (await HandleEnterAsync(IsKeyDown(VirtualKey.Shift), IsKeyDown(VirtualKey.Control)))
+            e.Handled = true;
     }
+
+    /// <summary>
+    /// 回车键的统一处理: Enter = 发送, Shift+Enter / Ctrl+Enter = 换行。
+    /// 返回 true 表示这次按键已经被消化掉(不该再往输入框里插字符)。
+    /// </summary>
+    private async Task<bool> HandleEnterAsync(bool shift, bool ctrl)
+    {
+        if (shift) return false;        // Shift+Enter: 交给 TextBox 自己换行
+
+        if (ctrl)
+        {
+            // Ctrl+Enter: TextBox 不一定会当换行处理, 这里手动插一个换行符
+            var caret = InputBox.SelectionStart;
+            InputBox.Text = InputBox.Text.Insert(caret, "\r");
+            InputBox.SelectionStart = caret + 1;
+            return true;
+        }
+
+        await SendCurrentAsync();
+        return true;
+    }
+
+    private static bool IsKeyDown(VirtualKey key) =>
+        Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(key)
+            .HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
 
     private string? _quoteText;
 
@@ -504,6 +568,10 @@ public sealed partial class MainWindow : Window
             flyout.Items.Add(miDel);
         }
 
+        // 菜单是弹出层, 不继承窗口主题, 逐项上主题(免得深色下弹出一片白)
+        foreach (var item in flyout.Items)
+            if (item is FrameworkElement fe) ApplyThemeTo(fe);
+
         return flyout;
     }
 
@@ -534,6 +602,7 @@ public sealed partial class MainWindow : Window
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = Content.XamlRoot,
         };
+        ApplyThemeTo(dlg);
         var r = await dlg.ShowAsync();
         if (r == ContentDialogResult.Primary)
         {
@@ -558,7 +627,17 @@ public sealed partial class MainWindow : Window
         var oldFont = _settings.FontFamily;
 
         var dlg = new SettingsDialog(_settings) { XamlRoot = Content.XamlRoot };
-        var r = await dlg.ShowAsync();
+        ContentDialogResult r;
+        try
+        {
+            r = await dlg.ShowAsync();
+        }
+        catch (Exception ex)
+        {
+            // 已经有一个弹窗开着时 ShowAsync 会直接抛, 不能让它把程序带崩
+            SetFooter("⚠ 打不开设置窗口: " + ex.Message);
+            return;
+        }
         if (r != ContentDialogResult.Primary) return;
 
         var restart = dlg.NeedReconnect;
@@ -577,7 +656,8 @@ public sealed partial class MainWindow : Window
                 CloseButtonText = "知道了",
                 XamlRoot = Content.XamlRoot,
             };
-            await dlg2.ShowAsync();
+            ApplyThemeTo(dlg2);
+            try { await dlg2.ShowAsync(); } catch { }
             return;
         }
 
@@ -607,19 +687,26 @@ public sealed partial class MainWindow : Window
         BusyRing.IsActive = true;
     }
 
-    /// <summary>把设置里的主题应用到整窗(0=跟随系统 1=浅色 2=深色)。</summary>
+    /// <summary>设置里的主题对应的 ElementTheme(0=跟随系统 1=浅色 2=深色)。</summary>
+    private ElementTheme CurrentTheme => _settings.Theme switch
+    {
+        1 => ElementTheme.Light,
+        2 => ElementTheme.Dark,
+        _ => ElementTheme.Default,
+    };
+
+    /// <summary>把设置里的主题应用到整窗。</summary>
     private void ApplyTheme()
     {
-        if (Content is FrameworkElement root)
-        {
-            root.RequestedTheme = _settings.Theme switch
-            {
-                1 => ElementTheme.Light,
-                2 => ElementTheme.Dark,
-                _ => ElementTheme.Default,
-            };
-        }
+        ThemeLookup.Current = CurrentTheme;
+        if (Content is FrameworkElement root) root.RequestedTheme = CurrentTheme;
     }
+
+    /// <summary>
+    /// 弹出的对话框/右键菜单不在窗口的可视树里, 不会继承 RequestedTheme ——
+    /// 不显式指定的话, 程序里设成深色时它们还是系统那套, 白底黑字突然闪出来。
+    /// </summary>
+    private void ApplyThemeTo(FrameworkElement popup) => popup.RequestedTheme = CurrentTheme;
 
     /// <summary>把设置里的字体应用到消息列表与输入框(留空 = 系统默认字体)。</summary>
     private void ApplyFont()
@@ -652,7 +739,7 @@ public sealed partial class MainWindow : Window
         else
         {
             LockText.Text = "未加密（明文发送）";
-            LockText.Foreground = (Brush)Application.Current.Resources["MetaOtherBrush"];
+            LockText.Foreground = ThemeLookup.Brush("MetaOtherBrush");
         }
     }
 

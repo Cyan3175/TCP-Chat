@@ -5,7 +5,13 @@
     Title="设置"
     PrimaryButtonText="保存"
     CloseButtonText="取消"
-    DefaultButton="Primary">
+    DefaultButton="Primary"
+    CornerRadius="16">
+
+    <!-- 圆角: 对话框模板用的是 OverlayCornerRadius, 这里调大一点 -->
+    <ContentDialog.Resources>
+        <CornerRadius x:Key="OverlayCornerRadius">16</CornerRadius>
+    </ContentDialog.Resources>
 
     <ScrollViewer x:Name="SettingsScroll" VerticalScrollBarVisibility="Auto" MaxHeight="560">
         <StackPanel Spacing="14" Width="460">

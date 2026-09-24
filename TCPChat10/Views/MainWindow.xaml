@@ -72,7 +72,7 @@
                                 <TextBlock Text="发送中…" FontSize="11" VerticalAlignment="Center"
                                            Foreground="{x:Bind MetaBrush}" Visibility="{x:Bind PendingVisible, Mode=OneWay}" />
                                 <TextBlock Text="{x:Bind StatusText}" FontSize="11" VerticalAlignment="Center"
-                                           Foreground="#D9534F" Visibility="{x:Bind HasStatus, Mode=OneWay}" />
+                                           Foreground="{x:Bind StatusBrush}" Visibility="{x:Bind HasStatus, Mode=OneWay}" />
                             </StackPanel>
 
                             <Border Background="{x:Bind BubbleBrush}" CornerRadius="{x:Bind BubbleRadius}"
@@ -82,7 +82,8 @@
                                             CornerRadius="4" Padding="8,5" BorderThickness="3,0,0,0"
                                             BorderBrush="{ThemeResource AccentBrush}">
                                         <TextBlock Text="{x:Bind QuoteText}" TextWrapping="Wrap" FontSize="12"
-                                                   Opacity="0.8" MaxLines="3" TextTrimming="CharacterEllipsis" />
+                                                   Foreground="{x:Bind QuoteBrush}" Opacity="0.9"
+                                                   MaxLines="3" TextTrimming="CharacterEllipsis" />
                                     </Border>
 
                                     <TextBlock Text="{x:Bind BodyText}" Visibility="{x:Bind HasBody}"
@@ -106,7 +107,7 @@
                 </Grid.ColumnDefinitions>
 
                 <TextBox x:Name="InputBox" MinHeight="40" MaxHeight="170"
-                         PlaceholderText="输入消息   Enter 发送 · Shift+Enter 换行"
+                         PlaceholderText="输入消息   Enter 发送 · Shift+Enter / Ctrl+Enter 换行"
                          AcceptsReturn="True" TextWrapping="Wrap"
                          VerticalAlignment="Bottom" KeyDown="OnInputKeyDown" />
                 <Button x:Name="BtnSend" Grid.Column="1" Content="发送" Click="OnSendClick"

@@ -22,6 +22,13 @@ public sealed partial class SettingsDialog : ContentDialog
     {
         this.InitializeComponent();
         _settings = settings;
+        // 对话框是弹出层, 不继承窗口的 RequestedTheme, 这里自己跟设置走
+        RequestedTheme = settings.Theme switch
+        {
+            1 => ElementTheme.Light,
+            2 => ElementTheme.Dark,
+            _ => ElementTheme.Default,
+        };
         _origUrl = settings.ServerUrl;
         _origFolder = settings.ChatFolder;
 

@@ -8,6 +8,9 @@
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
             </ResourceDictionary.MergedDictionaries>
 
+            <!-- 对话框/弹出层圆角(默认 8, 这里给大一点) -->
+            <CornerRadius x:Key="OverlayCornerRadius">16</CornerRadius>
+
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Light">
                     <SolidColorBrush x:Key="PageBrush" Color="#F3F3F3" />
@@ -15,7 +18,9 @@
                     <SolidColorBrush x:Key="LineBrush" Color="#1A000000" />
                     <SolidColorBrush x:Key="BubbleOtherBrush" Color="#FFFFFF" />
                     <SolidColorBrush x:Key="BodyOtherBrush" Color="#1B1B1B" />
-                    <SolidColorBrush x:Key="MetaOtherBrush" Color="#7A000000" />
+                    <SolidColorBrush x:Key="MetaOtherBrush" Color="#99000000" />
+                    <SolidColorBrush x:Key="ErrorBrush" Color="#C0392B" />
+                    <Color x:Key="BubbleSelfColor">#2B6CB0</Color>
                     <SolidColorBrush x:Key="AccentBrush" Color="#2B6CB0" />
                     <SolidColorBrush x:Key="QuoteBrush" Color="#0F000000" />
                 </ResourceDictionary>
@@ -25,7 +30,9 @@
                     <SolidColorBrush x:Key="LineBrush" Color="#22FFFFFF" />
                     <SolidColorBrush x:Key="BubbleOtherBrush" Color="#32323A" />
                     <SolidColorBrush x:Key="BodyOtherBrush" Color="#EDEDF2" />
-                    <SolidColorBrush x:Key="MetaOtherBrush" Color="#8CFFFFFF" />
+                    <SolidColorBrush x:Key="MetaOtherBrush" Color="#B8FFFFFF" />
+                    <SolidColorBrush x:Key="ErrorBrush" Color="#FF9E9E" />
+                    <Color x:Key="BubbleSelfColor">#3E7CC7</Color>
                     <SolidColorBrush x:Key="AccentBrush" Color="#7FB2E5" />
                     <SolidColorBrush x:Key="QuoteBrush" Color="#18FFFFFF" />
                 </ResourceDictionary>

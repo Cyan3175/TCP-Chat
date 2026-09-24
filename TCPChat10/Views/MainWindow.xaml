@@ -3,9 +3,9 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:vm="using:TCPChat10.ViewModels"
-    Title="TCP Chat 10.4">
+    Title="TCP Chat 10.5">
 
-    <Grid x:Name="RootGrid" Background="{ThemeResource PageBrush}">
+    <Grid Background="{ThemeResource PageBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -13,40 +13,9 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- 液态玻璃的底: 一层彩色"壁纸"。玻璃面板要靠它才有东西可折射, 关掉效果时整层收起 -->
-        <Grid x:Name="WallpaperLayer" Grid.RowSpan="4" IsHitTestVisible="False"
-              Background="{ThemeResource WallpaperBrush}">
-            <Ellipse Width="880" Height="880" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="-300,-340,0,0">
-                <Ellipse.Fill>
-                    <RadialGradientBrush>
-                        <GradientStop Color="{ThemeResource BlobColor1}" Offset="0" />
-                        <GradientStop Color="Transparent" Offset="1" />
-                    </RadialGradientBrush>
-                </Ellipse.Fill>
-            </Ellipse>
-            <Ellipse Width="980" Height="980" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,-380,0">
-                <Ellipse.Fill>
-                    <RadialGradientBrush>
-                        <GradientStop Color="{ThemeResource BlobColor2}" Offset="0" />
-                        <GradientStop Color="Transparent" Offset="1" />
-                    </RadialGradientBrush>
-                </Ellipse.Fill>
-            </Ellipse>
-            <Ellipse Width="820" Height="820" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="-240,0,0,-320">
-                <Ellipse.Fill>
-                    <RadialGradientBrush>
-                        <GradientStop Color="{ThemeResource BlobColor3}" Offset="0" />
-                        <GradientStop Color="Transparent" Offset="1" />
-                    </RadialGradientBrush>
-                </Ellipse.Fill>
-            </Ellipse>
-        </Grid>
-
         <!-- 顶栏 -->
-        <!-- 玻璃面板的底色/描边由 ApplyGlass 按设置(开关 + 质量)换上, 这里的值只是初始占位 -->
-        <Border x:Name="TopBar" Grid.Row="0" Margin="10,10,10,0" CornerRadius="18"
-                Background="{ThemeResource PanelBrush}" BorderThickness="1"
-                BorderBrush="{ThemeResource LineBrush}" Padding="14,10">
+        <Border Grid.Row="0" Background="{ThemeResource PanelBrush}"
+                BorderThickness="0,0,0,1" BorderBrush="{ThemeResource LineBrush}" Padding="14,10">
             <Grid ColumnSpacing="12">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -54,7 +23,7 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <TextBlock Text="TCP Chat 10.4" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <TextBlock Text="TCP Chat 10.5" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                     <Ellipse x:Name="StatusDot" Width="9" Height="9" Fill="#9AA0A6" VerticalAlignment="Center" />
@@ -106,9 +75,7 @@
                                            Foreground="#D9534F" Visibility="{x:Bind HasStatus, Mode=OneWay}" />
                             </StackPanel>
 
-                            <Border Background="{x:Bind BubbleBrush, Mode=OneWay}" CornerRadius="{x:Bind BubbleRadius}"
-                                    BorderThickness="1" BorderBrush="{x:Bind BubbleEdgeBrush, Mode=OneWay}"
-                                    Loaded="OnBubbleLoaded" Unloaded="OnBubbleUnloaded"
+                            <Border Background="{x:Bind BubbleBrush}" CornerRadius="{x:Bind BubbleRadius}"
                                     Padding="12,9" Margin="0,3,0,0">
                                 <StackPanel Spacing="7">
                                     <Border Visibility="{x:Bind HasQuote}" Background="{ThemeResource QuoteBrush}"
@@ -130,9 +97,8 @@
         </ListView>
 
         <!-- 输入区 -->
-        <Border x:Name="InputBar" Grid.Row="2" Margin="10,0,10,6" CornerRadius="18"
-                Background="{ThemeResource PanelBrush}" BorderThickness="1"
-                BorderBrush="{ThemeResource LineBrush}" Padding="14,10">
+        <Border Grid.Row="2" Background="{ThemeResource PanelBrush}"
+                BorderThickness="0,1,0,0" BorderBrush="{ThemeResource LineBrush}" Padding="14,10">
             <Grid ColumnSpacing="8">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -150,9 +116,8 @@
         </Border>
 
         <!-- 状态栏 -->
-        <Border x:Name="StatusBar" Grid.Row="3" Margin="10,0,10,10" CornerRadius="12"
-                Background="{ThemeResource PanelBrush}" BorderThickness="1"
-                BorderBrush="{ThemeResource LineBrush}" Padding="14,6">
+        <Border Grid.Row="3" Background="{ThemeResource PanelBrush}"
+                BorderThickness="0,1,0,0" BorderBrush="{ThemeResource LineBrush}" Padding="14,6">
             <Grid>
                 <TextBlock x:Name="FooterText" FontSize="12" TextTrimming="CharacterEllipsis"
                            Foreground="{ThemeResource MetaOtherBrush}" Text="就绪" />

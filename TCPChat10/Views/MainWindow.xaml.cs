@@ -43,20 +43,11 @@ public sealed partial class MainWindow : Window
         ResizeWindow(1120, 780);
         this.AppWindow.Closing += (s, e) => _chat.Stop();
 
-        // 启动时就定下用哪一套玻璃: Auto 会先探一次 D3D 设备, 拿不到就退回画刷
-        GlassRuntime.Init(Compositor, (GlassBackend)_settings.GlassBackendMode);
-        WallpaperLayer.SizeChanged += (_, _) =>
-        {
-            GlassRuntime.SetSource(WallpaperLayer);
-            if (_settings.GlassEffect) GlassRuntime.RefreshAll(_settings.GlassQuality, true);
-        };
-
         ApplyTheme();
         ApplyFont();
-        ApplyGlass();
         UpdateLockText();
         MeText.Text = string.IsNullOrWhiteSpace(_settings.Nickname) ? "(未设置昵称)" : "我：" + _settings.Nickname;
-        Title = "TCP Chat 10.4 — " + _settings.ChatFolder;
+        Title = "TCP Chat 10.5 — " + _settings.ChatFolder;
 
         RootLoaded();
 
@@ -145,41 +136,6 @@ public sealed partial class MainWindow : Window
                     UpdateLockText();
                     AutoLog("AUTO crypto -> " + (_chat.EncryptionEnabled ? "加密已启用" : "加密已关闭"));
                 }
-                else if (a.StartsWith("glass:"))
-                {
-                    _settings.GlassEffect = !a[6..].Trim().Equals("off", StringComparison.OrdinalIgnoreCase);
-                    _settings.Save();
-                    ApplyGlass();
-                    AutoLog("AUTO glass -> " + (_settings.GlassEffect ? "开" : "关"));
-                }
-                else if (a.StartsWith("theme:"))
-                {
-                    _settings.Theme = (int)Math.Clamp(double.Parse(a[6..]), 0, 2);
-                    _settings.Save();
-                    ApplyTheme();
-                    AutoLog("AUTO theme -> " + _settings.Theme + " (0=跟随系统 1=浅色 2=深色)");
-                }
-                else if (a.StartsWith("quality:"))
-                {
-                    _settings.GlassQuality = GlassScale.Clamp((int)double.Parse(a[8..]));
-                    _settings.Save();
-                    ApplyGlass();
-                    AutoLog($"AUTO quality -> {_settings.GlassQuality} (磨砂浓度 {GlassScale.FrostPercent(_settings.GlassQuality)}%)");
-                }
-                else if (a.StartsWith("backend:"))
-                {
-                    var want = a[8..].Trim().ToLowerInvariant() switch
-                    {
-                        "brush" => GlassBackend.Brush,
-                        "refraction" => GlassBackend.Refraction,
-                        _ => GlassBackend.Auto,
-                    };
-                    _settings.GlassBackendMode = (int)want;
-                    _settings.Save();
-                    GlassRuntime.Init(Compositor, want);
-                    ApplyGlass();
-                    AutoLog($"AUTO backend -> {GlassRuntime.Active} ({GlassRuntime.Detail})");
-                }
                 else if (a == "settings")
                 {
                     _dlg = new SettingsDialog(_settings) { XamlRoot = Content.XamlRoot };
@@ -251,8 +207,7 @@ public sealed partial class MainWindow : Window
                     var path = a[5..];
                     await Task.Delay(900);         // 等一帧布局完成
                     AutoLog($"诊断: Messages={Messages.Count} ListItems={MessageList.Items.Count} " +
-                            $"字体={MessageList.FontFamily?.Source ?? "(默认)"} 玻璃={(_settings.GlassEffect ? "开" : "关")}/{_settings.GlassQuality} " +
-                            $"后端={GlassRuntime.Active} " +
+                            $"字体={MessageList.FontFamily?.Source ?? "(默认)"} " +
                             $"ListView H={MessageList.ActualHeight:F0} W={MessageList.ActualWidth:F0}");
                     var ok = await CaptureAsync(path);
                     AutoLog("AUTO shot -> " + (ok ? "ok " + path : "fail"));
@@ -503,18 +458,6 @@ public sealed partial class MainWindow : Window
         InputBox.Focus(FocusState.Programmatic);
     }
 
-    /// <summary>气泡进可视树: 垫一层玻璃(真玻璃后端才有实际动作)。</summary>
-    private void OnBubbleLoaded(object sender, RoutedEventArgs e)
-    {
-        if (_settings.GlassEffect && sender is FrameworkElement fe) GlassRuntime.Attach(fe, _settings.GlassQuality);
-    }
-
-    /// <summary>气泡被回收/移出: 摘掉玻璃层。</summary>
-    private void OnBubbleUnloaded(object sender, RoutedEventArgs e)
-    {
-        if (sender is FrameworkElement fe) GlassRuntime.Detach(fe);
-    }
-
     private async void OnMessageRightTapped(object sender, RightTappedRoutedEventArgs e)
     {
         if (sender is not FrameworkElement fe || fe.DataContext is not MessageVm vm) return;
@@ -614,14 +557,9 @@ public sealed partial class MainWindow : Window
         var oldCrypto = _settings.CryptoPassword;
         var oldFont = _settings.FontFamily;
 
-        // 对话框里拖滑杆/拨开关时先临时应用到主窗口, 取消就还原
-        var dlg = new SettingsDialog(_settings, (on, q) => ApplyGlass(on, q)) { XamlRoot = Content.XamlRoot };
+        var dlg = new SettingsDialog(_settings) { XamlRoot = Content.XamlRoot };
         var r = await dlg.ShowAsync();
-        if (r != ContentDialogResult.Primary)
-        {
-            ApplyGlass();
-            return;
-        }
+        if (r != ContentDialogResult.Primary) return;
 
         var restart = dlg.NeedReconnect;
         var cryptoChanged = !string.Equals(oldCrypto, _settings.CryptoPassword, StringComparison.Ordinal);
@@ -644,8 +582,7 @@ public sealed partial class MainWindow : Window
         }
 
         _chat.Nickname = _settings.Nickname;
-        ApplyTheme();          // 里面会顺带重新上一遍玻璃
-        ApplyGlass();
+        ApplyTheme();
         if (fontChanged) ApplyFont();
         MeText.Text = string.IsNullOrWhiteSpace(_settings.Nickname) ? "(未设置昵称)" : "我：" + _settings.Nickname;
 
@@ -681,10 +618,7 @@ public sealed partial class MainWindow : Window
                 2 => ElementTheme.Dark,
                 _ => ElementTheme.Default,
             };
-            ThemeLookup.Current = root.RequestedTheme;
         }
-        // 玻璃面板与气泡的颜色是按主题取的, 换主题得重新上一遍
-        ApplyGlass();
     }
 
     /// <summary>把设置里的字体应用到消息列表与输入框(留空 = 系统默认字体)。</summary>
@@ -696,50 +630,6 @@ public sealed partial class MainWindow : Window
         MessageList.FontFamily = family;
         InputBox.FontFamily = family;
         FooterText.FontFamily = family;
-    }
-
-    /// <summary>按设置应用/关闭液态玻璃。</summary>
-    private void ApplyGlass() => ApplyGlass(_settings.GlassEffect, _settings.GlassQuality);
-
-    /// <summary>
-    /// 液态玻璃: 顶栏/输入区/状态栏是三块浮在彩色壁纸上的玻璃面板, 消息气泡也是半透明玻璃。
-    /// 开: 换上半透明磨砂染色 + 高光描边, 壁纸透出来;
-    /// 关: 退回原来那种不透明面板(壁纸层也收起来)。
-    /// </summary>
-    private void ApplyGlass(bool on, int quality)
-    {
-        LiquidGlass.Enabled = on;
-        LiquidGlass.Quality = quality;
-
-        WallpaperLayer.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
-
-        // 壁纸用程序自己画的那张位图: 屏幕上贴的和玻璃取样的是同一张, 天然对齐
-        WallpaperImage.Refresh();
-        WallpaperLayer.Background = new Microsoft.UI.Xaml.Media.ImageBrush
-        {
-            ImageSource = WallpaperImage.XamlSource,
-            Stretch = Stretch.UniformToFill,
-        };
-
-        // 折射后端取样的是壁纸层那块区域: 先告诉它在哪儿, 再往元素上垫玻璃
-        GlassRuntime.SetSource(WallpaperLayer);
-
-        var background = on ? LiquidGlass.PanelTint(quality) : ThemeLookup.Brush("PanelBrush");
-        var border = on ? LiquidGlass.PanelEdge(quality) : ThemeLookup.Brush("LineBrush");
-
-        foreach (var bar in new[] { TopBar, InputBar, StatusBar })
-        {
-            bar.Background = background;
-            bar.BorderBrush = border;
-            // 真玻璃后端: 在面板底下垫一层"背景模糊 + 边缘折射"; 画刷后端这里是空操作
-            if (on) GlassRuntime.Attach(bar, quality);
-            else GlassRuntime.Detach(bar);
-        }
-
-        // 已经显示出来的气泡要跟着换色(拖质量滑杆时能实时看到)
-        foreach (var vm in Messages) vm.RefreshGlass();
-
-
     }
 
     // ---------- 界面辅助 ----------
@@ -762,7 +652,7 @@ public sealed partial class MainWindow : Window
         else
         {
             LockText.Text = "未加密（明文发送）";
-            LockText.Foreground = ThemeLookup.Brush("MetaOtherBrush");
+            LockText.Foreground = (Brush)Application.Current.Resources["MetaOtherBrush"];
         }
     }
 

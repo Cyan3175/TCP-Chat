@@ -4,7 +4,6 @@ using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 using TCPChat10.Models;
-using TCPChat10.Services;
 using Windows.UI;
 
 namespace TCPChat10.ViewModels;
@@ -54,38 +53,23 @@ public sealed class MessageVm : INotifyPropertyChanged
     public Thickness BubbleMargin => IsSelf ? new Thickness(60, 2, 0, 2) : new Thickness(0, 2, 60, 2);
     public CornerRadius BubbleRadius => IsSelf ? new CornerRadius(12, 12, 3, 12) : new CornerRadius(12, 12, 12, 3);
 
-    private static readonly Brush NoEdge = new SolidColorBrush(Color.FromArgb(0, 0, 0, 0));
-
-    /// <summary>气泡底色: 开液态玻璃时是半透明磨砂(壁纸会透出来), 关掉就是原来的实心气泡。</summary>
-    public Brush BubbleBrush => LiquidGlass.Enabled
-        ? LiquidGlass.BubbleTint(IsSelf, LiquidGlass.Quality)
-        : new SolidColorBrush(ThemeLookup.Color(IsSelf ? "BubbleSelfColor" : "BubbleOtherColor"));
-
-    /// <summary>气泡边缘的高光描边, 让半透明气泡看起来像一块玻璃。</summary>
-    public Brush BubbleEdgeBrush => LiquidGlass.Enabled
-        ? LiquidGlass.BubbleEdge(IsSelf, LiquidGlass.Quality)
-        : NoEdge;
-
-    /// <summary>玻璃质量变了: 让已经显示出来的气泡重新取一次颜色(配合 OneWay 绑定)。</summary>
-    public void RefreshGlass()
-    {
-        Raise(nameof(BubbleBrush));
-        Raise(nameof(BubbleEdgeBrush));
-    }
+    public Brush BubbleBrush => IsSelf
+        ? new SolidColorBrush(Color.FromArgb(255, 0x2B, 0x6C, 0xB0))
+        : (Brush)Application.Current.Resources["BubbleOtherBrush"];
 
     public Brush BodyBrush => Model.DecryptFailed
-        ? ThemeLookup.Brush("MetaOtherBrush")
+        ? (Brush)Application.Current.Resources["MetaOtherBrush"]
         : IsSelf
             ? new SolidColorBrush(Colors.White)
-            : ThemeLookup.Brush("BodyOtherBrush");
+            : (Brush)Application.Current.Resources["BodyOtherBrush"];
 
     public Brush MetaBrush => IsSelf
         ? new SolidColorBrush(Color.FromArgb(200, 255, 255, 255))
-        : ThemeLookup.Brush("MetaOtherBrush");
+        : (Brush)Application.Current.Resources["MetaOtherBrush"];
 
     public Brush SenderBrush => IsSelf
         ? new SolidColorBrush(Color.FromArgb(235, 255, 255, 255))
-        : ThemeLookup.Brush("AccentBrush");
+        : (Brush)Application.Current.Resources["AccentBrush"];
 
     public string Key => Model.RemoteName.Length > 0 ? Model.RemoteName : Model.Id;
 }

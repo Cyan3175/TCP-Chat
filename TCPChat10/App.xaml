@@ -13,21 +13,51 @@
                     <SolidColorBrush x:Key="PageBrush" Color="#F3F3F3" />
                     <SolidColorBrush x:Key="PanelBrush" Color="#FFFFFF" />
                     <SolidColorBrush x:Key="LineBrush" Color="#1A000000" />
-                    <SolidColorBrush x:Key="BubbleOtherBrush" Color="#FFFFFF" />
                     <SolidColorBrush x:Key="BodyOtherBrush" Color="#1B1B1B" />
                     <SolidColorBrush x:Key="MetaOtherBrush" Color="#7A000000" />
                     <SolidColorBrush x:Key="AccentBrush" Color="#2B6CB0" />
                     <SolidColorBrush x:Key="QuoteBrush" Color="#0F000000" />
+
+                    <!-- 液态玻璃用到的基色(透明度由 LiquidGlass 按质量算) -->
+                    <Color x:Key="GlassTintColor">#FFFFFF</Color>
+                    <Color x:Key="GlassEdgeColor">#FFFFFF</Color>
+                    <Color x:Key="BubbleSelfColor">#2B6CB0</Color>
+                    <Color x:Key="BubbleOtherColor">#FFFFFF</Color>
+                    <Color x:Key="BubbleOtherEdgeColor">#26000000</Color>
+
+                    <!-- 玻璃底下那层壁纸 -->
+                    <LinearGradientBrush x:Key="WallpaperBrush" StartPoint="0,0" EndPoint="1,1">
+                        <GradientStop Color="#EEF3FF" Offset="0" />
+                        <GradientStop Color="#FDF3F8" Offset="1" />
+                    </LinearGradientBrush>
+                    <Color x:Key="BlobColor1">#7A60A5FA</Color>
+                    <Color x:Key="BlobColor2">#73A78BFA</Color>
+                    <Color x:Key="BlobColor3">#66F472B6</Color>
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Dark">
                     <SolidColorBrush x:Key="PageBrush" Color="#1B1B1F" />
                     <SolidColorBrush x:Key="PanelBrush" Color="#25252B" />
                     <SolidColorBrush x:Key="LineBrush" Color="#22FFFFFF" />
-                    <SolidColorBrush x:Key="BubbleOtherBrush" Color="#32323A" />
                     <SolidColorBrush x:Key="BodyOtherBrush" Color="#EDEDF2" />
                     <SolidColorBrush x:Key="MetaOtherBrush" Color="#8CFFFFFF" />
                     <SolidColorBrush x:Key="AccentBrush" Color="#7FB2E5" />
                     <SolidColorBrush x:Key="QuoteBrush" Color="#18FFFFFF" />
+
+                    <!-- 液态玻璃用到的基色 -->
+                    <Color x:Key="GlassTintColor">#16161C</Color>
+                    <Color x:Key="GlassEdgeColor">#FFFFFF</Color>
+                    <Color x:Key="BubbleSelfColor">#3B7CC4</Color>
+                    <Color x:Key="BubbleOtherColor">#32323A</Color>
+                    <Color x:Key="BubbleOtherEdgeColor">#40FFFFFF</Color>
+
+                    <!-- 玻璃底下那层壁纸 -->
+                    <LinearGradientBrush x:Key="WallpaperBrush" StartPoint="0,0" EndPoint="1,1">
+                        <GradientStop Color="#0B1020" Offset="0" />
+                        <GradientStop Color="#1C1630" Offset="1" />
+                    </LinearGradientBrush>
+                    <Color x:Key="BlobColor1">#5C3B82F6</Color>
+                    <Color x:Key="BlobColor2">#5C8B5CF6</Color>
+                    <Color x:Key="BlobColor3">#4D06B6D4</Color>
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
         </ResourceDictionary>

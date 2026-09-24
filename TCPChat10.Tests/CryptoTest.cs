@@ -147,6 +147,42 @@ public static class CryptoTest
         Check(string.Equals(Path.GetDirectoryName(AppSettings.FilePath), AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase),
               "设置文件默认直接放在程序目录, 不再单独建文件夹");
 
+        Console.WriteLine("=== F3) 液态玻璃设置 (10.3) ===");
+        Check(new AppSettings().GlassEffect, "默认开液态玻璃");
+        Check(new AppSettings().GlassQuality == GlassScale.Default, "默认质量 = " + GlassScale.Default);
+        Check(GlassScale.Clamp(0) == GlassScale.Min && GlassScale.Clamp(99) == GlassScale.Max, "质量档位夹在 1..10");
+        Check(Math.Abs(GlassScale.Strength(GlassScale.Min)) < 1e-9 && Math.Abs(GlassScale.Strength(GlassScale.Max) - 1) < 1e-9,
+              "强度: 1 档 = 0, 10 档 = 1");
+        Check(GlassScale.Strength(3) < GlassScale.Strength(7), "强度随档位单调上升");
+        Check(GlassScale.FrostPercent(GlassScale.Min) < GlassScale.FrostPercent(GlassScale.Max) &&
+              GlassScale.FrostPercent(GlassScale.Min) >= 40 && GlassScale.FrostPercent(GlassScale.Max) <= 100,
+              $"磨砂浓度 {GlassScale.FrostPercent(GlassScale.Min)}% ~ {GlassScale.FrostPercent(GlassScale.Max)}%");
+
+        var tmpDir3 = Path.Combine(Path.GetTempPath(), "tcpchat10_glass_" + Guid.NewGuid().ToString("N")[..6]);
+        Directory.CreateDirectory(tmpDir3);
+        var tmpFile3 = Path.Combine(tmpDir3, "settings.json");
+        var oldEnv3 = Environment.GetEnvironmentVariable("TCPCHAT10_TEST_SETTINGS");
+        try
+        {
+            Environment.SetEnvironmentVariable("TCPCHAT10_TEST_SETTINGS", tmpFile3);
+            new AppSettings { GlassEffect = false, GlassQuality = 3 }.Save();
+            var g1 = AppSettings.Load();
+            Check(!g1.GlassEffect && g1.GlassQuality == 3, "玻璃开关与质量读回来: off / 3");
+
+            File.WriteAllText(tmpFile3, "{\"glassEffect\":true,\"glassQuality\":42}");
+            var g2 = AppSettings.Load();
+            Check(g2.GlassEffect && g2.GlassQuality == GlassScale.Max, "超范围的质量在读取时夹到 " + GlassScale.Max);
+
+            File.WriteAllText(tmpFile3, "{\"glassEffect\":false,\"glassQuality\":-5}");
+            var g3 = AppSettings.Load();
+            Check(!g3.GlassEffect && g3.GlassQuality == GlassScale.Min, "负数的质量在读取时夹到 " + GlassScale.Min);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("TCPCHAT10_TEST_SETTINGS", oldEnv3);
+            try { Directory.Delete(tmpDir3, true); } catch { }
+        }
+
         Console.WriteLine("=== G) 系统字体列表 ===");
         var fonts = FontList.GetInstalledFamilies();
         Check(fonts.Count > 10, "枚举到 " + fonts.Count + " 个字体族");

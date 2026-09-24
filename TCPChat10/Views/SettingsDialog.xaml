@@ -46,6 +46,14 @@
             <TextBlock Text="字体列表来自本机已安装的字体，选完保存即生效并写进设置文件，下次启动照旧。"
                        FontSize="12" Opacity="0.65" TextWrapping="Wrap" />
 
+            <ToggleSwitch x:Name="GlassBox" Header="苹果液态玻璃效果" OnContent="开" OffContent="关"
+                          Toggled="OnGlassToggled" />
+            <Slider x:Name="GlassQualityBox" Header="玻璃质量" Minimum="1" Maximum="10"
+                    StepFrequency="1" TickFrequency="1" TickPlacement="Outside"
+                    ValueChanged="OnGlassQualityChanged" />
+            <TextBlock x:Name="GlassHint" FontSize="12" Opacity="0.65" TextWrapping="Wrap"
+                       Text="打开后顶栏、输入区、状态栏和消息气泡会变成浮在彩色壁纸上的玻璃：半透明磨砂染色 + 上边缘高光 + 圆角悬浮。质量越高磨砂越厚（越朦胧、高光越亮），1 = 几乎全透明最清淡。拖动时主窗口会实时预览，保存后才写进设置文件。" />
+
         </StackPanel>
     </ScrollViewer>
 </ContentDialog>

@@ -18,6 +18,7 @@
     <Compile Include="../TCPChat10/Services/AppSettings.cs" Link="AppSettings.cs" />
     <Compile Include="../TCPChat10/Services/MessageCrypto.cs" Link="MessageCrypto.cs" />
     <Compile Include="../TCPChat10/Services/FontList.cs" Link="FontList.cs" />
+    <Compile Include="../TCPChat10/Services/GlassScale.cs" Link="GlassScale.cs" />
     <Compile Include="../TCPChat10/Models/ChatMessage.cs" Link="ChatMessage.cs" />
   </ItemGroup>
 </Project>

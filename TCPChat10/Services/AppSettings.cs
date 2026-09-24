@@ -26,6 +26,12 @@ public sealed class AppSettings
     /// <summary>端到端加密密码: 收发双方必须完全一致, 留空表示不加密(明文发送)。</summary>
     [JsonPropertyName("cryptoPassword")] public string CryptoPassword { get; set; } = "";
 
+    /// <summary>苹果"液态玻璃"效果开关。</summary>
+    [JsonPropertyName("glassEffect")] public bool GlassEffect { get; set; } = true;
+
+    /// <summary>玻璃质量 1-10(磨砂浓度), 1 = 几乎全透明。</summary>
+    [JsonPropertyName("glassQuality")] public int GlassQuality { get; set; } = GlassScale.Default;
+
     private static string Dir => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TCPChat10");
     private static string LocalFilePath => Path.Combine(Dir, "settings.json");
@@ -85,6 +91,7 @@ public sealed class AppSettings
             ChatFolder = DefaultChatFolder;
         if (PollSeconds < 1) PollSeconds = 3;
         if (HistoryDays < 1) HistoryDays = 7;
+        GlassQuality = GlassScale.Clamp(GlassQuality);
         return this;
     }
 

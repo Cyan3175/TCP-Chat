@@ -6,6 +6,8 @@
 
 **10.5 的变化**：**回车键分工修好**（`Enter` 发送，`Shift+Enter` 与 `Ctrl+Enter` 都是换行 —— 之前 `KeyDown` 收不到 Enter，因为 TextBox 自己先把 Enter 当换行处理掉了，现在改用 `PreviewKeyDown` 隧道事件）；**每收到一条新消息弹一个系统通知并让任务栏图标闪烁**；设置对话框改成**圆角**并跟随主题；修了浅色/深色下的文字可读性问题。**同时删掉了 10.3 / 10.4 的「液态玻璃」整套东西** —— 玻璃面板、彩色壁纸层、Win2D 折射后端、苹果式自绘开关与滑块，以及设置里的玻璃开关 / 质量滑杆 / 实现选择全部移除，界面回到 10.2 那种朴素的不透明面板；程序也不再依赖 Win2D。
 
+**设置文件位置**：`%LOCALAPPDATA%\TCPChat10\settings.json`（系统统一位置）—— 早期 10.2~10.5 曾放在 exe 旁边，现在**不再往 exe 目录写任何东西**；第一次运行时会把 exe 旁边那份老设置自动搬进系统目录并删掉旧文件。
+
 **10.2 的变化**：发布包变成**单个 exe**（不再是一堆文件的文件夹）；消息文件**直接写进你指定的目录**，程序不再自作主张新建文件夹；设置文件**直接放在 exe 旁边**；设置里**去掉了服务器认证（用户名/密码）**。
 
 ---
@@ -17,8 +19,8 @@
 3. 默认连到 `https://dev.zhaohans.cn`，消息目录 `nw集训/学生资料临存`（消息文件就放在这一层，不再建"聊天"子文件夹）
 4. **要保密就点「设置」→「端到端加密」，两边填一模一样的加密密码**
 
-> - 配置文件 `settings.json` 就在 exe 旁边，和 exe 一起拷走即可；如果 exe 所在目录不可写（比如装在 `Program Files`），会自动退回 `%LOCALAPPDATA%\TCPChat10\`。
-> - 从 10.0/10.1 升级：第一次启动会自动把老设置（昵称、字体、加密密码等）搬过来，并把旧的默认目录 `…/学生资料临存/聊天` 改成上一级；老的 `%LOCALAPPDATA%\TCPChat10\` 可以自行删掉。
+> - 配置文件在 **`%LOCALAPPDATA%\TCPChat10\settings.json`**（崩溃日志也在同一个目录），exe 目录里不会再生成任何文件。
+> - 从 10.2~10.5 升级：如果 exe 旁边还留着老的 `settings.json`，第一次启动会**自动搬进系统目录并删掉旧文件**（昵称、主题、字体、加密密码都保留）；从 10.0/10.1 升级则会把旧的默认目录 `…/学生资料临存/聊天` 改成上一级。
 
 ## 它是怎么工作的
 
@@ -86,7 +88,7 @@
 | 主题 | 跟随系统 / 浅色 / 深色 |
 | **字体** | 本机已安装的字体族（约 200 个），第一项是"（系统默认）" |
 
-设置保存在 **exe 同目录的 `settings.json`**（目录不可写时退回 `%LOCALAPPDATA%\TCPChat10\settings.json`）；自测模式（`TCPCHAT10_TEST_SETTINGS`）下读写都指向指定的测试文件，不碰真实设置。
+设置保存在 **`%LOCALAPPDATA%\TCPChat10\settings.json`**（系统统一位置，exe 目录保持干净）；自测模式（`TCPCHAT10_TEST_SETTINGS`）下读写都指向指定的测试文件，不碰真实设置。
 
 ## 目录结构
 
@@ -99,7 +101,7 @@ TCPChat10/
     ChatService.cs         发送、轮询同步、撤回、加解密
     MessageCrypto.cs       AES-256-GCM 信封 + PBKDF2 密钥派生
     FontList.cs            EnumFontFamiliesEx 枚举系统字体
-    AppSettings.cs         设置读写(exe 同目录 settings.json)与老设置迁移
+    AppSettings.cs         设置读写(%LOCALAPPDATA%\TCPChat10)与老设置迁移
   ViewModels/MessageVm.cs  消息的显示模型(气泡/加密锁标记)
   Views/
     MainWindow.xaml(.cs)   主窗口

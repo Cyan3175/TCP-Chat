@@ -144,8 +144,14 @@ public static class CryptoTest
 
         Check(AppSettings.DefaultChatFolder == "nw集训/学生资料临存", "新默认聊天目录就是共享目录本身, 不再带 聊天 子文件夹");
         Check(AppSettings.FilePath.EndsWith("settings.json", StringComparison.OrdinalIgnoreCase), "设置文件名: " + AppSettings.FilePath);
-        Check(string.Equals(Path.GetDirectoryName(AppSettings.FilePath), AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase),
-              "设置文件默认直接放在程序目录, 不再单独建文件夹");
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var expectedDir = Path.Combine(localAppData, "TCPChat10");
+        Check(string.Equals(Path.GetDirectoryName(AppSettings.FilePath), expectedDir, StringComparison.OrdinalIgnoreCase),
+              "设置文件放在系统统一位置: " + AppSettings.FilePath);
+        Check(!AppSettings.FilePath.StartsWith(AppContext.BaseDirectory, StringComparison.OrdinalIgnoreCase),
+              "设置文件不再写在 exe 目录里");
+        Check(string.Equals(AppSettings.DataDir, expectedDir, StringComparison.OrdinalIgnoreCase),
+              "崩溃日志等数据目录也是系统统一位置");
 
         Console.WriteLine("=== G) 系统字体列表 ===");
         var fonts = FontList.GetInstalledFamilies();

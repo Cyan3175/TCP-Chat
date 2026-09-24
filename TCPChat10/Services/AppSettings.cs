@@ -32,7 +32,7 @@ public sealed class AppSettings
 
     /// <summary>
     /// exe 所在目录。注意不能用 AppContext.BaseDirectory: 单文件发布时它指向 %TEMP%\.net 下的解压目录,
-    /// 设置文件必须跟着 exe 走, 所以这里用 ProcessPath。
+    /// 只用来找"老版本留在 exe 旁边的那份设置"做一次性迁移, 新设置不再写到这里。
     /// </summary>
     public static string ExeDir
     {
@@ -45,33 +45,10 @@ public sealed class AppSettings
     }
 
     /// <summary>
-    /// 设置文件直接放在 exe 旁边(绿色版, 拷走整个目录即可), 目录写不了(比如装在 Program Files)
-    /// 才退回 %LOCALAPPDATA%\TCPChat10。
+    /// 设置文件放在系统的统一位置: %LOCALAPPDATA%\TCPChat10\settings.json
+    /// (不往 exe 目录里写东西; 早期 10.2~10.5 放在 exe 旁边的那份会在第一次运行时自动搬过来)
     /// </summary>
-    public static string FilePath
-    {
-        get
-        {
-            var local = Path.Combine(ExeDir, "settings.json");
-            try
-            {
-                if (File.Exists(local))
-                {
-                    using var _ = new FileStream(local, FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite);
-                    return local;
-                }
-                // 文件还不存在: 建个临时文件试写一下再删掉(不留空文件)
-                var probe = local + ".writetest";
-                using (var _ = new FileStream(probe, FileMode.Create, FileAccess.Write, FileShare.None)) { }
-                File.Delete(probe);
-                return local;
-            }
-            catch
-            {
-                return LocalFilePath;
-            }
-        }
-    }
+    public static string FilePath => LocalFilePath;
 
     private static readonly JsonSerializerOptions Opts = new() { WriteIndented = true };
 
@@ -110,15 +87,16 @@ public sealed class AppSettings
                 if (s != null) return s.Normalize();
             }
 
-            // 10.0/10.1 把设置放在 %LOCALAPPDATA%\TCPChat10\settings.json, 10.2 起改放程序目录。
-            // 第一次运行时把老设置搬过来(老文件保留作备份, 万一程序目录以后不可写还能退回去)。
-            if (!string.Equals(path, LocalFilePath, StringComparison.OrdinalIgnoreCase) && File.Exists(LocalFilePath))
+            // 10.2~10.5 早期版本把设置放在 exe 旁边: 第一次运行时搬进系统目录, 搬完把旧文件删掉
+            var legacy = Path.Combine(ExeDir, "settings.json");
+            if (!string.Equals(legacy, path, StringComparison.OrdinalIgnoreCase) && File.Exists(legacy))
             {
-                var old = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(LocalFilePath));
+                var old = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(legacy));
                 if (old != null)
                 {
                     var s = old.Normalize();
-                    s.Save();                      // 写到程序目录(新家)
+                    s.Save();                      // 写进 %LOCALAPPDATA%\TCPChat10\
+                    try { File.Delete(legacy); } catch { }
                     return s;
                 }
             }
@@ -149,15 +127,13 @@ public sealed class AppSettings
         catch { /* 忽略保存失败 */ }
     }
 
-    /// <summary>程序目录(settings.json / crash.log 所在处)。</summary>
+    /// <summary>程序数据目录(settings.json / crash.log 都在这儿, 即 %LOCALAPPDATA%\TCPChat10)。</summary>
     public static string DataDir
     {
         get
         {
-            var dir = Path.GetDirectoryName(FilePath);
-            if (string.IsNullOrEmpty(dir)) dir = Dir;
-            Directory.CreateDirectory(dir);
-            return dir;
+            Directory.CreateDirectory(Dir);
+            return Dir;
         }
     }
 }

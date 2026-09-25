@@ -462,8 +462,16 @@ public static class CryptoTest
             Check(legacyPw.CryptoPasswords.Count == 1 && legacyPw.SendPassword == "老密码", "老设置文件的单密码自动进列表");
             File.WriteAllText(tmpPw, "{\"cryptoPasswords\":[\"p1\",\"p2\"],\"sendPasswordIndex\":9,\"chatFolder\":\"x/y\"}");
             Check(AppSettings.Load().SendPasswordIndex == 1, "越界的默认下标被夹回列表范围");
+            // 11.2: 空项代表"不加密(明文)"这一把, 要保留下来(相同内容只留一个)
             File.WriteAllText(tmpPw, "{\"cryptoPasswords\":[\"\",\"  \"],\"chatFolder\":\"x/y\"}");
-            Check(AppSettings.Load().CryptoPasswords.Count == 0, "空白密码被忽略(等于不加密)");
+            var blank = AppSettings.Load();
+            Check(blank.CryptoPasswords.Count == 1 && blank.SendPassword == "", "空项被保留且去重(发送=不加密)");
+            File.WriteAllText(tmpPw, "{\"cryptoPasswords\":[\"\",\"pw1\"],\"sendPasswordIndex\":0,\"chatFolder\":\"x/y\"}");
+            var plainSend = AppSettings.Load();
+            Check(plainSend.SendPassword == "" && plainSend.DecryptCandidates.Count == 1 && plainSend.DecryptCandidates[0] == "pw1",
+                  "选中空项 = 明文发送, 同时仍能用 pw1 解密老消息");
+            var plainCipher = new MessageCipher(plainSend.DecryptCandidates, 0, "x/y");
+            Check(plainCipher.Enabled && plainCipher.PasswordCount == 1, "明文发送时不再加密, 但解密候选还在: " + plainCipher.PasswordCount);
         }
         finally
         {

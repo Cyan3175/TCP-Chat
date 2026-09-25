@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using TCPChat10.Models;
+using TCPChat10.Rendering;
 using TCPChat10.Services;
 using TCPChat10.ViewModels;
 using Windows.ApplicationModel.DataTransfer;
@@ -37,6 +38,9 @@ public sealed partial class MainWindow : Window
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _recordTimer;
     private readonly MediaPlayer _player = new();
     private MessageVm? _playingVm;
+
+    /// <summary>10.7: 正在等用户去系统设置里打开麦克风开关 —— 回到窗口时自动接着录音。</summary>
+    private bool _waitingMic;
 
     public ObservableCollection<MessageVm> Messages { get; } = new();
 
@@ -83,11 +87,14 @@ public sealed partial class MainWindow : Window
             _playingVm = null;
         });
 
+        // 10.7: 从"麦克风设置"页回到窗口时自动继续(用户不用再点一次语音)
+        this.Activated += OnWindowActivated;
+
         ApplyTheme();
         ApplyFont();
         UpdateLockText();
         MeText.Text = string.IsNullOrWhiteSpace(_settings.Nickname) ? "(未设置昵称)" : "我：" + _settings.Nickname;
-        Title = "TCP Chat 10.6 — " + _settings.ChatFolder;
+        Title = "TCP Chat 10.7 — " + _settings.ChatFolder;
 
         RootLoaded();
 
@@ -144,6 +151,15 @@ public sealed partial class MainWindow : Window
                     var m = await _chat.SendTextAsync(text);
                     if (m != null) { m.IsSelf = true; var lv = new MessageVm(m, _chat); Messages.Add(lv); ScrollToBottom(); }
                     AutoLog("AUTO send -> " + (m != null ? "ok" : "fail"));
+                }
+                else if (a.StartsWith("sendmd:"))
+                {
+                    // sendmd:文件路径 —— 把文件内容(markdown)当成一条消息发出去(多行文本没法塞进脚本)
+                    var text = File.ReadAllText(a[7..].Trim(), System.Text.Encoding.UTF8);
+                    if (string.IsNullOrWhiteSpace(_settings.Nickname)) { _settings.Nickname = "测试用户"; _chat.Nickname = _settings.Nickname; }
+                    var m = await _chat.SendTextAsync(text);
+                    if (m != null) { m.IsSelf = true; Messages.Add(new MessageVm(m, _chat)); ScrollToBottom(); }
+                    AutoLog("AUTO sendmd -> " + (m != null ? "ok " + text.Length + " 字符" : "fail"));
                 }
                 else if (a.StartsWith("sendq:"))
                 {
@@ -303,13 +319,26 @@ public sealed partial class MainWindow : Window
                     ScrollToBottom();
                     AutoLog("AUTO scroll ok");
                 }
+                else if (a.StartsWith("mscroll:"))
+                {
+                    // 把消息列表滚到指定比例(0=最上面 1=最下面), 便于截图核对长消息
+                    var frac = Math.Clamp(double.Parse(a[8..]), 0, 1);
+                    if (FindScrollViewer(MessageList) is ScrollViewer sv)
+                    {
+                        sv.ChangeView(null, sv.ScrollableHeight * frac, null, true);
+                        await Task.Delay(500);
+                        AutoLog($"AUTO mscroll {frac:F2} -> ok (可滚 {sv.ScrollableHeight:F0} px)");
+                    }
+                    else AutoLog("AUTO mscroll -> 没找到 ScrollViewer");
+                }
                 else if (a.StartsWith("shot:"))
                 {
                     var path = a[5..];
                     await Task.Delay(900);         // 等一帧布局完成
                     AutoLog($"诊断: Messages={Messages.Count} ListItems={MessageList.Items.Count} " +
                             $"字体={MessageList.FontFamily?.Source ?? "(默认)"} " +
-                            $"ListView H={MessageList.ActualHeight:F0} W={MessageList.ActualWidth:F0}");
+                            $"ListView H={MessageList.ActualHeight:F0} W={MessageList.ActualWidth:F0} " +
+                            MicPermission.Diag);
                     var ok = await CaptureAsync(path);
                     AutoLog("AUTO shot -> " + (ok ? "ok " + path : "fail"));
                 }
@@ -317,6 +346,17 @@ public sealed partial class MainWindow : Window
                 {
                     AutoLog("AUTO " + a[4..] + $"  [底栏={FooterText.Text}] [消息数={Messages.Count} 加密={(_chat.EncryptionEnabled ? "开" : "关")} " +
                             $"解不开={_chat.UndecryptableCount} 输入框焦点={InputBox.FocusState} 文本=[{InputBox.Text.Replace("\r", "/")}]]");
+                }
+                else if (a == "mic")
+                {
+                    var allowed = await MicPermission.EnsureAsync();
+                    AutoLog("AUTO mic -> " + (allowed ? "有权限" : "没有权限") + " [" + MicPermission.Diag + "]");
+                }
+                else if (a == "voice")
+                {
+                    OnVoiceClick(BtnVoice, new RoutedEventArgs());
+                    await Task.Delay(1200);
+                    AutoLog("AUTO voice -> 录音中=" + _recording + " 按钮=" + BtnVoice.Content);
                 }
                 else if (a == "quit")
                 {
@@ -437,6 +477,7 @@ public sealed partial class MainWindow : Window
                 XamlRoot = Content.XamlRoot,
             };
             ApplyThemeTo(dlg);
+            ApplyFontTo(dlg);
             var r = await dlg.ShowAsync();
             if (r == ContentDialogResult.Primary) RootLoaded();
             else await ShowSettingsAsync();
@@ -502,7 +543,11 @@ public sealed partial class MainWindow : Window
             // 别人刚发来的消息: 弹系统通知 + 任务栏闪一下(历史消息、自己发的不打扰)
             if (!m.IsSelf && DateTimeOffset.UtcNow - m.Time < TimeSpan.FromMinutes(2))
             {
-                var body = m.DecryptFailed ? "🔒 无法解密：加密密码与发送方不一致" : m.Text;
+                // 通知里显示纯文本(去掉 ** 之类的标记), 太长就截断
+                var body = m.DecryptFailed
+                    ? "🔒 无法解密：加密密码与发送方不一致"
+                    : MarkdownParser.ToPlainText(m.Text);
+                if (body.Length > 160) body = body[..160] + "…";
                 MessageNotifier.Notify(m.From, body);
                 MessageNotifier.FlashTaskbar(_hwnd);
             }
@@ -655,6 +700,7 @@ public sealed partial class MainWindow : Window
     private async void OnVoiceClick(object sender, RoutedEventArgs e)
     {
         if (_recording) { await StopRecordingAsync(); return; }
+        _waitingMic = false;
 
         if (string.IsNullOrWhiteSpace(_settings.Nickname))
         {
@@ -662,6 +708,83 @@ public sealed partial class MainWindow : Window
             if (string.IsNullOrWhiteSpace(_settings.Nickname)) return;
         }
 
+        // 10.7: 先自动确认麦克风权限 —— 没权限就把用户送到系统设置页, 回来自动继续
+        if (!await EnsureMicAsync()) return;
+
+        await StartRecordingAsync();
+    }
+
+    /// <summary>从麦克风设置页回到窗口: 有权限就直接开始录音。</summary>
+    private async void OnWindowActivated(object sender, WindowActivatedEventArgs e)
+    {
+        if (!_waitingMic || e.WindowActivationState == WindowActivationState.Deactivated) return;
+
+        await Task.Delay(500);      // 设置写入有一点点延迟
+        if (await MicPermission.EnsureAsync())
+        {
+            _waitingMic = false;
+            AutoLog("AUTO mic -> 权限已开启, 自动开始录音");
+            SetFooter("麦克风权限已打开，开始录音…");
+            await StartRecordingAsync();
+        }
+        else
+        {
+            _waitingMic = false;
+            SetFooter("仍然没有麦克风权限：" + MicPermission.StatusText +
+                      "（设置 → 隐私和安全性 → 麦克风 → 让桌面应用访问你的麦克风）");
+        }
+    }
+
+    /// <summary>
+    /// 录音前确认麦克风权限。非打包程序没有系统弹窗, 只有"让桌面应用访问你的麦克风"这个总开关,
+    /// 所以这里直接帮用户把那个设置页打开(10.7)。
+    /// </summary>
+    private async Task<bool> EnsureMicAsync()
+    {
+        if (await MicPermission.EnsureAsync()) return true;
+        AutoLog("AUTO mic " + MicPermission.Diag);
+
+        bool denied = MicPermission.Status == "Denied";
+        var dlg = new ContentDialog
+        {
+            Title = denied ? "需要麦克风权限" : "打不开麦克风",
+            Content = denied
+                ? "Windows 还没有允许本程序使用麦克风。\n\n" +
+                  "点「打开设置」，把「让桌面应用访问你的麦克风」打开；" +
+                  "回到本窗口后会自动开始录音，不用再点一次。"
+                : "没有找到可用的麦克风，或者它正被别的程序占用。\n\n状态：" + MicPermission.StatusText,
+            PrimaryButtonText = denied ? "打开设置" : "重试",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = Content.XamlRoot,
+        };
+        ApplyThemeTo(dlg);
+        ApplyFontTo(dlg);
+
+        ContentDialogResult r;
+        try { r = await dlg.ShowAsync(); }
+        catch { return false; }
+        if (r != ContentDialogResult.Primary) return false;
+
+        if (!denied) return await MicPermission.EnsureAsync();
+
+        if (await MicPermission.OpenSettingsAsync())
+        {
+            _waitingMic = true;
+            SetFooter("已打开系统的麦克风设置：打开开关后回到本窗口会自动继续");
+            await Task.Delay(700);
+            if (await MicPermission.EnsureAsync()) { _waitingMic = false; return true; }
+        }
+        else
+        {
+            SetFooter("⚠ 打不开系统设置页，请手动到 设置 → 隐私和安全性 → 麦克风 里允许桌面应用");
+        }
+        return false;
+    }
+
+    /// <summary>真正开始录音(权限已经确认过了)。</summary>
+    private async Task StartRecordingAsync()
+    {
         try
         {
             _capture = new MediaCapture();
@@ -695,7 +818,8 @@ public sealed partial class MainWindow : Window
             BtnVoice.Content = "🎤 语音";
             try { _capture?.Dispose(); } catch { }
             _capture = null;
-            SetFooter("⚠ 录音打不开(检查麦克风权限/设备): " + ex.Message);
+            SetFooter("⚠ 录音打不开: " + ex.Message +
+                        "（设置 → 隐私和安全性 → 麦克风 → 让桌面应用访问你的麦克风）");
         }
     }
 
@@ -843,7 +967,8 @@ public sealed partial class MainWindow : Window
         var miQuote = new MenuFlyoutItem { Text = "引用", Icon = new FontIcon { Glyph = "\uE8BD" } };
         miQuote.Click += (_, _) =>
         {
-            _quoteText = vm.BodyText.Length > 120 ? vm.BodyText[..120] + "…" : vm.BodyText;
+            var quoted = MarkdownParser.ToPlainText(vm.BodyText);      // 引用进去的是纯文本, 免得标记符号又露出来
+            _quoteText = quoted.Length > 120 ? quoted[..120] + "…" : quoted;
             InputBox.Text = "> " + _quoteText + "\n" + InputBox.Text;
             InputBox.Focus(FocusState.Programmatic);
             SetFooter("已引用，可继续输入");
@@ -873,9 +998,9 @@ public sealed partial class MainWindow : Window
             flyout.Items.Add(miDel);
         }
 
-        // 菜单是弹出层, 不继承窗口主题, 逐项上主题(免得深色下弹出一片白)
+        // 菜单是弹出层, 不继承窗口主题和字体, 逐项刷(免得深色下弹出一片白 + 字体不一致)
         foreach (var item in flyout.Items)
-            if (item is FrameworkElement fe) ApplyThemeTo(fe);
+            if (item is FrameworkElement fe) { ApplyThemeTo(fe); ApplyFontTo(fe); }
 
         return flyout;
     }
@@ -908,6 +1033,7 @@ public sealed partial class MainWindow : Window
             XamlRoot = Content.XamlRoot,
         };
         ApplyThemeTo(dlg);
+        ApplyFontTo(dlg);
         var r = await dlg.ShowAsync();
         if (r == ContentDialogResult.Primary)
         {
@@ -932,6 +1058,8 @@ public sealed partial class MainWindow : Window
         var oldFont = _settings.FontFamily;
 
         var dlg = new SettingsDialog(_settings) { XamlRoot = Content.XamlRoot };
+        ApplyThemeTo(dlg);
+        ApplyFontTo(dlg);
         ContentDialogResult r;
         try
         {
@@ -962,6 +1090,7 @@ public sealed partial class MainWindow : Window
                 XamlRoot = Content.XamlRoot,
             };
             ApplyThemeTo(dlg2);
+            ApplyFontTo(dlg2);
             try { await dlg2.ShowAsync(); } catch { }
             return;
         }
@@ -1005,6 +1134,14 @@ public sealed partial class MainWindow : Window
     {
         ThemeLookup.Current = CurrentTheme;
         if (Content is FrameworkElement root) root.RequestedTheme = CurrentTheme;
+        RefreshBodies();          // 气泡里的 markdown 颜色是算好的, 换主题要重建
+    }
+
+    /// <summary>主题或字体变了: 让所有气泡重画一次正文。</summary>
+    private void RefreshBodies()
+    {
+        MarkdownStyles.Invalidate();
+        foreach (var vm in Messages) vm.InvalidateBody();
     }
 
     /// <summary>
@@ -1013,16 +1150,23 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private void ApplyThemeTo(FrameworkElement popup) => popup.RequestedTheme = CurrentTheme;
 
-    /// <summary>把设置里的字体应用到消息列表与输入框(留空 = 系统默认字体)。</summary>
+    /// <summary>
+    /// 把设置里的字体应用到所有界面(10.7)。以前只设了消息列表/输入框/状态栏,
+    /// 顶栏、按钮、右键菜单、对话框还是系统字体。
+    /// </summary>
     private void ApplyFont()
     {
-        var family = string.IsNullOrWhiteSpace(_settings.FontFamily)
-            ? FontFamily.XamlAutoFontFamily
-            : new FontFamily(_settings.FontFamily);
-        MessageList.FontFamily = family;
-        InputBox.FontFamily = family;
-        FooterText.FontFamily = family;
+        UiFont.Use(_settings.FontFamily);
+        MessageList.FontFamily = UiFont.Family;
+        InputBox.FontFamily = UiFont.Family;
+        FooterText.FontFamily = UiFont.Family;
+        if (Content is FrameworkElement root) UiFont.Apply(root);
+        RefreshBodies();          // 代码块/行内代码的等宽字体也在这儿重建
+        UpdateFooter();           // 字体没装的话, UpdateFooter 会把它挂在底栏
     }
+
+    /// <summary>弹出层(对话框/菜单)不继承窗口字体, 单独刷一遍。</summary>
+    private static void ApplyFontTo(FrameworkElement popup) => UiFont.ApplyTo(popup);
 
     // ---------- 界面辅助 ----------
 
@@ -1054,9 +1198,14 @@ public sealed partial class MainWindow : Window
     {
         var bad = _chat.UndecryptableCount;
         var syncTime = _chat.LastSyncTime?.ToString("HH:mm:ss") ?? "尚未同步";
-        FooterText.Text = string.Format("共 {0} 条消息  ·  每 {1} 秒同步  ·  最近同步 {2}  ·  {3}  ·  {4}{5}",
+        // 字体没装的话一直挂在这儿(只在设置里提示一次容易被之后的同步状态覆盖掉)
+        var fontNote = UiFont.MissingFont.Length > 0
+            ? "  ·  ⚠ 字体「" + UiFont.MissingFont + "」本机没有，已用系统默认"
+            : "";
+        FooterText.Text = string.Format("共 {0} 条消息  ·  每 {1} 秒同步  ·  最近同步 {2}  ·  {3}  ·  {4}{5}{6}",
             Messages.Count, _chat.PollSeconds, syncTime, _settings.ChatFolder,
             _chat.EncryptionEnabled ? "已加密" : "未加密",
-            bad > 0 ? "  ·  ⚠ " + bad + " 条无法解密（密码不一致）" : "");
+            bad > 0 ? "  ·  ⚠ " + bad + " 条无法解密（密码不一致）" : "",
+            fontNote);
     }
 }

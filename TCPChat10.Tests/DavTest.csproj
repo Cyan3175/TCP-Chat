@@ -19,5 +19,11 @@
     <Compile Include="../TCPChat10/Services/MessageCrypto.cs" Link="MessageCrypto.cs" />
     <Compile Include="../TCPChat10/Services/FontList.cs" Link="FontList.cs" />
     <Compile Include="../TCPChat10/Models/ChatMessage.cs" Link="ChatMessage.cs" />
+    <Compile Include="../TCPChat10/Rendering/MarkdownModel.cs" Link="MarkdownModel.cs" />
+    <Compile Include="../TCPChat10/Rendering/MarkdownParser.cs" Link="MarkdownParser.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Markdig" Version="1.4.0" />
   </ItemGroup>
 </Project>

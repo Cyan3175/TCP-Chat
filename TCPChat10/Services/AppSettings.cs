@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 
 namespace TCPChat10.Services;
 
-/// <summary>本地设置, 保存在 exe 同目录的 settings.json(目录不可写时退回 %LOCALAPPDATA%\TCPChat10)。</summary>
+/// <summary>本地设置, 保存在 %LOCALAPPDATA%\TCPChat\settings.json。</summary>
 public sealed class AppSettings
 {
     /// <summary>共享目录里直接放消息文件, 不再另建"聊天"子文件夹。</summary>
@@ -26,8 +26,29 @@ public sealed class AppSettings
     /// <summary>端到端加密密码: 收发双方必须完全一致, 留空表示不加密(明文发送)。</summary>
     [JsonPropertyName("cryptoPassword")] public string CryptoPassword { get; set; } = "";
 
-    private static string Dir => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TCPChat10");
+    /// <summary>数据目录名。10.7 起用 TCPChat(之前叫 TCPChat10)。</summary>
+    private const string DirName = "TCPChat";
+
+    /// <summary>10.0~10.6 用的老目录名, 第一次运行时搬过来。</summary>
+    private const string LegacyDirName = "TCPChat10";
+
+    // 测试钩子: 让单元测试在临时目录里演练"搬目录", 不碰真实用户配置
+    private static string? TestDirOverride => Environment.GetEnvironmentVariable("TCPCHAT10_TEST_DATADIR");
+    private static string? TestLegacyDirOverride => Environment.GetEnvironmentVariable("TCPCHAT10_TEST_LEGACYDIR");
+
+    private static string LocalAppData =>
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+
+    /// <summary>%LOCALAPPDATA%\TCPChat(测试时可用 TCPCHAT10_TEST_DATADIR 指到别处)。</summary>
+    internal static string Dir => TestDirOverride is { Length: > 0 } t
+        ? t
+        : Path.Combine(LocalAppData, DirName);
+
+    /// <summary>10.6 及更早的 %LOCALAPPDATA%\TCPChat10。</summary>
+    internal static string LegacyDir => TestLegacyDirOverride is { Length: > 0 } t
+        ? t
+        : Path.Combine(LocalAppData, LegacyDirName);
+
     private static string LocalFilePath => Path.Combine(Dir, "settings.json");
 
     /// <summary>
@@ -45,10 +66,58 @@ public sealed class AppSettings
     }
 
     /// <summary>
-    /// 设置文件放在系统的统一位置: %LOCALAPPDATA%\TCPChat10\settings.json
-    /// (不往 exe 目录里写东西; 早期 10.2~10.5 放在 exe 旁边的那份会在第一次运行时自动搬过来)
+    /// 设置文件放在系统的统一位置: %LOCALAPPDATA%\TCPChat\settings.json
+    /// (不往 exe 目录里写东西; 10.2~10.5 放在 exe 旁边的那份, 以及 10.6 的 TCPChat10 目录,
+    ///  都会在第一次运行时自动搬过来)
     /// </summary>
     public static string FilePath => LocalFilePath;
+
+    private static bool _migrated;
+
+    /// <summary>单元测试用: 允许重复演练"搬目录"(正式运行一个进程只搬一次)。</summary>
+    internal static void ResetMigrationForTests() => _migrated = false;
+
+    /// <summary>
+    /// 10.7: 数据目录从 %LOCALAPPDATA%\TCPChat10 改成 %LOCALAPPDATA%\TCPChat。
+    /// 第一次运行时把老的 settings.json 和附件缓存搬过来, 老目录能删就删掉(不破坏用户数据)。
+    /// </summary>
+    internal static void MigrateLegacyDataDir()
+    {
+        if (_migrated) return;
+        _migrated = true;
+        try
+        {
+            var oldDir = LegacyDir;
+            var newDir = Dir;
+            if (string.Equals(oldDir, newDir, StringComparison.OrdinalIgnoreCase)) return;
+            if (!Directory.Exists(oldDir)) return;
+
+            Directory.CreateDirectory(newDir);
+
+            // 设置文件: 新目录里还没有才搬(新目录里的永远优先)
+            var oldSettings = Path.Combine(oldDir, "settings.json");
+            var newSettings = Path.Combine(newDir, "settings.json");
+            if (File.Exists(oldSettings) && !File.Exists(newSettings))
+                File.Copy(oldSettings, newSettings, overwrite: false);
+
+            // 附件/语音缓存: 同名文件不覆盖
+            var oldCache = Path.Combine(oldDir, "cache");
+            var newCache = Path.Combine(newDir, "cache");
+            if (Directory.Exists(oldCache))
+            {
+                Directory.CreateDirectory(newCache);
+                foreach (var f in Directory.EnumerateFiles(oldCache))
+                {
+                    var dest = Path.Combine(newCache, Path.GetFileName(f));
+                    if (!File.Exists(dest)) { try { File.Copy(f, dest, overwrite: false); } catch { } }
+                }
+            }
+
+            // 老目录里已经没有我们需要的东西了, 删掉(失败也无所谓, 不影响使用)
+            try { Directory.Delete(oldDir, recursive: true); } catch { }
+        }
+        catch { /* 迁移失败就继续用老目录里的东西也能跑(会重新存到新目录) */ }
+    }
 
     private static readonly JsonSerializerOptions Opts = new() { WriteIndented = true };
 
@@ -67,6 +136,8 @@ public sealed class AppSettings
 
     public static AppSettings Load()
     {
+        MigrateLegacyDataDir();
+
         // 测试钩子: 用独立配置文件, 避免污染真实设置
         var overridePath = Environment.GetEnvironmentVariable("TCPCHAT10_TEST_SETTINGS");
         if (!string.IsNullOrWhiteSpace(overridePath) && File.Exists(overridePath))
@@ -95,7 +166,7 @@ public sealed class AppSettings
                 if (old != null)
                 {
                     var s = old.Normalize();
-                    s.Save();                      // 写进 %LOCALAPPDATA%\TCPChat10\
+                    s.Save();                      // 写进 %LOCALAPPDATA%\TCPChat\
                     try { File.Delete(legacy); } catch { }
                     return s;
                 }
@@ -138,11 +209,12 @@ public sealed class AppSettings
         }
     }
 
-    /// <summary>程序数据目录(settings.json / crash.log 都在这儿, 即 %LOCALAPPDATA%\TCPChat10)。</summary>
+    /// <summary>程序数据目录(settings.json / crash.log 都在这儿, 即 %LOCALAPPDATA%\TCPChat)。</summary>
     public static string DataDir
     {
         get
         {
+            MigrateLegacyDataDir();
             Directory.CreateDirectory(Dir);
             return Dir;
         }

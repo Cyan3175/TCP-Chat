@@ -3,7 +3,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:vm="using:TCPChat10.ViewModels"
-    Title="TCP Chat 10.6">
+    Title="TCP Chat 10.7">
 
     <Grid Background="{ThemeResource PageBrush}">
         <Grid.RowDefinitions>
@@ -23,7 +23,7 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <TextBlock Text="TCP Chat 10.6" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <TextBlock Text="TCP Chat 10.7" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                     <Ellipse x:Name="StatusDot" Width="9" Height="9" Fill="#9AA0A6" VerticalAlignment="Center" />
@@ -131,9 +131,9 @@
                                         </StackPanel>
                                     </Border>
 
-                                    <TextBlock Text="{x:Bind BodyText}" Visibility="{x:Bind HasBody}"
-                                               TextWrapping="Wrap" FontSize="14" IsTextSelectionEnabled="True"
-                                               Foreground="{x:Bind BodyBrush}" />
+                                    <!-- 正文: 交给 markdown 渲染器(纯文本时就是一个 TextBlock) -->
+                                    <ContentPresenter Content="{x:Bind Body, Mode=OneWay}"
+                                                      Visibility="{x:Bind HasBody}" />
                                 </StackPanel>
                             </Border>
                         </StackPanel>

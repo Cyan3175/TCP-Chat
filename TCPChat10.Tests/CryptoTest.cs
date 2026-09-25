@@ -1,4 +1,7 @@
+using System.Text;
 using System.Text.Json;
+using Markdig;
+using TCPChat10.Rendering;
 using TCPChat10.Services;
 
 /// <summary>离线单元测试: 加密往返 / 密码一致性 / 密文完整性 / 设置持久化 / 字体列表。</summary>
@@ -145,13 +148,57 @@ public static class CryptoTest
         Check(AppSettings.DefaultChatFolder == "nw集训/学生资料临存", "新默认聊天目录就是共享目录本身, 不再带 聊天 子文件夹");
         Check(AppSettings.FilePath.EndsWith("settings.json", StringComparison.OrdinalIgnoreCase), "设置文件名: " + AppSettings.FilePath);
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        var expectedDir = Path.Combine(localAppData, "TCPChat10");
+        var expectedDir = Path.Combine(localAppData, "TCPChat");
         Check(string.Equals(Path.GetDirectoryName(AppSettings.FilePath), expectedDir, StringComparison.OrdinalIgnoreCase),
               "设置文件放在系统统一位置: " + AppSettings.FilePath);
         Check(!AppSettings.FilePath.StartsWith(AppContext.BaseDirectory, StringComparison.OrdinalIgnoreCase),
               "设置文件不再写在 exe 目录里");
         Check(string.Equals(AppSettings.DataDir, expectedDir, StringComparison.OrdinalIgnoreCase),
               "崩溃日志等数据目录也是系统统一位置");
+        Check(Path.GetFileName(expectedDir) == "TCPChat" && !expectedDir.EndsWith("TCPChat10", StringComparison.Ordinal),
+              "10.7 起目录名是 TCPChat(不是 TCPChat10)");
+
+        Console.WriteLine("=== J) 老数据目录 TCPChat10 -> TCPChat 搬迁 (10.7) ===");
+        var oldTestData = Environment.GetEnvironmentVariable("TCPCHAT10_TEST_DATADIR");
+        var oldTestLegacy = Environment.GetEnvironmentVariable("TCPCHAT10_TEST_LEGACYDIR");
+        var moveRoot = Path.Combine(Path.GetTempPath(), "tcpchat107_" + Guid.NewGuid().ToString("N")[..6]);
+        var fakeOld = Path.Combine(moveRoot, "TCPChat10");
+        var fakeNew = Path.Combine(moveRoot, "TCPChat");
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(fakeOld, "cache"));
+            File.WriteAllText(Path.Combine(fakeOld, "settings.json"),
+                "{\"serverUrl\":\"https://dev.zhaohans.cn\",\"chatFolder\":\"a/b\",\"nickname\":\"迁移测试\"}");
+            File.WriteAllBytes(Path.Combine(fakeOld, "cache", "att_9_x.png"), new byte[] { 1, 2, 3, 4 });
+            File.WriteAllText(Path.Combine(fakeOld, "crash.log"), "老的崩溃日志");
+
+            Environment.SetEnvironmentVariable("TCPCHAT10_TEST_DATADIR", fakeNew);
+            Environment.SetEnvironmentVariable("TCPCHAT10_TEST_LEGACYDIR", fakeOld);
+            AppSettings.ResetMigrationForTests();
+
+            var moved = AppSettings.Load();
+            Check(moved.Nickname == "迁移测试", "老目录里的设置搬过来了: " + moved.Nickname);
+            Check(File.Exists(Path.Combine(fakeNew, "settings.json")), "新目录里有 settings.json");
+            Check(File.Exists(Path.Combine(fakeNew, "cache", "att_9_x.png")), "附件缓存一起搬过来");
+            Check(!Directory.Exists(fakeOld), "老 TCPChat10 目录已清理掉");
+            Check(string.Equals(Path.GetDirectoryName(AppSettings.FilePath), fakeNew, StringComparison.OrdinalIgnoreCase),
+                  "迁移后 Path 指向新目录: " + AppSettings.FilePath);
+
+            // 新目录里已经有设置时, 老目录不覆盖它
+            Directory.CreateDirectory(Path.Combine(fakeOld, "cache"));
+            File.WriteAllText(Path.Combine(fakeOld, "settings.json"), "{\"nickname\":\"老名字\"}");
+            File.WriteAllText(Path.Combine(fakeNew, "settings.json"), "{\"nickname\":\"新名字\",\"chatFolder\":\"a/b\"}");
+            AppSettings.ResetMigrationForTests();
+            var kept = AppSettings.Load();
+            Check(kept.Nickname == "新名字", "新目录已有设置时不被老目录覆盖: " + kept.Nickname);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("TCPCHAT10_TEST_DATADIR", oldTestData);
+            Environment.SetEnvironmentVariable("TCPCHAT10_TEST_LEGACYDIR", oldTestLegacy);
+            AppSettings.ResetMigrationForTests();
+            try { Directory.Delete(moveRoot, true); } catch { }
+        }
 
         Console.WriteLine("=== I) 附件与语音 (10.6) ===");
         var fileKey = MessageCrypto.DeriveKey("附件密码", "目录A");
@@ -193,6 +240,8 @@ public static class CryptoTest
         Check(fonts.Distinct(StringComparer.OrdinalIgnoreCase).Count() == fonts.Count, "字体名不重复");
         Check(fonts.Contains("Arial", StringComparer.OrdinalIgnoreCase), "包含常见字体 Arial");
         Console.WriteLine("      前几个: " + string.Join(" / ", fonts.Take(8)));
+        Console.WriteLine("      含 得意黑: " + fonts.Contains("得意黑") + " / 含 KaiTi: " +
+            fonts.Any(f => f.Contains("KaiTi", StringComparison.OrdinalIgnoreCase)) + " / 含 楷体: " + fonts.Contains("楷体"));
         Check(FontList.Exists("Arial"), "FontList.Exists(Arial) = true");
         Check(!FontList.Exists("这个字体肯定不存在12345"), "FontList.Exists(不存在的字体) = false");
         Check(!FontList.Exists(""), "空字体名视为不存在(回退系统默认)");
@@ -214,6 +263,135 @@ public static class CryptoTest
         var lt = JsonSerializer.Deserialize<TCPChat10.Models.ChatMessage>(legacyText);
         Check(lt != null && lt.Text == "老版本的明文消息" && lt.Quote == "被引用的那句" && !lt.IsEncrypted,
               "10.0 的明文消息照常读取");
+
+
+        Console.WriteLine("=== K) Markdown 解析 (10.7) ===");
+        const string TICK = "\u0060";   // C# 里 \u0060 就是反引号
+        var md = string.Join("\n", new[]
+        {
+            "# 标题一",
+            "",
+            "**粗体** *斜体* ~~删除~~ " + TICK + "代码" + TICK + " [链接](https://example.com) :smile:",
+            "",
+            "- [x] 做完的",
+            "- [ ] 没做的",
+            "",
+            "1. 第一",
+            "2. 第二",
+            "",
+            "| 左 | 中 | 右 |",
+            "|:---|:---:|---:|",
+            "| a | b | c |",
+            "",
+            "> 引用一句",
+            "",
+            "> [!WARNING]",
+            "> 注意安全",
+            "",
+            "~~~cs",
+            "var x = 1; // 注释",
+            "~~~",
+            "",
+            "---",
+            "",
+            "H~2~O x^2^ $e=mc^2$",
+            "",
+            "脚注[^1]",
+            "",
+            "[^1]: 脚注内容",
+            "",
+            "自动链接 <https://auto.link>",
+            "",
+            "普通一行",
+            "换行也是换行",
+        });
+        var doc = MarkdownParser.Parse(md);
+
+        static string TextOf(IEnumerable<MdInline> xs)
+        {
+            var sb = new StringBuilder();
+            foreach (var x in xs)
+            {
+                switch (x)
+                {
+                    case MdText t: sb.Append(t.Text); break;
+                    case MdCodeSpan c: sb.Append(c.Text); break;
+                    case MdStyle s: sb.Append(TextOf(s.Children)); break;
+                    case MdLink l: sb.Append(TextOf(l.Children)); break;
+                    case MdImage i: sb.Append(i.Alt); break;
+                    case MdMathSpan m: sb.Append(m.Text); break;
+                    case MdBreak: sb.Append('\n'); break;
+                }
+            }
+            return sb.ToString();
+        }
+        static bool Has<T>(IEnumerable<MdInline> xs) where T : MdInline => xs.Any(x => x is T
+            || (x is MdStyle s && Has<T>(s.Children))
+            || (x is MdLink l && Has<T>(l.Children)));
+
+        var h1 = doc.Blocks.OfType<MdHeading>().FirstOrDefault(h => h.Level == 1);
+        Check(h1 != null && TextOf(h1.Inlines) == "标题一", "一级标题");
+        var rich = doc.Blocks.OfType<MdParagraph>().First();
+        Check(Has<MdStyle>(rich.Inlines), "粗体/斜体/删除线解析成样式");
+        Check(rich.Inlines.OfType<MdStyle>().Any(s => s.Kind == MdStyleKind.Bold), "**粗体** -> Bold");
+        Check(rich.Inlines.OfType<MdStyle>().Any(s => s.Kind == MdStyleKind.Italic), "*斜体* -> Italic");
+        Check(rich.Inlines.OfType<MdStyle>().Any(s => s.Kind == MdStyleKind.Strike), "~~删除~~ -> Strike");
+        Check(Has<MdCodeSpan>(rich.Inlines), "行内代码");
+        var link = rich.Inlines.OfType<MdLink>().FirstOrDefault();
+        Check(link?.Url == "https://example.com", "[链接](url) -> " + link?.Url);
+        Check(TextOf(rich.Inlines).Contains("\U0001F604"), ":smile: -> 😄");
+        Check(!TextOf(rich.Inlines).Contains(":smile:"), "短代码 :smile: 不再原样显示出来");
+        Check(MarkdownParser.LastError == null, "解析没有走兜底路径");
+
+        var tasks = doc.Blocks.OfType<MdList>().FirstOrDefault(l => l.Items.Any(i => i.IsTask));
+        Check(tasks != null && tasks.Items.Count == 2, "任务列表两项");
+        Check(tasks!.Items[0].Checked && !tasks.Items[1].Checked, "- [x] / - [ ] 勾选状态正确");
+        var ordered = doc.Blocks.OfType<MdList>().FirstOrDefault(l => l.Ordered);
+        Check(ordered != null && ordered.Start == 1 && ordered.Items.Count == 2, "有序列表 1. 2.");
+
+        var table = doc.Blocks.OfType<MdTable>().FirstOrDefault();
+        Check(table != null && table.Headers.Count == 3 && table.Rows.Count == 1, "表格 3 列 1 行");
+        Check(table!.Headers[0].Align == "Left" && table.Headers[1].Align == "Center" && table.Headers[2].Align == "Right",
+              "表格对齐 :--- / :---: / ---:");
+        Check(TextOf(table.Rows[0][2].Inlines) == "c", "表格单元格内容");
+
+        var quotes = doc.Blocks.OfType<MdQuote>().ToList();
+        Check(quotes.Count >= 2, "引用块解析");
+        Check(quotes.Any(q => q.Alert == "WARNING"), "> [!WARNING] 提示块");
+
+        var code = doc.Blocks.OfType<MdCodeBlock>().FirstOrDefault();
+        Check(code?.Language == "cs" && code.Code.Contains("var x = 1;"), "围栏代码块 + 语言: " + code?.Language);
+        Check(doc.Blocks.OfType<MdRule>().Any(), "--- 分割线");
+
+        var sub = doc.Blocks.OfType<MdParagraph>().FirstOrDefault(p => Has<MdStyle>(p.Inlines) && TextOf(p.Inlines).Contains("H2O"));
+        Check(sub != null && sub.Inlines.OfType<MdStyle>().Any(s => s.Kind == MdStyleKind.Sub), "H~2~O -> 下标");
+        Check(sub!.Inlines.OfType<MdStyle>().Any(s => s.Kind == MdStyleKind.Sup), "x^2^ -> 上标");
+        Check(Has<MdMathSpan>(sub.Inlines), "$e=mc^2$ -> 行内公式");
+
+        Check(doc.Blocks.OfType<MdParagraph>().SelectMany(p => p.Inlines).Any(i => i is MdFootnoteRef), "脚注引用 [^1]");
+        var notes = doc.Blocks.OfType<MdFootnotes>().FirstOrDefault();
+        Check(notes != null && notes.Items.Count == 1 && TextOf(notes.Items[0].Blocks.OfType<MdParagraph>().First().Inlines) == "脚注内容",
+              "脚注内容归到文末");
+
+        var auto = doc.Blocks.OfType<MdParagraph>().SelectMany(p => p.Inlines).OfType<MdLink>().FirstOrDefault(l => l.Url.Contains("auto.link"));
+        Check(auto != null, "<https://auto.link> -> 链接");
+        var last = doc.Blocks.OfType<MdParagraph>().Last();
+        Check(TextOf(last.Inlines).Contains("\n"), "聊天里单个换行 -> 换行(不当软换行吞掉)");
+
+        Check(MarkdownParser.ToPlainText("**粗**\u4f53") == "粗体", "通知用纯文本: " + MarkdownParser.ToPlainText("**粗**\u4f53"));
+        Check(MarkdownParser.ToPlainText("# 标题\n正文") == "标题\n正文", "纯文本保留换行");
+
+        Check(!MarkdownParser.HasMarkup("今天下午三点开会，记得带材料"), "纯文本走快路径");
+        Check(!MarkdownParser.HasMarkup("a - b = c"), "减号不当列表");
+        Check(MarkdownParser.HasMarkup("**加粗**"), "有标记 -> 走解析器");
+        Check(MarkdownParser.HasMarkup("- 列表"), "行首减号 -> 列表");
+        Check(MarkdownParser.HasMarkup("1. 有序"), "行首数字点 -> 有序列表");
+        Check(MarkdownParser.HasMarkup("看这个 https://a.example.com/x?y=1"), "裸网址 -> 自动链接");
+        Check(MarkdownParser.HasMarkup("> 引用"), "行首大于号 -> 引用");
+        Check(!MarkdownParser.HasMarkup("1.5 倍"), "1.5 不当有序列表");
+
+        Check(MarkdownParser.Parse("").Blocks.Count == 0, "空文本不报错");
+        Check(MarkdownParser.Parse("##### 六级").Blocks.OfType<MdHeading>().First().Level == 5, "五级标题");
 
         Console.WriteLine();
         Console.WriteLine("==== 离线测试: " + _pass + " 通过, " + _fail + " 失败 ====");

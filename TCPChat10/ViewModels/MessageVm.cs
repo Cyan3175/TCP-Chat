@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using TCPChat10.Models;
+using TCPChat10.Rendering;
 using TCPChat10.Services;
 using Windows.UI;
 
@@ -54,6 +55,51 @@ public sealed class MessageVm : INotifyPropertyChanged
         ? Visibility.Visible : Visibility.Collapsed;
 
     public Visibility HasBody => !string.IsNullOrWhiteSpace(BodyText) ? Visibility.Visible : Visibility.Collapsed;
+
+    // ---------- 正文(markdown 渲染, 10.7) ----------
+
+    private UIElement? _body;
+    private int _bodyStamp = -1;
+
+    /// <summary>
+    /// 气泡正文。有 markdown 标记的交给渲染器, 纯文本直接一个 TextBlock(消息多的时候不能每条都解析)。
+    /// 主题/字体变了 MarkdownStyles.Version 会变, 这里跟着重建一次(颜色和字体是算好的, 不会自己更新)。
+    /// </summary>
+    public UIElement? Body
+    {
+        get
+        {
+            var text = BodyText;
+            if (string.IsNullOrEmpty(text)) return null;
+
+            var stamp = MarkdownStyles.Version;
+            if (_body != null && _bodyStamp == stamp) return _body;
+
+            try
+            {
+                var style = MarkdownStyles.For(IsSelf, Model.DecryptFailed);
+                _body = text.Length > 20000 || !MarkdownParser.HasMarkup(text)
+                    ? MarkdownView.BuildPlain(text, style)
+                    : MarkdownView.Build(MarkdownParser.Parse(text), style);
+                _bodyStamp = stamp;
+            }
+            catch
+            {
+                // 渲染出意外也不能让消息消失
+                try { _body = MarkdownView.BuildPlain(text, MarkdownStyles.For(IsSelf, Model.DecryptFailed)); } catch { }
+                _bodyStamp = stamp;
+            }
+            return _body;
+        }
+    }
+
+    /// <summary>主题/字体变了: 让界面重新取一次 Body。</summary>
+    public void InvalidateBody()
+    {
+        _body = null;
+        _bodyStamp = -1;
+        Raise(nameof(Body));
+    }
     public Visibility HasStatus => string.IsNullOrEmpty(Model.Status) ? Visibility.Collapsed : Visibility.Visible;
     public string StatusText => Model.Status ?? "";
     public Visibility PendingVisible => Model.Pending ? Visibility.Visible : Visibility.Collapsed;
@@ -197,12 +243,12 @@ public sealed class MessageVm : INotifyPropertyChanged
 
     public Brush QuoteBrush => BodyBrush;
     public Brush StatusBrush => ThemeLookup.Brush("ErrorBrush");
-    public Brush MetaBrush => IsSelf
-        ? new SolidColorBrush(Color.FromArgb(215, 255, 255, 255))
-        : ThemeLookup.Brush("MetaOtherBrush");
+    // 昵称和时间画在气泡"外面"(页面底色上), 不是画在气泡里 ——
+    // 10.6 及以前自己这边用的是半透明白, 浅色模式下几乎看不见(10.7 修正)。
+    public Brush MetaBrush => ThemeLookup.Brush("MetaOtherBrush");
 
     public Brush SenderBrush => IsSelf
-        ? new SolidColorBrush(Color.FromArgb(245, 255, 255, 255))
+        ? ThemeLookup.Brush("BodyOtherBrush")
         : ThemeLookup.Brush("AccentBrush");
 
     /// <summary>附件卡片/语音条的底色: 跟气泡区分开。</summary>

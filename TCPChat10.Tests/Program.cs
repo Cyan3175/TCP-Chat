@@ -3,6 +3,11 @@ using TCPChat10.Services;
 
 Console.OutputEncoding = Encoding.UTF8;
 
+// 测试期间不要把用户真实的 %LOCALAPPDATA%\TCPChat10 搬走(那是 10.7 正式运行时才做的事)
+if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("TCPCHAT10_TEST_LEGACYDIR")))
+    Environment.SetEnvironmentVariable("TCPCHAT10_TEST_LEGACYDIR",
+        Path.Combine(Path.GetTempPath(), "tcpchat_test_legacy_none"));
+
 // 维护模式: dotnet run -- clean <远端目录> [--rmdir]
 // 用来清空自测期间写在服务器上的临时消息(中文路径走 C# 字符串, 避免 PS 5.1 的编码坑)
 if (args.Length >= 2 && args[0] == "mkdir")

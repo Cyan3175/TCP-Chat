@@ -15,9 +15,13 @@ public static class FontList
         "Arial", "Times New Roman", "Consolas",
     };
 
+    private static List<string>? _cache;      // 枚举一次就够(GDI 枚举要几十毫秒)
+
     /// <summary>返回排序去重后的字体族名字列表(如 "Microsoft YaHei UI"、"Arial")。</summary>
     public static IReadOnlyList<string> GetInstalledFamilies()
     {
+        if (_cache != null) return _cache;
+
         var names = new SortedSet<string>(StringComparer.CurrentCulture);
         try
         {
@@ -29,7 +33,8 @@ public static class FontList
         {
             foreach (var f in Fallback) names.Add(f);
         }
-        return names.ToList();
+        _cache = names.ToList();
+        return _cache;
     }
 
     /// <summary>字体是否存在于系统字体列表里(用于校验设置里存下来的名字)。</summary>

@@ -250,8 +250,16 @@ public sealed partial class MainWindow : Window
                     {
                         var ok = _glass != null && await _glass.RenderToFileAsync(path);
                         AutoLog("AUTO glassshot -> " + (ok ? "ok " + path + " (" + _glass!.LastDrawMs.ToString("F1") + " ms)" : "画布还没准备好"));
+                        if (_glass != null)
+                            foreach (var s in _glass.DescribeSurfaces()) AutoLog("   玻璃面 " + s);
                     }
                     catch (Exception ex) { AutoLog("AUTO glassshot -> 失败: " + ex.Message); }
+                }
+                else if (a.StartsWith("glassctl:"))
+                {
+                    var dir = a[9..].Trim();
+                    var ok = _dlg != null && await _dlg.RenderGlassControlsAsync(dir);
+                    AutoLog("AUTO glassctl -> " + (ok ? "ok " + dir : "设置对话框没开着"));
                 }
                 else if (a == "glassinfo")
                 {
@@ -1255,33 +1263,56 @@ public sealed partial class MainWindow : Window
             ? (Color.FromArgb(255, 22, 24, 30), 0.55)
             : (Color.FromArgb(255, 255, 255, 255), 0.55);
 
-    /// <summary>气泡的玻璃色调: 自己的用主题里的蓝色, 别人的浅色用白/深色用近黑。</summary>
+    /// <summary>
+    /// 气泡的玻璃色调。
+    ///
+    /// 11.0 修: 自己的气泡以前直接用主题蓝 (#2B6CB0) 的 62% 透明度铺在折射背景上 ——
+    /// 浅色壁纸本来就亮, 蓝色再被冲淡一次, 白字就糊在浅蓝上了(对比度只有 2.8:1 左右)。
+    /// 现在自己的气泡改用"更深的蓝 + 更高不透明度": 即使壁纸全白, 白字对比度也有 ~5:1 (WCAG AA)。
+    /// 备注: 亮度按 WCAG 相对亮度算, 阈值取 4.5:1。
+    /// </summary>
     private static (Color Tint, double Opacity) BubbleGlassStyle(MessageVm? vm)
     {
         if (vm is { IsSelf: true })
-            return (ThemeLookup.Color("BubbleSelfColor"), 0.62);
+        {
+            // 深蓝底 + 0.86: 最坏情况(纯白壁纸)下白字对比度 ≈ 5:1
+            return ThemeLookup.IsDark
+                ? (Color.FromArgb(255, 0x1E, 0x46, 0x7A), 0.86)
+                : (Color.FromArgb(255, 0x18, 0x40, 0x74), 0.88);
+        }
+
+        // 别人的气泡: 浅色主题用白玻璃(深色字), 深色主题用近黑玻璃(浅色字), 都留足对比度
         return ThemeLookup.IsDark
-            ? (Color.FromArgb(255, 22, 24, 30), 0.64)
-            : (Color.FromArgb(255, 255, 255, 255), 0.66);
+            ? (Color.FromArgb(255, 20, 22, 28), 0.74)
+            : (Color.FromArgb(255, 255, 255, 255), 0.80);
     }
 
     /// <summary>气泡出现在列表里: 注册成一个玻璃面(位置由 LayoutUpdated 统一量)。</summary>
     private void OnBubbleLoaded(object sender, RoutedEventArgs e)
     {
-        if (_glass == null || sender is not Border border) return;
-        var vm = border.DataContext as MessageVm;
-        _glass.Register(new GlassEntry
+        // 气泡的加载/卸载是 XAML 回调, 这里抛异常 = 程序直接退出, 所以全部包起来
+        try
         {
-            Element = border,
-            Radius = 10,
-            Style = () => BubbleGlassStyle(vm),
-        });
-        _glass.Refresh();
+            if (_glass == null || sender is not Border border) return;
+            var vm = border.DataContext as MessageVm;
+            _glass.Register(new GlassEntry
+            {
+                Element = border,
+                Radius = 10,
+                Style = () => BubbleGlassStyle(vm),
+            });
+            _glass.Refresh();
+        }
+        catch (Exception ex) { App.LogCrash("气泡注册玻璃失败", ex); }
     }
 
     private void OnBubbleUnloaded(object sender, RoutedEventArgs e)
     {
-        if (sender is FrameworkElement element) _glass?.Unregister(element);
+        try
+        {
+            if (sender is FrameworkElement element) _glass?.Unregister(element);
+        }
+        catch (Exception ex) { App.LogCrash("气泡移除玻璃失败", ex); }
     }
 
     /// <summary>把设置里的主题应用到整窗。</summary>

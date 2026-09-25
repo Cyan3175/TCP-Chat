@@ -22,21 +22,33 @@ public sealed partial class SettingsDialog : ContentDialog
     /// <summary>玻璃开关/质量被改动(立即生效用): 主窗口订这个事件重新应用。</summary>
     public event Action? GlassChanged;
 
-    /// <summary>构造时回填控件会触发 Toggled/ValueChanged, 用它挡一下。</summary>
-    private bool _glassSwitchGuard;
-
-    private void OnGlassToggled(object sender, RoutedEventArgs e)
+    /// <summary>自检用: 导出开关(关/开)与滑块这三张玻璃控件图。</summary>
+    public async Task<bool> RenderGlassControlsAsync(string dir)
     {
-        if (_glassSwitchGuard) return;
+        try
+        {
+            Directory.CreateDirectory(dir);
+            GlassSwitch.SetOnWithoutNotify(false);
+            var a = await GlassSwitch.RenderToFileAsync(Path.Combine(dir, "glass_switch_off.png"));
+            GlassSwitch.SetOnWithoutNotify(true);
+            var b = await GlassSwitch.RenderToFileAsync(Path.Combine(dir, "glass_switch_on.png"));
+            var c = await GlassQualitySlider.RenderToFileAsync(Path.Combine(dir, "glass_slider.png"));
+            GlassSwitch.SetOnWithoutNotify(_settings.GlassEnabled);
+            return a && b && c;
+        }
+        catch { return false; }
+    }
+
+    private void OnGlassToggled()
+    {
         _settings.GlassEnabled = GlassSwitch.IsOn;
         GlassChanged?.Invoke();
     }
 
-    private void OnGlassQualityChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+    private void OnGlassQualityChanged(double value)
     {
-        var quality = (int)Math.Round(e.NewValue);
+        var quality = (int)Math.Round(value);
         UpdateGlassText(quality);
-        if (_glassSwitchGuard) return;
         _settings.GlassQuality = quality;
         GlassChanged?.Invoke();
     }
@@ -73,11 +85,12 @@ public sealed partial class SettingsDialog : ContentDialog
         ThemeBox.SelectedIndex = Math.Clamp(settings.Theme, 0, 2);
         LoadFonts(settings.FontFamily);
 
-        // 液态玻璃(11.0): 开关与质量滑块都是"改了就立刻生效", 不用等保存
-        _glassSwitchGuard = true;
-        GlassSwitch.IsOn = settings.GlassEnabled;
+        // 液态玻璃(11.0): 开关与质量滑块都是"改了就立刻生效", 不用等保存。
+        // 回填不会触发事件(SetOnWithoutNotify / Value 的 setter 只在用户操作时回调)
+        GlassSwitch.SetOnWithoutNotify(settings.GlassEnabled);
         GlassQualitySlider.Value = Math.Clamp(settings.GlassQuality, 0, 100);
-        _glassSwitchGuard = false;
+        GlassSwitch.Toggled += OnGlassToggled;
+        GlassQualitySlider.ValueChanged += OnGlassQualityChanged;
         UpdateGlassText(settings.GlassQuality);
 
         this.PrimaryButtonClick += OnSave;

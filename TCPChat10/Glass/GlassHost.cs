@@ -54,23 +54,22 @@ public sealed class GlassHost
     public int SurfaceCount => _entries.Count;
     public bool Ready => _renderer.Ready;
 
-    public void Register(GlassEntry entry)
+    public void Register(GlassEntry entry) => Guard("注册玻璃面", () =>
     {
         _entries.Add(entry);
         Invalidate();
-    }
+    });
 
-    public void Unregister(FrameworkElement element)
+    public void Unregister(FrameworkElement element) => Guard("移除玻璃面", () =>
     {
-        var n = _entries.RemoveAll(e => e.Element == element);
-        if (n > 0) Invalidate();
-    }
+        if (_entries.RemoveAll(e => e.Element == element) > 0) Invalidate();
+    });
 
-    public void Clear()
+    public void Clear() => Guard("清空玻璃面", () =>
     {
         _entries.Clear();
         Invalidate();
-    }
+    });
 
     /// <summary>开/关 + 质量。两个都立即生效, 不用重启。</summary>
     public void Configure(bool enabled, int quality)
@@ -84,14 +83,38 @@ public sealed class GlassHost
 
     public void Invalidate()
     {
-        try { _canvas.Invalidate(); } catch { }
+        // 画布已经隐藏/还没挂到可视树上时不要去催它重画 —— 这时候 Invalidate 可能抛
+        // COMException, 而它常常是在 XAML 的回调(气泡 Loaded/Unloaded)里被调到的,
+        // 抛出去就会变成"程序自己退出"(11.0 修)。
+        try
+        {
+            if (!Enabled || _canvas.XamlRoot == null) return;
+            if (_canvas.Visibility != Visibility.Visible) return;
+            _canvas.Invalidate();
+        }
+        catch { }
+    }
+
+    /// <summary>画/量玻璃时出任何错都不能把程序带下去(设备丢失、驱动重置、显存不够…)。</summary>
+    public string LastError { get; private set; } = "";
+
+    private void Guard(string what, Action action)
+    {
+        try { action(); }
+        catch (Exception ex)
+        {
+            LastError = what + ": " + ex.GetType().Name + " " + ex.Message;
+            try { Status = "玻璃出错(已忽略): " + LastError; } catch { }
+        }
     }
 
     /// <summary>
     /// 重新量一遍每个面的位置。滚动、换行、窗口缩放、气泡新增都会调到这里;
     /// 位置没变就不重画(否则每帧都在跑效果链)。
     /// </summary>
-    public void Refresh()
+    public void Refresh() => Guard("量位置", RefreshCore);
+
+    private void RefreshCore()
     {
         if (!Enabled || !_renderer.Ready)
         {
@@ -128,6 +151,15 @@ public sealed class GlassHost
         _current.Clear();
         _current.AddRange(_pending);
         Invalidate();
+    }
+
+    /// <summary>自检用: 列出当前每个玻璃面的位置与色调。</summary>
+    public IReadOnlyList<string> DescribeSurfaces()
+    {
+        var list = new List<string>();
+        foreach (var s in _current)
+            list.Add($"({s.Rect.X:F0},{s.Rect.Y:F0},{s.Rect.Width:F0}x{s.Rect.Height:F0}) #{s.Tint.R:X2}{s.Tint.G:X2}{s.Tint.B:X2}@{s.Opacity:F2}");
+        return list;
     }
 
     private static bool Same(List<Surface> a, List<Surface> b)
@@ -180,10 +212,13 @@ public sealed class GlassHost
     private void OnDraw(CanvasControl sender, CanvasDrawEventArgs args)
     {
         if (!Enabled || !_renderer.Ready) return;
-        var sw = Stopwatch.StartNew();
-        DrawFrame(args.DrawingSession, new Size(sender.ActualWidth, sender.ActualHeight));
-        _renderer.LastDrawMs = sw.Elapsed.TotalMilliseconds;
-        Status = $"{_current.Count} 面 · {_renderer.LastDrawMs:F1} ms · {Params.Describe()}";
+        Guard("绘制", () =>
+        {
+            var sw = Stopwatch.StartNew();
+            DrawFrame(args.DrawingSession, new Size(sender.ActualWidth, sender.ActualHeight));
+            _renderer.LastDrawMs = sw.Elapsed.TotalMilliseconds;
+            Status = $"{_current.Count} 面 · {_renderer.LastDrawMs:F1} ms · {Params.Describe()}";
+        });
     }
 
     /// <summary>真正画一帧: 背景图 + 所有玻璃面。</summary>
@@ -222,6 +257,6 @@ public sealed class GlassHost
         }
         await target.SaveAsync(path, CanvasBitmapFileFormat.Png);
         _renderer.LastDrawMs = sw.Elapsed.TotalMilliseconds;
-        return true;
+        return true;   // 调用方(自检动作)自己 try/catch
     }
 }

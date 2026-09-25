@@ -2,6 +2,7 @@
     x:Class="TCPChat10.Views.SettingsDialog"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:TCPChat10.Controls"
     Title="设置"
     PrimaryButtonText="保存"
     CloseButtonText="取消"
@@ -53,9 +54,15 @@
                        FontSize="12" Opacity="0.65" TextWrapping="Wrap" />
 
             <TextBlock Text="液态玻璃" FontWeight="SemiBold" Margin="0,6,0,0" />
-            <ToggleSwitch x:Name="GlassSwitch" Header="开启液态玻璃（11.0）"
-                          OnContent="开" OffContent="关"
-                          Toggled="OnGlassToggled" />
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <!-- 液态玻璃的开关和滑块本身就是玻璃控件(和主界面同一套 Win2D 效果链) -->
+                <controls:GlassSwitch x:Name="GlassSwitch" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1" Text="开启液态玻璃（11.0）" VerticalAlignment="Center" />
+            </Grid>
             <StackPanel Spacing="4">
                 <Grid ColumnSpacing="8">
                     <Grid.ColumnDefinitions>
@@ -67,8 +74,7 @@
                     <TextBlock x:Name="GlassQualityText" Grid.Column="1" FontSize="13" FontWeight="SemiBold"
                                VerticalAlignment="Center" MinWidth="34" TextAlignment="Right" />
                 </Grid>
-                <Slider x:Name="GlassQualitySlider" Minimum="0" Maximum="100" StepFrequency="1"
-                        ValueChanged="OnGlassQualityChanged" />
+                <controls:GlassSlider x:Name="GlassQualitySlider" Minimum="0" Maximum="100" />
                 <TextBlock x:Name="GlassHint" FontSize="12" Opacity="0.65" TextWrapping="Wrap"
                            Text="背景用系统的桌面壁纸（读不到就程序生成一张），面板/气泡按折射玻璃绘制。质量越低越省 GPU。" />
             </StackPanel>

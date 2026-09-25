@@ -100,6 +100,23 @@ public sealed class MessageVm : INotifyPropertyChanged
         _bodyStamp = -1;
         Raise(nameof(Body));
     }
+
+    /// <summary>
+    /// 主题变了(10.7 修)。
+    /// 气泡底色、正文字色、昵称/时间颜色都是"算一次就存下来"的 Brush; 不逐条通知界面的话,
+    /// 深色切浅色时它们还留着深色那套(浅底上浅灰字), 已经在屏幕上的消息就变得看不清了。
+    /// </summary>
+    public void RefreshTheme()
+    {
+        Raise(nameof(BubbleBrush));
+        Raise(nameof(BodyBrush));
+        Raise(nameof(MetaBrush));
+        Raise(nameof(SenderBrush));
+        Raise(nameof(QuoteBrush));
+        Raise(nameof(StatusBrush));
+        Raise(nameof(AttachBrush));
+        InvalidateBody();
+    }
     public Visibility HasStatus => string.IsNullOrEmpty(Model.Status) ? Visibility.Collapsed : Visibility.Visible;
     public string StatusText => Model.Status ?? "";
     public Visibility PendingVisible => Model.Pending ? Visibility.Visible : Visibility.Collapsed;

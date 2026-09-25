@@ -222,6 +222,12 @@ public sealed partial class MainWindow : Window
                     if (m != null) { m.IsSelf = true; Messages.Add(new MessageVm(m, _chat)); ScrollToBottom(); }
                     AutoLog("AUTO voicefile -> " + (m != null ? $"ok {m.Attach?.Name} 时长={m.Attach?.DurationText}" : "fail"));
                 }
+                else if (a.StartsWith("poll:"))
+                {
+                    _settings.PollSeconds = (int)Math.Clamp(double.Parse(a[5..]), 1, 120);
+                    _settings.Save();
+                    AutoLog("AUTO poll -> 同步周期改成 " + _settings.PollSeconds + " 秒 (不重启)");
+                }
                 else if (a.StartsWith("theme:"))
                 {
                     _settings.Theme = (int)Math.Clamp(double.Parse(a[6..]), 0, 2);
@@ -793,8 +799,12 @@ public sealed partial class MainWindow : Window
                 StreamingCaptureMode = StreamingCaptureMode.Audio,
             });
 
-            var file = await StorageFile.GetFileFromPathAsync(
-                Path.Combine(AppSettings.CacheDir, "voice_" + Guid.NewGuid().ToString("N")[..8] + ".wav"));
+            var path = Path.Combine(AppSettings.CacheDir, "voice_" + Guid.NewGuid().ToString("N")[..8] + ".wav");
+            // StartRecordToStorageFileAsync 要的是一个"已经存在"的文件 —— 直接对新路径调用
+            // GetFileFromPathAsync 会抛 FileNotFoundException(0x80070002), 表现就是
+            // "麦克风权限明明开着却录不了"(10.7 修)。先把空文件建出来再交给它写。
+            using (File.Create(path)) { }
+            var file = await StorageFile.GetFileFromPathAsync(path);
             await _capture.StartRecordToStorageFileAsync(MediaEncodingProfile.CreateWav(AudioEncodingQuality.Medium), file);
 
             _voiceFile = file;
@@ -818,8 +828,11 @@ public sealed partial class MainWindow : Window
             BtnVoice.Content = "🎤 语音";
             try { _capture?.Dispose(); } catch { }
             _capture = null;
-            SetFooter("⚠ 录音打不开: " + ex.Message +
-                        "（设置 → 隐私和安全性 → 麦克风 → 让桌面应用访问你的麦克风）");
+            // 权限问题和"设备/文件问题"分开说, 免得明明是别的原因却让用户去翻设置
+            var why = MicPermission.Status == "Denied" || ex.HResult == unchecked((int)0x80070005)
+                ? "（系统没允许本程序用麦克风：设置 → 隐私和安全性 → 麦克风 → 让桌面应用访问你的麦克风）"
+                : "（错误码 0x" + ex.HResult.ToString("X8") + "，可到设置里换一个输入设备或检查麦克风是否被别的程序占用）";
+            SetFooter("⚠ 录音打不开: " + ex.Message + why);
         }
     }
 
@@ -1137,11 +1150,15 @@ public sealed partial class MainWindow : Window
         RefreshBodies();          // 气泡里的 markdown 颜色是算好的, 换主题要重建
     }
 
-    /// <summary>主题或字体变了: 让所有气泡重画一次正文。</summary>
+    /// <summary>
+    /// 主题或字体变了: 让所有气泡重取配色并重画正文。
+    /// 必须逐条通知 —— 气泡上的颜色是 MessageVm 里算好的 Brush, 不通知就不会重新求值
+    /// (深色切浅色"消息和时间戳看不清"就是这么来的)。
+    /// </summary>
     private void RefreshBodies()
     {
         MarkdownStyles.Invalidate();
-        foreach (var vm in Messages) vm.InvalidateBody();
+        foreach (var vm in Messages) vm.RefreshTheme();
     }
 
     /// <summary>

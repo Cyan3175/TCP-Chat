@@ -43,7 +43,8 @@ public sealed class ChatService : IDisposable
 
     public string ChatFolder => _settings.ChatFolder;
     public string Nickname { get; set; }
-    public int PollSeconds => Math.Clamp(_settings.PollSeconds, 1, 60);
+    /// <summary>同步周期(秒)。范围跟设置对话框一致(1~120), 否则底栏显示的周期和实际不一致。</summary>
+    public int PollSeconds => Math.Clamp(_settings.PollSeconds, 1, 120);
     public bool IsRunning => _loop is { IsCompleted: false };
 
     /// <summary>端到端加密是否启用(设置里填了加密密码)。</summary>
@@ -334,12 +335,19 @@ public sealed class ChatService : IDisposable
     {
         // 第一轮立即拉取
         await SyncOnceAsync(ct);
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(PollSeconds));
         try
         {
-            while (await timer.WaitForNextTickAsync(ct))
+            while (!ct.IsCancellationRequested)
             {
+                // 周期从"这一轮开始"算起, 而不是"这一轮结束后再等 N 秒":
+                // 一轮同步本身要花几百毫秒, 用 PeriodicTimer/Task.Delay(N) 的话实际间隔会变成
+                // N + 一轮耗时(看起来就像"周期多加了 1 秒")。这里把耗时扣掉。
+                // 另外每轮都重新读设置 —— 在设置里改完同步周期立刻生效, 不用重启(10.7 修)。
+                var sw = System.Diagnostics.Stopwatch.StartNew();
                 await SyncOnceAsync(ct);
+                var wait = TimeSpan.FromSeconds(PollSeconds) - sw.Elapsed;
+                if (wait < TimeSpan.Zero) wait = TimeSpan.Zero;   // 这一轮超时了就直接接着下一轮
+                await Task.Delay(wait, ct);
             }
         }
         catch (OperationCanceledException) { }

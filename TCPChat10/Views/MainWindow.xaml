@@ -64,25 +64,25 @@
                             <StackPanel Orientation="Horizontal" Spacing="8"
                                         HorizontalAlignment="{x:Bind Alignment}">
                                 <TextBlock Text="{x:Bind SenderText}" FontSize="12" FontWeight="SemiBold"
-                                           Foreground="{x:Bind SenderBrush}" />
+                                           Foreground="{x:Bind SenderBrush, Mode=OneWay}" />
                                 <TextBlock Text="{x:Bind TimeText}" FontSize="11" VerticalAlignment="Center"
-                                           Foreground="{x:Bind MetaBrush}" />
+                                           Foreground="{x:Bind MetaBrush, Mode=OneWay}" />
                                 <TextBlock Text="🔒" FontSize="11" VerticalAlignment="Center"
                                            Visibility="{x:Bind LockBadgeVisible}" />
                                 <TextBlock Text="发送中…" FontSize="11" VerticalAlignment="Center"
-                                           Foreground="{x:Bind MetaBrush}" Visibility="{x:Bind PendingVisible, Mode=OneWay}" />
+                                           Foreground="{x:Bind MetaBrush, Mode=OneWay}" Visibility="{x:Bind PendingVisible, Mode=OneWay}" />
                                 <TextBlock Text="{x:Bind StatusText}" FontSize="11" VerticalAlignment="Center"
-                                           Foreground="{x:Bind StatusBrush}" Visibility="{x:Bind HasStatus, Mode=OneWay}" />
+                                           Foreground="{x:Bind StatusBrush, Mode=OneWay}" Visibility="{x:Bind HasStatus, Mode=OneWay}" />
                             </StackPanel>
 
-                            <Border Background="{x:Bind BubbleBrush}" CornerRadius="{x:Bind BubbleRadius}"
+                            <Border Background="{x:Bind BubbleBrush, Mode=OneWay}" CornerRadius="{x:Bind BubbleRadius}"
                                     Padding="12,9" Margin="0,3,0,0">
                                 <StackPanel Spacing="7">
                                     <Border Visibility="{x:Bind HasQuote}" Background="{ThemeResource QuoteBrush}"
                                             CornerRadius="4" Padding="8,5" BorderThickness="3,0,0,0"
                                             BorderBrush="{ThemeResource AccentBrush}">
                                         <TextBlock Text="{x:Bind QuoteText}" TextWrapping="Wrap" FontSize="12"
-                                                   Foreground="{x:Bind QuoteBrush}" Opacity="0.9"
+                                                   Foreground="{x:Bind QuoteBrush, Mode=OneWay}" Opacity="0.9"
                                                    MaxLines="3" TextTrimming="CharacterEllipsis" />
                                     </Border>
 
@@ -99,34 +99,34 @@
                                     </Grid>
 
                                     <!-- 普通文件 / 视频 / 音频: 文件卡片 -->
-                                    <Border Visibility="{x:Bind CardVisible, Mode=OneWay}" Background="{x:Bind AttachBrush}"
+                                    <Border Visibility="{x:Bind CardVisible, Mode=OneWay}" Background="{x:Bind AttachBrush, Mode=OneWay}"
                                             CornerRadius="8" Padding="10,8" Tapped="OnCardTapped">
                                         <StackPanel Orientation="Horizontal" Spacing="10">
                                             <TextBlock Text="{x:Bind AttachGlyph}" FontSize="20" VerticalAlignment="Center" />
                                             <StackPanel VerticalAlignment="Center">
                                                 <TextBlock Text="{x:Bind AttachName}" FontSize="13" TextWrapping="NoWrap"
                                                            TextTrimming="CharacterEllipsis" MaxWidth="300"
-                                                           Foreground="{x:Bind BodyBrush}" />
+                                                           Foreground="{x:Bind BodyBrush, Mode=OneWay}" />
                                                 <TextBlock Text="{x:Bind AttachSizeText}" FontSize="11" Opacity="0.8"
-                                                           Foreground="{x:Bind BodyBrush}" />
+                                                           Foreground="{x:Bind BodyBrush, Mode=OneWay}" />
                                             </StackPanel>
                                         </StackPanel>
                                     </Border>
 
                                     <!-- 语音: 播放按钮 + 时长 -->
-                                    <Border Visibility="{x:Bind VoiceVisible}" Background="{x:Bind AttachBrush}"
+                                    <Border Visibility="{x:Bind VoiceVisible}" Background="{x:Bind AttachBrush, Mode=OneWay}"
                                             CornerRadius="16" Padding="5,4">
                                         <StackPanel Orientation="Horizontal" Spacing="8">
                                             <Button Click="OnVoicePlayClick" Width="32" Height="32" Padding="0" CornerRadius="16"
-                                                    Background="{x:Bind BodyBrush}" BorderThickness="0">
+                                                    Background="{x:Bind BodyBrush, Mode=OneWay}" BorderThickness="0">
                                                 <FontIcon FontFamily="Segoe MDL2 Assets" FontSize="13"
                                                           Glyph="{x:Bind VoiceGlyph, Mode=OneWay}"
-                                                          Foreground="{x:Bind BubbleBrush}" />
+                                                          Foreground="{x:Bind BubbleBrush, Mode=OneWay}" />
                                             </Button>
                                             <TextBlock Text="{x:Bind PlayRowText}" VerticalAlignment="Center"
                                                        FontSize="13" MinWidth="28"
                                                        TextTrimming="CharacterEllipsis" MaxWidth="260"
-                                                       Foreground="{x:Bind BodyBrush}"
+                                                       Foreground="{x:Bind BodyBrush, Mode=OneWay}"
                                                        ToolTipService.ToolTip="{x:Bind VoiceHint, Mode=OneWay}" />
                                         </StackPanel>
                                     </Border>

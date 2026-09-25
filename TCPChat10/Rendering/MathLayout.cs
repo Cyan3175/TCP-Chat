@@ -39,7 +39,11 @@ public sealed class MathGlyphBox : MathBox
 public sealed class MathRuleBox : MathBox { }
 
 /// <summary>根号左边那一笔(界面层画成折线)。</summary>
-public sealed class MathSurdBox : MathBox { }
+public sealed class MathSurdBox : MathBox
+{
+    /// <summary>笔画粗细: 和顶上那道横线保持一致(不然根号会比横线粗一截)。</summary>
+    public double Stroke { get; set; }
+}
 
 /// <summary>把若干盒子摆到相对自己基线的位置上。</summary>
 public sealed class MathStackBox : MathBox
@@ -258,6 +262,7 @@ public static class MathLayout
             Width = surdW + indexShift,
             Height = topY + t,
             Depth = body.Depth,
+            Stroke = t,                       // 和横线一样粗
         };
         stack.Items.Add((surd, 0, 0));
         stack.Items.Add((body, contentX, 0));

@@ -199,9 +199,10 @@ public static class MathView
         double bottom = baseline + box.Depth;
         double h = Math.Max(1, bottom - top);
         double w = Math.Max(1, box.Width);
-        double stroke = Math.Max(0.9, h * 0.05);
+        // 粗细取排版那边算好的值(和横线一致); 老数据没有就退回按高度估
+        double stroke = box.Stroke > 0 ? box.Stroke : Math.Max(0.9, h * 0.05);
         // 顶上那道横线的中线就是本盒子的顶边(排版那边把横线摆成以顶边为中心),
-        // 所以收尾要正好画在 top 上 —— 之前又多加了半个线宽, 于是横线和根号错开半个线宽。
+        // 所以收尾要正好画在 top 上。
         double line = top;
 
         var figure = new PathFigure

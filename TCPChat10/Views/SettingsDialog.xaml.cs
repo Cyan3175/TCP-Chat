@@ -158,6 +158,12 @@ public sealed partial class SettingsDialog : ContentDialog
         _passwords.Clear();
         _passwords.AddRange(settings.CryptoPasswords);
         _sendIndex = Math.Clamp(settings.SendPasswordIndex, 0, Math.Max(0, _passwords.Count - 1));
+        if (_passwords.Count > 0 && _passwords[_sendIndex].Length == 0)
+        {
+            // 默认那把指到了空项: 回退到第一把真密码(全空则发送本来就是明文)
+            var firstReal = _passwords.FindIndex(p => p.Length > 0);
+            _sendIndex = firstReal >= 0 ? firstReal : 0;
+        }
         RebuildPasswordRows();
     }
 
@@ -197,6 +203,14 @@ public sealed partial class SettingsDialog : ContentDialog
                 VerticalAlignment = VerticalAlignment.Center,
             };
             pick.Checked += (_, _) => _sendIndex = index;
+            if (_passwords[index].Length == 0)
+            {
+                // 用户要求: 空项(不加密)可以加、可以用来兼容明文消息, 但不能被选成发送密码
+                pick.IsEnabled = false;
+                pick.Content = "（空项）";
+                ToolTipService.SetToolTip(pick, "空项代表「不加密」，只用于兼容明文消息，不能作为发送密码");
+                pick.IsChecked = false;
+            }
             Grid.SetColumn(pick, 1);
             row.Children.Add(pick);
 
@@ -226,7 +240,7 @@ public sealed partial class SettingsDialog : ContentDialog
     {
         if (_passwords.Contains("", StringComparer.Ordinal))
         {
-            CryptoError.Text = "列表里已经有一条「不加密」了。";
+            CryptoError.Text = "列表里已经有一条「不加密」了（它只用于兼容明文消息，不能作为发送密码）。";
             CryptoError.Visibility = Visibility.Visible;
             return;
         }
@@ -259,16 +273,9 @@ public sealed partial class SettingsDialog : ContentDialog
         }
         if (!url.StartsWith("http://") && !url.StartsWith("https://")) url = "https://" + url;
 
-        // 11.2: 密码列表校验 —— 不能有空密码, 有密码就必须指定一把用于发送
+        // 11.2: 空项是合法的(代表"不加密"), 这里只保证发送那一把落在列表范围内
         var lines = CryptoPasswords();
-        if (lines.Count != _passwords.Count)
-        {
-            args.Cancel = true;
-            CryptoError.Text = "密码列表里不能有空项，请把空的删掉或补上内容。";
-            CryptoError.Visibility = Visibility.Visible;
-            return;
-        }
-        if (lines.Count > 0 && _sendIndex >= lines.Count)
+        if (_passwords.Count > 0 && (_sendIndex < 0 || _sendIndex >= _passwords.Count))
         {
             args.Cancel = true;
             CryptoError.Text = "请选择默认用哪一个密码加密发送。";

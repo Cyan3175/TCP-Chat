@@ -250,9 +250,11 @@ public sealed partial class SettingsDialog : ContentDialog
         RebuildPasswordRows();
     }
 
-    /// <summary>列表里的密码(空行/空白会被忽略)。</summary>
-    private List<string> CryptoPasswords() =>
-        _passwords.Select(p => p.Trim()).Where(p => p.Length > 0).ToList();
+    /// <summary>
+    /// 列表里的密码 —— **空项要保留**: 空项代表"不加密/明文发送"这一把。
+    /// (之前这里把空项过滤掉了, 导致保存后空项消失, 用户下次打开就看不到它。)
+    /// </summary>
+    private List<string> CryptoPasswords() => _passwords.Select(p => p.Trim()).ToList();
 
     private void OnSave(ContentDialog sender, ContentDialogButtonClickEventArgs args)
     {

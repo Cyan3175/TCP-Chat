@@ -42,6 +42,8 @@ public sealed partial class SettingsDialog : ContentDialog
     private void OnGlassToggled()
     {
         _settings.GlassEnabled = GlassSwitch.IsOn;
+        // 立刻换外观: 关掉玻璃就画普通开关/滑块
+        GlassQualitySlider.GlassLook = _settings.GlassEnabled;
         GlassChanged?.Invoke();
     }
 
@@ -87,6 +89,9 @@ public sealed partial class SettingsDialog : ContentDialog
         // 液态玻璃(11.0): 开关与质量滑块都是"改了就立刻生效", 不用等保存。
         // 回填不会触发事件(SetOnWithoutNotify / Value 的 setter 只在用户操作时回调)
         GlassSwitch.SetOnWithoutNotify(settings.GlassEnabled);
+        // 关掉液态玻璃时, 开关和滑块改画普通控件的样子(不然白玻璃压在白底上看不见)
+        GlassSwitch.GlassLook = settings.GlassEnabled;
+        GlassQualitySlider.GlassLook = settings.GlassEnabled;
         GlassQualitySlider.Value = Math.Clamp(settings.GlassQuality, 0, 100);
         GlassSwitch.Toggled += OnGlassToggled;
         GlassQualitySlider.ValueChanged += OnGlassQualityChanged;

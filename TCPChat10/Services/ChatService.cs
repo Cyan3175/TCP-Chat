@@ -28,6 +28,10 @@ public sealed class ChatService : IDisposable
     private MessageCipher _cipher;
     private int _undecryptable;
 
+    // 11.4: 本地消息缓存(启动先显示, 不用每次重载整份目录); 对方撤回的消息也会从缓存里摘掉
+    private MessageCache? _cache;
+    private MessageCache Cache => _cache ??= MessageCache.Load(_settings.ChatFolder);
+
     /// <summary>新消息到达(在后台线程触发, UI 需自行切回主线程)。</summary>
     public event Action<ChatMessage>? MessageAdded;
     /// <summary>消息被删除。</summary>
@@ -93,6 +97,10 @@ public sealed class ChatService : IDisposable
         _seen.Clear();
         _deleted.Clear();
         Interlocked.Exchange(ref _undecryptable, 0);
+
+        // 11.4: 有本地缓存的话, 直接用新密码把缓存重新解一遍(界面此时已被清空),
+        // 不然要等下一轮把服务器上的消息重新下载一遍才看得到 —— 缓存里存的就是那份密文, 解出来一样。
+        EmitCachedMessages();
     }
 
     /// <summary>
@@ -276,7 +284,13 @@ public sealed class ChatService : IDisposable
 
             var json = JsonSerializer.Serialize(wire, JsonOpts);
             var ok = await PutWithRetryAsync(WebDavClient.Combine(_settings.ChatFolder, name), json, ct);
-            if (ok) { msg.Pending = false; msg.Status = null; }
+            if (ok)
+            {
+                msg.Pending = false;
+                msg.Status = null;
+                Cache.Put(name, json);            // 自己发的也进缓存, 下次启动不用再拉
+                Cache.Save();
+            }
             else { msg.Status = "发送失败 (" + _dav.LastPutStatus + ")"; }
         }
         catch (Exception ex)
@@ -321,6 +335,8 @@ public sealed class ChatService : IDisposable
             if (msg.Attach != null && !string.IsNullOrEmpty(msg.Attach.Path))
                 await _dav.DeleteAsync(msg.Attach.Path, ct);
             _deleted.Add(msg.RemoteName);
+            Cache.Remove(msg.RemoteName);         // 自己撤回的也从缓存里去掉
+            Cache.Save();
             MessageRemoved?.Invoke(msg.RemoteName);
             return true;
         }
@@ -332,8 +348,49 @@ public sealed class ChatService : IDisposable
     public void Start()
     {
         if (IsRunning) return;
+        EmitCachedMessages();          // 11.4: 先把本地缓存显示出来, 不等这一轮同步
         _cts = new CancellationTokenSource();
         _loop = Task.Run(() => PollLoopAsync(_cts.Token));
+    }
+
+    /// <summary>
+    /// 把本地缓存里的消息放出来(按文件名 = 时间顺序)。
+    /// 缓存里存的是服务器上那份 JSON, 所以这里仍旧要解密; 窗口外的老消息不显示。
+    /// </summary>
+    public void EmitCachedMessages()
+    {
+        try
+        {
+            var cutoff = DateTimeOffset.UtcNow.AddDays(-Math.Max(1, _settings.HistoryDays));
+            int emitted = 0;
+            foreach (var name in Cache.Names())
+            {
+                var time = MessageCache.TimeOf(name);
+                if (time != null && time < cutoff) continue;
+
+                var json = Cache.Get(name);
+                if (string.IsNullOrEmpty(json)) continue;
+
+                try
+                {
+                    var msg = JsonSerializer.Deserialize<ChatMessage>(json, JsonOpts);
+                    if (msg == null) continue;
+                    if (!msg.IsEncrypted && msg.Attach == null &&
+                        string.IsNullOrWhiteSpace(msg.Text) && string.IsNullOrWhiteSpace(msg.Quote)) continue;
+
+                    if (msg.IsEncrypted) Decrypt(msg, name);
+                    msg.RemoteName = name;
+                    msg.IsSelf = !string.IsNullOrEmpty(Nickname) &&
+                                 string.Equals(msg.From, Nickname, StringComparison.Ordinal);
+                    _seen[name] = 1;                      // 缓存里有的不再去服务器拉一遍
+                    MessageAdded?.Invoke(msg);
+                    emitted++;
+                }
+                catch { /* 单条坏了跳过 */ }
+            }
+            if (emitted > 0) Diag?.Invoke("本地缓存: 直接显示 " + emitted + " 条");
+        }
+        catch (Exception ex) { Diag?.Invoke("读本地缓存失败: " + ex.Message); }
     }
 
     public void Stop()
@@ -392,10 +449,21 @@ public sealed class ChatService : IDisposable
             .OrderBy(e => e.Name, StringComparer.Ordinal)
             .ToList();
 
+        // 11.4: 对方撤回(服务器上文件没了) —— 本地缓存和界面都要跟着去掉, 不能"漏掉"
+        var gone = Cache.PruneMissing(files.Select(e => e.Name), cutoff);
+        foreach (var name in gone)
+        {
+            _seen.TryRemove(name, out _);
+            MessageRemoved?.Invoke(name);
+            Diag?.Invoke("对方撤回, 本地移除 " + name);
+        }
+
         var fresh = files.Where(e => !_seen.ContainsKey(e.Name) && !_deleted.Contains(e.Name)).ToList();
-        Diag?.Invoke($"同步: 目录 {entries.Count} 项 / 消息 {files.Count} 个 / 待取 {fresh.Count} 个");
+        Diag?.Invoke($"同步: 目录 {entries.Count} 项 / 消息 {files.Count} 个 / 待取 {fresh.Count} 个" +
+                     (gone.Count > 0 ? $" / 撤回 {gone.Count} 个" : "") + $" / {Cache.Describe()}");
         if (fresh.Count == 0)
         {
+            Cache.Save();
             Synced?.Invoke(LastSyncTime ?? DateTimeOffset.Now);
             return;
         }
@@ -427,6 +495,7 @@ public sealed class ChatService : IDisposable
                     if (msg.IsEncrypted) Decrypt(msg, entry.Name);
 
                     _seen[entry.Name] = 1;              // 只有解析成功才算已读
+                    Cache.Put(entry.Name, text);        // 11.4: 顺手存进本地缓存, 下次启动直接显示
                     msg.RemoteName = entry.Name;
                     msg.IsSelf = !string.IsNullOrEmpty(Nickname) &&
                                  string.Equals(msg.From, Nickname, StringComparison.Ordinal);
@@ -439,6 +508,7 @@ public sealed class ChatService : IDisposable
                     ErrorOccurred?.Invoke("读取 " + entry.Name + " 失败: " + ex.Message);
                 }
             });
+        Cache.Save();
         Diag?.Invoke($"同步完成: {fresh.Count} 个文件, 耗时 {sw.ElapsedMilliseconds} ms");
         Synced?.Invoke(LastSyncTime ?? DateTimeOffset.Now);
     }

@@ -111,7 +111,7 @@ public sealed partial class MainWindow : Window
         ApplyFont();
         UpdateLockText();
         MeText.Text = string.IsNullOrWhiteSpace(_settings.Nickname) ? "(未设置昵称)" : "我：" + _settings.Nickname;
-        Title = "TCP Chat 11.4 — " + _settings.ChatFolder;
+        Title = "TCP Chat 11.5 — " + _settings.ChatFolder;
 
         RootLoaded();
 

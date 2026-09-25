@@ -96,7 +96,7 @@ public partial class App : Application
             MessageBox(IntPtr.Zero,
                 "这个 exe 的文件名里有空格（例如 " + name + "）。\n\n" +
                 "Windows App SDK 在这种情况下找不到程序自己的界面资源，会启动失败。\n\n" +
-                "请把文件名里的空格去掉，例如改成 TCP-Chat-11.4.exe，再双击运行。",
+                "请把文件名里的空格去掉，例如改成 TCP-Chat-11.5.exe，再双击运行。",
                 "TCP Chat 需要改个名字", 0x30);
             Environment.Exit(2);
             return true;
@@ -184,7 +184,7 @@ public partial class App : Application
         {
             var text = "程序启动时出错了：\n\n" + ex.GetType().Name + ": " + ex.Message +
                        "\n\n常见原因：exe 被改成了带空格的名字（例如 \"TCP-Chat-11.0 - 副本.exe\"）。" +
-                       "请把文件名里的空格去掉，或重新下载一份 TCP-Chat-11.4.exe。\n\n" +
+                       "请把文件名里的空格去掉，或重新下载一份 TCP-Chat-11.5.exe。\n\n" +
                        "详细信息写在 %LOCALAPPDATA%\\TCPChat\\crash.log";
             MessageBox(IntPtr.Zero, text, title, 0x10);
         }

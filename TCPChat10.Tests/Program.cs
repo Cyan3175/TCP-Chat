@@ -46,6 +46,7 @@ if (args.Length >= 2 && args[0] == "ls") return await Probe.RunAsync(args[1].Tri
 int offlineFail = CryptoTest.Run();
 offlineFail += MathTest.Run();
 offlineFail += LuoguTest.Run();
+offlineFail += CacheTest.Run();
 
 // 在线部分打真实 WebDAV 服务器, 加 --offline 可以跳过
 if (args.Contains("--offline"))

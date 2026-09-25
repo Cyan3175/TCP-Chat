@@ -5,7 +5,7 @@
     <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
     <RootNamespace>TCPChat10</RootNamespace>
-    <AssemblyName>TCP-Chat-11.4</AssemblyName>
+    <AssemblyName>TCP-Chat-11.5</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <Platforms>x64</Platforms>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
@@ -22,8 +22,8 @@
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
-    <Version>11.4.0</Version>
-    <AssemblyTitle>TCP Chat 11.4</AssemblyTitle>
+    <Version>11.5.0</Version>
+    <AssemblyTitle>TCP Chat 11.5</AssemblyTitle>
     <Product>TCP Chat</Product>
     <!-- 程序图标: 取自 MahApps.Metro.IconPacks 6.2.1 的 FontAwesome6/CommentDotsSolid,
          由 .build/iconmake 渲染成多尺寸 ico(生成脚本见 README「程序图标」一节)。

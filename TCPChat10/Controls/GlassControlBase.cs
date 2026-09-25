@@ -34,6 +34,37 @@ public abstract class GlassControlBase : UserControl
     /// <summary>玻璃参数: 固定用偏高的质量(控件很小, 开销可以忽略)。</summary>
     protected static GlassParams Params => GlassParams.For(85);
 
+    private bool _glassLook = true;
+
+    /// <summary>
+    /// 11.4: 主界面关掉液态玻璃时, 这两个控件要改画"普通主题控件"的样子。
+    /// 以前不管开没开都画白玻璃 —— 浅色下白玻璃压在白底上, 轨道和圆钮都看不见。
+    /// </summary>
+    public bool GlassLook
+    {
+        get => _glassLook;
+        set
+        {
+            if (_glassLook == value) return;
+            _glassLook = value;
+            Redraw();
+        }
+    }
+
+    /// <summary>实心圆角块(不用玻璃时用)。</summary>
+    protected static void FillRound(CanvasDrawingSession ds, Rect rect, double radius, Color color) =>
+        ds.FillRoundedRectangle(rect, (float)radius, (float)radius, color);
+
+    /// <summary>1px 描边: 让控件在任何底色上都有边界。</summary>
+    protected static void Edge(CanvasDrawingSession ds, Rect rect, double radius, Color color, double thickness = 1) =>
+        ds.DrawRoundedRectangle(rect, (float)radius, (float)radius, color, (float)thickness);
+
+    /// <summary>不用玻璃时的配色(跟主题走)。</summary>
+    protected static Color NeutralTrack => Dark ? Color.FromArgb(255, 0x4C, 0x4F, 0x57) : Color.FromArgb(255, 0xC2, 0xC8, 0xD2);
+    protected static Color KnobSolid => Dark ? Color.FromArgb(255, 0xE8, 0xEC, 0xF4) : Color.FromArgb(255, 0xFF, 0xFF, 0xFF);
+    protected static Color TrackEdge => Dark ? Color.FromArgb(120, 255, 255, 255) : Color.FromArgb(70, 0, 0, 0);
+    protected static Color KnobEdge => Dark ? Color.FromArgb(60, 0, 0, 0) : Color.FromArgb(60, 0, 0, 0);
+
     protected bool Ready => _renderer.Ready;
 
     protected void Redraw() => Surface.Invalidate();

@@ -41,7 +41,7 @@ public sealed class WebDavClient : IDisposable
 
         var handler = new HttpClientHandler { AllowAutoRedirect = true };
         _http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(60) };
-        _http.DefaultRequestHeaders.UserAgent.ParseAdd("TCPChat10/11.4");
+        _http.DefaultRequestHeaders.UserAgent.ParseAdd("TCPChat10/11.5");
     }
 
     /// <summary>

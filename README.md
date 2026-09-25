@@ -1,4 +1,4 @@
-# TCP Chat 11.4
+# TCP Chat 11.5
 
 用 **WinUI 3（Windows App SDK）** 重写的桌面聊天客户端。
 
@@ -11,7 +11,7 @@
 
 ## 快速开始
 
-1. 下载 `TCP-Chat-11.4.exe`，**放在哪个目录都行**，双击即可（自包含，不需要装 .NET，也不需要 Windows App Runtime）
+1. 下载 `TCP-Chat-11.5.exe`，**放在哪个目录都行**，双击即可（自包含，不需要装 .NET，也不需要 Windows App Runtime）
    > ⚠️ **文件名里不要有空格或括号**（浏览器下载常加 " (1)"）：Windows App SDK 在含空格的路径下定位不到程序自己的界面资源，会启动失败；遇到这种名字程序会弹框提示改名。
 2. 首次启动会让你填昵称（顶栏「改昵称」随时可改）
 3. 默认连到 `https://dev.zhaohans.cn`，消息目录 `nw集训/学生资料临存/tcp_chat`（**消息文件就放在这一层**，目录要事先存在）
@@ -38,7 +38,14 @@
 - **撤回**：`DELETE` 自己的消息文件
 - **目录不会被自动创建**：填错或还没建会直接提示「聊天目录不存在」，免得在你的共享目录里凭空多出一个文件夹
 
-## 11.4 更新
+## 11.5 更新
+
+- **本地消息缓存**：同步到的消息（服务器上那份原始 JSON）会存在 `%LOCALAPPDATA%\TCPChat\cache\msgs_*.json`，**下次启动直接显示，不用把整个目录重拉一遍**；缓存按聊天目录分开存，换目录不会串消息
+- **对方撤回不会漏**：服务器上文件没了的消息会从缓存和界面里一起移除（服务器偶发返回空列表时不动手，免得误清）；自己撤回的也会同步从缓存删掉
+- **修深色下语音条看不见播放三角**：那个三角以前绑的是气泡底色，开了液态玻璃后气泡底色是**透明**，于是三角也透明，只剩一个白圆点；现在改用气泡内部实底的颜色
+- **修关掉液态玻璃后设置里的开关/滑块看不清**：白玻璃压在白底上轨道和圆钮都看不见；现在关掉玻璃时它们改画普通主题控件的样子（灰轨道 + 白钮 + 描边，打开状态是主题蓝）
+
+## 11.4 更新（上一个版本）
 
 - **LaTeX 公式真排版**：`$…$` / `\(…\)` 行内、`$$…$$` / `\[…\]` 块级；分数、根号、上下标、`\sum`/`\int`（块级上下限叠放）、`\left(…\right)` 自动放大、`aligned`/`cases`/`pmatrix` 环境、`\boxed`、重音、希腊字母与运算符符号表。分数线/根号/方框都是**画出来的**，放大不糊；写错或不认识的命令按原文显示，不会吞内容
 - **洛谷那套 Markdown 扩展语法**：折叠框 `:::info[标题]`/`success`/`warning`/`error`（`{open}` 默认展开、可嵌套）、`:::align{center|right|left}`、`:::epigraph[——作者]`；代码块 `line-numbers` 行号与 `lines=6-9` 高亮；表格 `^` 向上合并 / `<` 向左合并、`::cute-table{tuack}` 竞赛表
@@ -64,6 +71,7 @@
 - **引用回复 / 复制文本 / 撤回**：右键消息菜单（撤回会连服务器上的文件一起删）
 - 自己的消息靠右蓝色气泡，别人的靠左浅色气泡，各带发送者与时间；解密成功的消息带一把小锁 🔒
 - 新消息自动滚到底部（可在设置里关闭）
+- **启动快**：本地缓存上次同步到的消息（11.5），打开就能看到历史，后台再补同步；对方撤回的消息会跟着服务器一起消失
 
 ### 界面
 
@@ -130,6 +138,7 @@ TCPChat10/
     UiZoom.cs              界面缩放(Ctrl +/-/0)
     AppIcon.cs             程序图标(从嵌入资源解出来给窗口/顶栏)
     MessageNotifier.cs     系统通知 + 任务栏闪烁
+    MessageCache.cs        本地消息缓存(11.5, 启动直接显示 + 撤回清理)
     AppSettings.cs         设置读写(%LOCALAPPDATA%\TCPChat)与老目录迁移
   Glass/
     GlassParams.cs         质量 0~100 -> 效果参数(纯数据, 可离线测)
@@ -161,13 +170,13 @@ TCPChat10.Tests/           控制台回归测试(直接引用上面的源码, �
 ```powershell
 cd TCPChat10
 dotnet build -c Release                    # 调试构建产物(文件夹形式, 便于反复启动)
-dotnet publish -c Release -o ..\dist114    # 发布: 只产出一个 TCP-Chat-11.4.exe
+dotnet publish -c Release -o ..\dist115    # 发布: 只产出一个 TCP-Chat-11.5.exe
 ```
 
 关键工程设置：
 
 - `WindowsPackageType=None`（免打包运行，双击 exe 即用）、`WindowsAppSDKSelfContained=true`（把 Windows App Runtime 打进去，目标机不需要预装运行时）
-- `PublishSingleFile` + `IncludeAllContentForSelfExtract` + `EnableCompressionInSingleFile`（发布成**单个 exe**；代价是首次启动会把自己解压到 `%TEMP%\.net\TCP-Chat-11.4\` 下，之后复用）
+- `PublishSingleFile` + `IncludeAllContentForSelfExtract` + `EnableCompressionInSingleFile`（发布成**单个 exe**；代价是首次启动会把自己解压到 `%TEMP%\.net\TCP-Chat-11.5\` 下，之后复用）
 - `ApplicationIcon` 指向 `Assets\app.ico`，控件与顶栏图标从**嵌入资源**里解出来（单文件发布时 exe 旁边没有 Assets 目录）
 - 设置文件位置用 `Environment.ProcessPath` 定位 exe 目录 —— 单文件发布时 `AppContext.BaseDirectory` 指向的是 `%TEMP%` 里的解压目录，不能用
 - `Markdig` 1.4.0（MIT）负责 markdown 解析，纯托管代码，单文件发布没问题
@@ -192,14 +201,15 @@ dotnet run -c Release -- make FontAwesome6 CommentDotsSolid ..\..\TCPChat10\Asse
 
 ```powershell
 cd TCPChat10.Tests
-dotnet run -c Release              # 离线 263 项 + 在线 49 项(打真实服务器)
+dotnet run -c Release              # 离线 278 项 + 在线 49 项(打真实服务器)
 dotnet run -c Release -- --offline # 只跑离线部分
 ```
 
-- **离线（263 项，不需要网络）**
+- **离线（278 项，不需要网络）**
   - **公式排版 78 项**：LaTeX 解析（分数/根号/上下标/环境/符号表/坏输入不崩）、排版几何（宽度高度单调性、上下限叠放、合并跨度）、纯文本、`\[ \]` `\( \)` 定界符归一化（含 CR-only 换行与代码块保护）、markdown 接线
   - **洛谷扩展语法 34 项**：折叠框与 `{open}` / 嵌套、对齐、引言、代码块 `line-numbers` 与 `lines=6-9`、表格 `^` / `<` 合并、`::cute-table{tuack}`、原有语法不受影响、原始 HTML 不解析
   - **缩放 13 项**：夹取（上下限/NaN/越界）、步进、复位、事件通知、设置持久化
+  - **本地缓存 15 项**：存取与排序、换目录不串消息、对方撤回的清理、服务器空列表时不动手、窗口外老消息保留、自己撤回
   - **液态玻璃**：质量 0~100 → 参数映射的单调性与夹取、背景图 cover 摆放、开关与质量的持久化
   - **markdown 解析**：标题/粗斜体/删除线/行内代码/任务列表/有序列表/表格对齐/引用/提示块/围栏语言/上下标/脚注/自动链接/纯文本快路径
   - **加密与数据**：密钥派生一致性、加解密往返、密码/目录/文件名不一致解不开、篡改被 GCM 拦下、上行 JSON 不含明文、附件字节加解密往返、附件元信息随密文走、文件名过滤、大小与时长格式化
@@ -223,7 +233,7 @@ dotnet run -c Release -- ls     "nw集训/学生资料临存"                   
 $env:TCPCHAT10_TEST_SETTINGS = "test_settings.json"   # 指向测试目录，避免污染真实聊天
 $env:TCPCHAT10_TEST_LOG      = "ui_test.log"
 $env:TCPCHAT10_AUTOTEST      = "theme:1;zoom:1.5;mdpreview:C:\md.md;waitmsg:1;mscroll:0;shot:C:\shot.png;settings;dshot:C:\dlg.png;closedlg;quit"
-.\TCP-Chat-11.4.exe
+.\TCP-Chat-11.5.exe
 ```
 
 支持的动作：`wait:N` / `waitmsg:N` / `send:文本` / `sendmd:文件路径`（把整份 markdown 当成一条消息发出去） / `sendq:引用|正文` /
@@ -239,7 +249,7 @@ $env:TCPCHAT10_AUTOTEST      = "theme:1;zoom:1.5;mdpreview:C:\md.md;waitmsg:1;ms
 - **同一目录 + 同一密码 = 同一把钥匙**：密码是双方共享的口令，谁拿到密码谁就能解密；没有每用户密钥对 / 前向保密
 - **消息目录是公开的**：知道 WebDAV 地址和目录名就能读到消息文件（加密后读到的是密文）。**不要在共享目录里发隐私内容**，除非开了加密
 - **程序不会自动新建目录**：目录填错或还没建会直接提示，消息不会写到别的地方去
-- **单文件 exe 首次启动稍慢**：会把自己解压到 `%TEMP%\.net\TCP-Chat-11.4\`（约 240 MB，之后复用；换新版本会再解一份），程序每次启动会自动清理自己以前留下的旧解压目录
+- **单文件 exe 首次启动稍慢**：会把自己解压到 `%TEMP%\.net\TCP-Chat-11.5\`（约 240 MB，之后复用；换新版本会再解一份），程序每次启动会自动清理自己以前留下的旧解压目录
 - **消息不是实时推送**：靠轮询，默认 3 秒（1~120 秒可调，**改完立刻生效**），对方最多慢一个周期看到；服务器偶发把某个请求挂住几十秒时，客户端会自动跳过并在下一轮重试
 - **历史只按文件名时间戳排**：客户端时钟不准会导致消息顺序错乱
 - **附件与语音**：整份文件先读进内存再上传（几十 MB 没问题，超大文件请直接用资源管理器拷）；设了密码时附件也是密文上传
@@ -254,7 +264,8 @@ $env:TCPCHAT10_AUTOTEST      = "theme:1;zoom:1.5;mdpreview:C:\md.md;waitmsg:1;ms
 
 | 版本 | 主要变化 |
 |---|---|
-| **11.4** | LaTeX 公式排版；洛谷 Markdown 扩展语法（折叠框/对齐/引言/代码块参数/表格合并/tuack）；程序图标；缩放（Ctrl 加减 0 与滚轮）；修玻璃下深色切浅色的可读性与根号横线粗细 |
+| **11.5** | 本地消息缓存（启动直接显示 + 对方撤回清理）；修深色下语音条的播放三角不显示；修关掉液态玻璃后设置里的开关/滑块看不清 |
+| 11.4 | LaTeX 公式排版；洛谷 Markdown 扩展语法（折叠框/对齐/引言/代码块参数/表格合并/tuack）；程序图标；缩放（Ctrl 加减 0 与滚轮）；修玻璃下深色切浅色的可读性与根号横线粗细 |
 | 11.3 | 默认聊天目录改成 `nw集训/学生资料临存/tcp_chat`（老默认目录自动迁移一次）；空密码项保留（表示明文发送） |
 | 11.2 | 密码列表 + 默认发送密码（逐把尝试解密）；设置对话框字体/圆角跟随；密码列表可增删 |
 | 11.1 | 消息列表裁剪到自己的行里（不再压到顶栏/底栏）；玻璃更实、圆角统一；文件名带空格时给出说明 |

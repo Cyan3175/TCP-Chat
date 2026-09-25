@@ -30,6 +30,8 @@
     <Compile Include="../TCPChat10/Rendering/MathDelimiters.cs" Link="MathDelimiters.cs" />
     <Compile Include="MathTest.cs" />
     <Compile Include="LuoguTest.cs" />
+    <Compile Include="CacheTest.cs" />
+    <Compile Include="../TCPChat10/Services/MessageCache.cs" Link="MessageCache.cs" />
     <Compile Include="../TCPChat10/Rendering/MarkdownPreprocess.cs" Link="MarkdownPreprocess.cs" />
   </ItemGroup>
 

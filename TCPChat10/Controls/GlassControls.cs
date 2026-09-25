@@ -91,21 +91,35 @@ public sealed class GlassSwitch : GlassControlBase
 
     protected override void OnDraw(CanvasDrawingSession ds, Size size)
     {
-        var track = new Rect(0, 0, TrackWidth, TrackHeight);
+        var radius = TrackHeight / 2;
+        var track = new Rect(0.5, 0.5, TrackWidth - 1, TrackHeight - 1);
 
-        // 轨道: 开 = 蓝玻璃, 关 = 白/黑玻璃
+        var knob = TrackHeight - KnobInset * 2;
+        var x = KnobInset + _knobPos * (TrackWidth - knob - KnobInset * 2);
+        var knobRect = new Rect(x, KnobInset, knob, knob);
+
+        if (!GlassLook)
+        {
+            // 关掉液态玻璃: 画成普通开关(中性灰 / 主题蓝轨道 + 白钮 + 描边), 白底上也看得清
+            FillRound(ds, track, radius, _isOn ? AccentOn : NeutralTrack);
+            Edge(ds, track, radius, TrackEdge);
+            FillRound(ds, knobRect, knob / 2, KnobSolid);
+            Edge(ds, knobRect, knob / 2, KnobEdge);
+            return;
+        }
+
+        // 开着玻璃: 轨道开 = 蓝玻璃, 关 = 白/黑玻璃; 再描一圈边, 免得白玻璃压在浅色卡片上看不出形状
         var trackTint = _isOn
             ? AccentOn
             : Dark ? Color.FromArgb(255, 22, 24, 30) : Color.FromArgb(255, 255, 255, 255);
         var trackOpacity = _isOn ? 0.78 : Dark ? 0.72 : 0.80;
-        DrawGlass(ds, size, track, TrackHeight / 2, trackTint, trackOpacity);
+        var fullTrack = new Rect(0, 0, TrackWidth, TrackHeight);
+        DrawGlass(ds, size, fullTrack, radius, trackTint, trackOpacity);
+        Edge(ds, track, radius, TrackEdge);
 
-        // 圆钮: 亮一点的玻璃球, 关的时候靠左、开的时候靠右(带过渡)
-        var knob = TrackHeight - KnobInset * 2;
-        var x = KnobInset + _knobPos * (TrackWidth - knob - KnobInset * 2);
-        var knobRect = new Rect(x, KnobInset, knob, knob);
         var knobTint = Dark ? Color.FromArgb(255, 0xE8, 0xEC, 0xF4) : Color.FromArgb(255, 255, 255, 255);
         DrawGlass(ds, size, knobRect, knob / 2, knobTint, 0.92);
+        Edge(ds, knobRect, knob / 2, KnobEdge);
     }
 }
 
@@ -193,18 +207,34 @@ public sealed class GlassSlider : GlassControlBase
         if (w < Knob + 4) return;
 
         var trackY = (Height_ - TrackHeight) / 2;
-        var track = new Rect(0, trackY, w, TrackHeight);
-        var trackTint = Dark ? Color.FromArgb(255, 22, 24, 30) : Color.FromArgb(255, 255, 255, 255);
-        DrawGlass(ds, size, track, TrackHeight / 2, trackTint, Dark ? 0.72 : 0.80);
+        var radius = TrackHeight / 2;
+        var track = new Rect(0.5, trackY + 0.5, w - 1, TrackHeight - 1);
 
-        // 已选中的一段: 蓝色玻璃
         var ratio = _maximum > _minimum ? (_value - _minimum) / (_maximum - _minimum) : 0;
         var knobX = ratio * (w - Knob);
         var fillWidth = Math.Max(TrackHeight, knobX + Knob / 2);
-        DrawGlass(ds, size, new Rect(0, trackY, fillWidth, TrackHeight), TrackHeight / 2, Accent, 0.80);
+        var fill = new Rect(0.5, trackY + 0.5, Math.Max(TrackHeight, fillWidth) - 1, TrackHeight - 1);
+        var knobRect = new Rect(knobX + 0.5, 1.5, Knob - 1, Knob - 1);
+
+        if (!GlassLook)
+        {
+            // 关掉液态玻璃: 普通滑块(灰色轨道 + 主题蓝已选段 + 白钮 + 描边)
+            FillRound(ds, track, radius, NeutralTrack);
+            Edge(ds, track, radius, TrackEdge);
+            FillRound(ds, fill, radius, Accent);
+            FillRound(ds, knobRect, Knob / 2, KnobSolid);
+            Edge(ds, knobRect, Knob / 2, KnobEdge);
+            return;
+        }
+
+        var trackTint = Dark ? Color.FromArgb(255, 22, 24, 30) : Color.FromArgb(255, 255, 255, 255);
+        DrawGlass(ds, size, new Rect(0, trackY, w, TrackHeight), radius, trackTint, Dark ? 0.72 : 0.80);
+        Edge(ds, track, radius, TrackEdge);
+        DrawGlass(ds, size, new Rect(0, trackY, fillWidth, TrackHeight), radius, Accent, 0.80);
 
         // 圆钮: 浅色主题下白钮压在白色玻璃轨道上会看不见, 所以给一点冷灰蓝
         var knobTint = Dark ? Color.FromArgb(255, 0xE8, 0xEC, 0xF4) : Color.FromArgb(255, 0xC6, 0xD6, 0xEA);
         DrawGlass(ds, size, new Rect(knobX, 2, Knob, Knob), Knob / 2, knobTint, 0.95);
+        Edge(ds, knobRect, Knob / 2, KnobEdge);
     }
 }

@@ -115,6 +115,7 @@ public sealed class MessageVm : INotifyPropertyChanged
         Raise(nameof(SenderBrush));
         Raise(nameof(SenderFontSize));
         Raise(nameof(MetaFontSize));
+        Raise(nameof(VoiceIconBrush));
         Raise(nameof(QuoteBrush));
         Raise(nameof(StatusBrush));
         Raise(nameof(AttachBrush));
@@ -290,6 +291,15 @@ public sealed class MessageVm : INotifyPropertyChanged
     public Brush SenderBrush => IsSelf
         ? ThemeLookup.Brush("BodyOtherBrush")
         : GlassBubbles ? ThemeLookup.Brush("SenderGlassBrush") : ThemeLookup.Brush("AccentBrush");
+
+    /// <summary>
+    /// 11.4 修: 语音条上那个"播放三角"的颜色。
+    /// 它以前绑的是气泡底色 —— 开了液态玻璃以后气泡底色是**透明**(玻璃由 Win2D 画),
+    /// 于是三角也变成透明, 深色下就只剩一个白圆点。这里改用气泡内部那层实底的颜色。
+    /// </summary>
+    public Brush VoiceIconBrush => IsSelf
+        ? new SolidColorBrush(ThemeLookup.Color("BubbleSelfColor"))
+        : ThemeLookup.Brush("BubbleOtherBrush");
 
     /// <summary>附件卡片/语音条的底色: 跟气泡区分开。</summary>
     public Brush AttachBrush => IsSelf

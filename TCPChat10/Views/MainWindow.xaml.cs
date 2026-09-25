@@ -98,7 +98,11 @@ public sealed partial class MainWindow : Window
 
         // 顶栏那几个按钮也是直角, 加载完统一刷圆角
         if (Content is FrameworkElement cornerRoot)
-            cornerRoot.Loaded += (_, _) => UiFont.RoundAll(cornerRoot, 8);
+            cornerRoot.Loaded += (_, _) =>
+            {
+                UiFont.Apply(cornerRoot);        // 树真正生成后再刷一次字体(顶栏按钮等)
+                UiFont.RoundAll(cornerRoot, 8);  // 圆角
+            };
 
         ApplyTheme();
         ApplyFont();
@@ -544,6 +548,7 @@ public sealed partial class MainWindow : Window
             };
             ApplyThemeTo(dlg);
             ApplyFontTo(dlg);
+        DressDialog(dlg);
             var r = await dlg.ShowAsync();
             if (r == ContentDialogResult.Primary) RootLoaded();
             else await ShowSettingsAsync();
@@ -842,6 +847,7 @@ public sealed partial class MainWindow : Window
         };
         ApplyThemeTo(dlg);
         ApplyFontTo(dlg);
+        DressDialog(dlg);
 
         ContentDialogResult r;
         try { r = await dlg.ShowAsync(); }
@@ -1123,6 +1129,7 @@ public sealed partial class MainWindow : Window
         };
         ApplyThemeTo(dlg);
         ApplyFontTo(dlg);
+        DressDialog(dlg);
         var r = await dlg.ShowAsync();
         if (r == ContentDialogResult.Primary)
         {
@@ -1151,8 +1158,9 @@ public sealed partial class MainWindow : Window
         var dlg = new SettingsDialog(_settings) { XamlRoot = Content.XamlRoot };
         ApplyThemeTo(dlg);
         ApplyFontTo(dlg);
+        DressDialog(dlg);
         // 按钮在对话框模板里, 要等 Opened 之后才拿得到 —— 那时统一刷圆角
-        dlg.Opened += (_, _) => UiFont.RoundAll(dlg, 8);
+
         // 玻璃的开关/滑块是实时生效的, 所以对话框里一动就重新应用
         dlg.GlassChanged += ApplyGlass;
         ContentDialogResult r;
@@ -1197,6 +1205,7 @@ public sealed partial class MainWindow : Window
             };
             ApplyThemeTo(dlg2);
             ApplyFontTo(dlg2);
+            DressDialog(dlg2);
             try { await dlg2.ShowAsync(); } catch { }
             return;
         }
@@ -1389,6 +1398,19 @@ public sealed partial class MainWindow : Window
 
     /// <summary>弹出层(对话框/菜单)不继承窗口字体, 单独刷一遍。</summary>
     private static void ApplyFontTo(FrameworkElement popup) => UiFont.ApplyTo(popup);
+
+    /// <summary>
+    /// 11.2 修"字体不跟随设置": ContentDialog 的按钮在它的模板里, ShowAsync 之前那棵树里还没有它们,
+    /// 所以打开时再补刷一次字体 + 圆角 —— 保存/取消这类按钮才会跟着设置走。
+    /// </summary>
+    private static void DressDialog(ContentDialog dlg)
+    {
+        dlg.Opened += (_, _) =>
+        {
+            UiFont.Apply(dlg);
+            UiFont.RoundAll(dlg, 8);
+        };
+    }
 
     // ---------- 界面辅助 ----------
 

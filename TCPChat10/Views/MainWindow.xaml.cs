@@ -100,7 +100,7 @@ public sealed partial class MainWindow : Window
         ApplyFont();
         UpdateLockText();
         MeText.Text = string.IsNullOrWhiteSpace(_settings.Nickname) ? "(未设置昵称)" : "我：" + _settings.Nickname;
-        Title = "TCP Chat 11.0 — " + _settings.ChatFolder;
+        Title = "TCP Chat 11.1 — " + _settings.ChatFolder;
 
         RootLoaded();
 
@@ -550,6 +550,22 @@ public sealed partial class MainWindow : Window
     }
 
     // ---------- 事件 ----------
+
+    /// <summary>
+    /// 11.1: 把消息列表裁在自己的行里 —— 很高的 markdown 消息/图片、以及滚动时
+    /// ListView 复用容器, 都有可能被画到行外面(看起来就是"消息压到顶栏/底栏上")。
+    /// </summary>
+    private void OnListHostSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        try
+        {
+            ListHost.Clip = new Microsoft.UI.Xaml.Media.RectangleGeometry
+            {
+                Rect = new Windows.Foundation.Rect(0, 0, e.NewSize.Width, e.NewSize.Height),
+            };
+        }
+        catch { }
+    }
 
     /// <summary>可靠地滚动到最新一条(虚拟化面板下 ScrollIntoView 常常滚不动)。</summary>
     private void ScrollToBottom()

@@ -7,7 +7,10 @@ namespace TCPChat10.Services;
 public sealed class AppSettings
 {
     /// <summary>共享目录里直接放消息文件, 不再另建"聊天"子文件夹。</summary>
-    public const string DefaultChatFolder = "nw集训/学生资料临存";
+    public const string DefaultChatFolder = "nw集训/学生资料临存/tcp_chat";
+
+    /// <summary>11.2 及以前的默认目录(共享目录本身): 读到它自动下移到 tcp_chat 子目录。</summary>
+    public const string LegacySharedChatFolder = "nw集训/学生资料临存";
 
     /// <summary>10.0/10.1 的默认值: 会在共享目录下单独建一个"聊天"文件夹, 读到它自动上移一级。</summary>
     public const string LegacyDefaultChatFolder = "nw集训/学生资料临存/聊天";
@@ -163,7 +166,8 @@ public sealed class AppSettings
         if (string.IsNullOrWhiteSpace(ServerUrl)) ServerUrl = DefaultServerUrl;
         if (string.IsNullOrWhiteSpace(ChatFolder)) ChatFolder = DefaultChatFolder;
         ChatFolder = ChatFolder.Trim().Trim('/');
-        if (string.Equals(ChatFolder, LegacyDefaultChatFolder, StringComparison.Ordinal))
+        if (string.Equals(ChatFolder, LegacyDefaultChatFolder, StringComparison.Ordinal) ||
+            string.Equals(ChatFolder, LegacySharedChatFolder, StringComparison.Ordinal))
             ChatFolder = DefaultChatFolder;
         if (PollSeconds < 1) PollSeconds = 3;
         if (HistoryDays < 1) HistoryDays = 7;
@@ -184,6 +188,9 @@ public sealed class AppSettings
         CryptoPassword = SendPassword;      // 老版本读这个字段, 保持同步
         return this;
     }
+
+    /// <summary>单元测试用: 跑一遍 Normalize(含老默认目录迁移)。</summary>
+    internal AppSettings NormalizeForTests() => Normalize();
 
     public static AppSettings Load()
     {

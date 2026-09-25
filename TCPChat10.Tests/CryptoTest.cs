@@ -146,7 +146,9 @@ public static class CryptoTest
             try { Directory.Delete(tmpDir2, true); } catch { }
         }
 
-        Check(AppSettings.DefaultChatFolder == "nw集训/学生资料临存", "新默认聊天目录就是共享目录本身, 不再带 聊天 子文件夹");
+        Check(AppSettings.DefaultChatFolder == "nw集训/学生资料临存/tcp_chat", "默认聊天目录是共享目录下的 tcp_chat: " + AppSettings.DefaultChatFolder);
+        Check(new AppSettings { ChatFolder = "nw集训/学生资料临存" }.NormalizeForTests().ChatFolder == "nw集训/学生资料临存/tcp_chat",
+              "老默认目录(共享目录本身)自动下移到 tcp_chat");
         Check(AppSettings.FilePath.EndsWith("settings.json", StringComparison.OrdinalIgnoreCase), "设置文件名: " + AppSettings.FilePath);
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         var expectedDir = Path.Combine(localAppData, "TCPChat");

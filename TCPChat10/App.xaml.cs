@@ -60,7 +60,7 @@ public partial class App : Application
         // 而 Windows App SDK 在"路径里带空格"时定位不到 ms-appx:/// 里的界面资源
         // (实测: "TCP-Chat-11.0 copy.exe" 必然启动崩溃, "TCP-Chat-11.0b.exe" 正常)。
         // 用户随手"复制一份"就会中招, 所以这里自动改用无空格的正式副本运行。
-        if (TryRelaunchFromSafeLocation()) return;
+        if (NameHasSpace()) return;          // 文件名带空格: 明确告诉用户改名, 不要偷偷兜(实测换名字启动仍会资源定位失败)
 
         CleanOldExtractDirs();                 // 顺手清掉自己以前留下的解压目录
 
@@ -79,7 +79,31 @@ public partial class App : Application
         }
     }
 
-    /// <summary>exe 文件名带空格时, 复制一份到 %LOCALAPPDATA%\TCPChat\app\ 再运行它。</summary>
+    /// <summary>
+    /// exe 文件名带空格(浏览器下载成 "... (1).exe" 也会): Windows App SDK 定位不到 ms-appx:/// 界面资源,
+    /// 启动必崩。这里直接说明白怎么解决, 而不是崩掉或者换名字瞎试。
+    /// </summary>
+    private static bool NameHasSpace()
+    {
+        try
+        {
+            var exe = Environment.ProcessPath;
+            if (string.IsNullOrEmpty(exe)) return false;
+            var name = Path.GetFileName(exe);
+            if (!name.Contains(' ')) return false;
+
+            LogCrash("exe 文件名带空格, 无法启动: " + name, null);
+            MessageBox(IntPtr.Zero,
+                "这个 exe 的文件名里有空格（例如 " + name + "）。\n\n" +
+                "Windows App SDK 在这种情况下找不到程序自己的界面资源，会启动失败。\n\n" +
+                "请把文件名里的空格去掉，例如改成 TCP-Chat-11.1.exe，再双击运行。",
+                "TCP Chat 需要改个名字", 0x30);
+            Environment.Exit(2);
+            return true;
+        }
+        catch { return false; }
+    }
+
     private static bool TryRelaunchFromSafeLocation()
     {
         try
@@ -99,10 +123,21 @@ public partial class App : Application
 
             // 每次都刷新一份, 免得用户换了新版本而副本还是旧的
             File.Copy(exe, safe, overwrite: true);
+
+            // 副本的解压目录也清掉: hash 是按文件内容算的, 原文件和副本会撞同一个目录名,
+            // 混用会导致界面资源定位失败(实测启动后弹"建窗口失败")。让它重新解压一份干净的。
+            try
+            {
+                var stale = Path.Combine(Path.GetTempPath(), ".net", "TCP-Chat-latest");
+                if (Directory.Exists(stale)) Directory.Delete(stale, recursive: true);
+            }
+            catch { }
             // 注意: 不能用 System.Diagnostics.Process —— 单文件发布里没有这个程序集,
             // 一调就是 FileNotFoundException(11.1 刚踩过)。直接用系统 ShellExecute。
             ShellExecute(IntPtr.Zero, "open", safe, null, null, 1);
             LogCrash("文件名带空格, 已改用 " + safe + " 启动(原文件: " + name + ")", null);
+            // 交棒完就退出, 别留一个看不见的僵尸进程在后台
+            Environment.Exit(0);
             return true;
         }
         catch { return false; }
@@ -122,8 +157,14 @@ public partial class App : Application
             if (!Directory.Exists(root)) return;
 
             var current = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
+            // 只清"当前这个 exe 名字"下面的旧解压目录 —— 别人的目录可能正在被别的实例用
+            var currentParent = Path.GetDirectoryName(current);
+            if (string.IsNullOrEmpty(currentParent)) return;
+
             foreach (var appDir in Directory.GetDirectories(root, "TCP-Chat*"))
             {
+                if (!string.Equals(appDir.TrimEnd(Path.DirectorySeparatorChar), currentParent, StringComparison.OrdinalIgnoreCase))
+                    continue;
                 foreach (var versionDir in Directory.GetDirectories(appDir))
                 {
                     if (string.Equals(versionDir.TrimEnd(Path.DirectorySeparatorChar), current, StringComparison.OrdinalIgnoreCase))

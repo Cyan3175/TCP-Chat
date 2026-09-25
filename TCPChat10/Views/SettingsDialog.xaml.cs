@@ -180,6 +180,11 @@ public sealed partial class SettingsDialog : ContentDialog
                 PlaceholderText = "第 " + (index + 1) + " 个密码",
             };
             box.PasswordChanged += (_, _) => _passwords[index] = box.Password;
+            if (_passwords[index].Length == 0)
+            {
+                box.PlaceholderText = "（空 = 不加密 / 明文发送）";
+                box.PasswordRevealMode = PasswordRevealMode.Visible;
+            }
             Grid.SetColumn(box, 0);
             row.Children.Add(box);
 
@@ -216,10 +221,23 @@ public sealed partial class SettingsDialog : ContentDialog
         CryptoError.Visibility = Visibility.Collapsed;
     }
 
+    /// <summary>加一条空项 = "不加密/明文"这一把。</summary>
+    private void OnAddPlainClick(object sender, RoutedEventArgs e)
+    {
+        if (_passwords.Contains("", StringComparer.Ordinal))
+        {
+            CryptoError.Text = "列表里已经有一条「不加密」了。";
+            CryptoError.Visibility = Visibility.Visible;
+            return;
+        }
+        _passwords.Add("");
+        RebuildPasswordRows();
+    }
+
     private void OnAddPasswordClick(object sender, RoutedEventArgs e)
     {
         var pwd = NewPasswordBox.Password;
-        if (string.IsNullOrWhiteSpace(pwd)) { CryptoError.Text = "请先输入要添加的密码。"; CryptoError.Visibility = Visibility.Visible; return; }
+        if (string.IsNullOrWhiteSpace(pwd)) { CryptoError.Text = "请先输入要添加的密码（想加「不加密」请点右边那个按钮）。"; CryptoError.Visibility = Visibility.Visible; return; }
         if (_passwords.Contains(pwd, StringComparer.Ordinal)) { CryptoError.Text = "这个密码已经在列表里了。"; CryptoError.Visibility = Visibility.Visible; return; }
         _passwords.Add(pwd);
         NewPasswordBox.Password = "";

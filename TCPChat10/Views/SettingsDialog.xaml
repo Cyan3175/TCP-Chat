@@ -36,7 +36,10 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <PasswordBox x:Name="NewPasswordBox" PlaceholderText="再加一个密码…" />
-                <Button Grid.Column="1" Content="添加" Click="OnAddPasswordClick" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                    <Button Content="添加" Click="OnAddPasswordClick" />
+                    <Button Content="加一条「不加密」" Click="OnAddPlainClick" />
+                </StackPanel>
             </Grid>
             <TextBlock x:Name="CryptoError" FontSize="12" Foreground="#D9534F" TextWrapping="Wrap"
                        Visibility="Collapsed" Text="密码列表里有空行，或者没有可用的密码。" />

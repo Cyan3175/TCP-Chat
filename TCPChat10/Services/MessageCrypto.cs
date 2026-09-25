@@ -160,18 +160,21 @@ public sealed class MessageCipher
     /// <summary>11.2: 密码列表 + 用第几把发送。解密会把整张列表依次试一遍。</summary>
     public MessageCipher(IReadOnlyList<string> passwords, int sendIndex, string saltSeed)
     {
-        var list = (passwords ?? Array.Empty<string>())
-            .Select(p => (p ?? "").Trim())
-            .Where(p => p.Length > 0)
-            .Distinct(StringComparer.Ordinal)
-            .ToList();
-        if (list.Count == 0) return;
+        // 11.2: 列表里允许空项 —— 选中空项 = 这条消息不加密(明文发送);
+        // 其余非空密码仍然参与解密, 所以"明文发送 + 还能读老密文"可以同时成立。
+        var all = (passwords ?? Array.Empty<string>()).Select(p => (p ?? "").Trim()).ToList();
+        if (all.Count == 0) return;
 
-        sendIndex = Math.Clamp(sendIndex, 0, list.Count - 1);
-        _key = MessageCrypto.DeriveKey(list[sendIndex], saltSeed);
-        _tryKeys.Add(_key);
-        for (int i = 0; i < list.Count; i++)
-            if (i != sendIndex) _tryKeys.Add(MessageCrypto.DeriveKey(list[i], saltSeed));
+        sendIndex = Math.Clamp(sendIndex, 0, all.Count - 1);
+        var send = all[sendIndex];
+        if (send.Length > 0)
+        {
+            _key = MessageCrypto.DeriveKey(send, saltSeed);
+            _tryKeys.Add(_key);
+        }
+        for (int i = 0; i < all.Count; i++)
+            if (i != sendIndex && all[i].Length > 0)
+                _tryKeys.Add(MessageCrypto.DeriveKey(all[i], saltSeed));
     }
 
     public bool Enabled => _key != null;
@@ -206,7 +209,7 @@ public sealed class MessageCipher
     /// <summary>解密正文载荷; 密码不一致返回 null。</summary>
     public CryptoPayload? TryDecryptPayload(string aad, string? envelope)
     {
-        if (_key == null) return null;
+        if (_tryKeys.Count == 0) return null;      // 没有任何可用的解密密码
         string? json = null;
         foreach (var key in _tryKeys)
         {

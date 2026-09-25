@@ -170,11 +170,14 @@ public sealed class AppSettings
         GlassQuality = Math.Clamp(GlassQuality, 0, 100);
 
         // 11.2: 老设置文件里只有一个 cryptoPassword —— 并进列表当第一项
-        CryptoPasswords = (CryptoPasswords ?? new List<string>())
-            .Select(p => (p ?? "").Trim())
-            .Where(p => p.Length > 0)
-            .Distinct(StringComparer.Ordinal)
-            .ToList();
+        // 11.2: 允许空项 —— 空项代表"不加密(明文)"这一把; 相同内容只留一个, 空项也只留一个
+        var cleaned = new List<string>();
+        foreach (var raw in CryptoPasswords ?? new List<string>())
+        {
+            var p = (raw ?? "").Trim();
+            if (!cleaned.Contains(p, StringComparer.Ordinal)) cleaned.Add(p);
+        }
+        CryptoPasswords = cleaned;
         if (CryptoPasswords.Count == 0 && !string.IsNullOrWhiteSpace(CryptoPassword))
             CryptoPasswords.Add(CryptoPassword.Trim());
         SendPasswordIndex = CryptoPasswords.Count == 0 ? 0 : Math.Clamp(SendPasswordIndex, 0, CryptoPasswords.Count - 1);

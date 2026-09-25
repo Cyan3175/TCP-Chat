@@ -3,7 +3,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:vm="using:TCPChat10.ViewModels"
-    Title="TCP Chat 10.5">
+    Title="TCP Chat 10.6">
 
     <Grid Background="{ThemeResource PageBrush}">
         <Grid.RowDefinitions>
@@ -23,7 +23,7 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <TextBlock Text="TCP Chat 10.5" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <TextBlock Text="TCP Chat 10.6" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                     <Ellipse x:Name="StatusDot" Width="9" Height="9" Fill="#9AA0A6" VerticalAlignment="Center" />
@@ -86,6 +86,51 @@
                                                    MaxLines="3" TextTrimming="CharacterEllipsis" />
                                     </Border>
 
+                                    <!-- 图片 / 视频: 气泡里直接预览(视频用第一帧做缩略图), 点开用系统程序打开 -->
+                                    <Grid Visibility="{x:Bind ImageVisible, Mode=OneWay}" HorizontalAlignment="Left">
+                                        <Image Source="{x:Bind ImageSource, Mode=OneWay}"
+                                               MaxHeight="300" MaxWidth="420" Stretch="Uniform"
+                                               Tapped="OnImageTapped" />
+                                        <Border Visibility="{x:Bind VideoBadgeVisible}" IsHitTestVisible="False"
+                                                Width="38" Height="38" CornerRadius="19" Background="#A6000000"
+                                                HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <FontIcon FontFamily="Segoe MDL2 Assets" Glyph="&#xE768;" FontSize="15" Foreground="White" />
+                                        </Border>
+                                    </Grid>
+
+                                    <!-- 普通文件 / 视频 / 音频: 文件卡片 -->
+                                    <Border Visibility="{x:Bind CardVisible, Mode=OneWay}" Background="{x:Bind AttachBrush}"
+                                            CornerRadius="8" Padding="10,8" Tapped="OnCardTapped">
+                                        <StackPanel Orientation="Horizontal" Spacing="10">
+                                            <TextBlock Text="{x:Bind AttachGlyph}" FontSize="20" VerticalAlignment="Center" />
+                                            <StackPanel VerticalAlignment="Center">
+                                                <TextBlock Text="{x:Bind AttachName}" FontSize="13" TextWrapping="NoWrap"
+                                                           TextTrimming="CharacterEllipsis" MaxWidth="300"
+                                                           Foreground="{x:Bind BodyBrush}" />
+                                                <TextBlock Text="{x:Bind AttachSizeText}" FontSize="11" Opacity="0.8"
+                                                           Foreground="{x:Bind BodyBrush}" />
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- 语音: 播放按钮 + 时长 -->
+                                    <Border Visibility="{x:Bind VoiceVisible}" Background="{x:Bind AttachBrush}"
+                                            CornerRadius="16" Padding="5,4">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <Button Click="OnVoicePlayClick" Width="32" Height="32" Padding="0" CornerRadius="16"
+                                                    Background="{x:Bind BodyBrush}" BorderThickness="0">
+                                                <FontIcon FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                                          Glyph="{x:Bind VoiceGlyph, Mode=OneWay}"
+                                                          Foreground="{x:Bind BubbleBrush}" />
+                                            </Button>
+                                            <TextBlock Text="{x:Bind PlayRowText}" VerticalAlignment="Center"
+                                                       FontSize="13" MinWidth="28"
+                                                       TextTrimming="CharacterEllipsis" MaxWidth="260"
+                                                       Foreground="{x:Bind BodyBrush}"
+                                                       ToolTipService.ToolTip="{x:Bind VoiceHint, Mode=OneWay}" />
+                                        </StackPanel>
+                                    </Border>
+
                                     <TextBlock Text="{x:Bind BodyText}" Visibility="{x:Bind HasBody}"
                                                TextWrapping="Wrap" FontSize="14" IsTextSelectionEnabled="True"
                                                Foreground="{x:Bind BodyBrush}" />
@@ -102,15 +147,21 @@
                 BorderThickness="0,1,0,0" BorderBrush="{ThemeResource LineBrush}" Padding="14,10">
             <Grid ColumnSpacing="8">
                 <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <TextBox x:Name="InputBox" MinHeight="40" MaxHeight="170"
+                <Button x:Name="BtnAttach" Content="📎 文件" Click="OnAttachClick"
+                        VerticalAlignment="Bottom" Height="40" />
+                <Button x:Name="BtnVoice" Grid.Column="1" Content="🎤 语音" Click="OnVoiceClick"
+                        VerticalAlignment="Bottom" Height="40" />
+                <TextBox x:Name="InputBox" Grid.Column="2" MinHeight="40" MaxHeight="170"
                          PlaceholderText="输入消息   Enter 发送 · Shift+Enter / Ctrl+Enter 换行"
                          AcceptsReturn="True" TextWrapping="Wrap"
                          VerticalAlignment="Bottom" PreviewKeyDown="OnInputPreviewKeyDown" />
-                <Button x:Name="BtnSend" Grid.Column="1" Content="发送" Click="OnSendClick"
+                <Button x:Name="BtnSend" Grid.Column="3" Content="发送" Click="OnSendClick"
                         VerticalAlignment="Bottom" Height="40" MinWidth="84"
                         Style="{StaticResource AccentButtonStyle}" />
             </Grid>

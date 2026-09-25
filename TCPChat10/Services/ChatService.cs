@@ -32,6 +32,10 @@ public sealed class ChatService : IDisposable
     public event Action<ChatMessage>? MessageAdded;
     /// <summary>消息被删除。</summary>
     public event Action<string>? MessageRemoved;
+    /// <summary>状态提示文本(上传进度等)。</summary>
+    public event Action<string>? StatusChanged;
+    /// <summary>每成功同步完一轮就触发一次(不管有没有新消息), 界面上"最近同步"用它。</summary>
+    public event Action<DateTimeOffset>? Synced;
     /// <summary>同步失败等错误。</summary>
     public event Action<string>? ErrorOccurred;
     /// <summary>诊断信息(仅在自测模式下被订阅)。</summary>
@@ -47,6 +51,9 @@ public sealed class ChatService : IDisposable
 
     /// <summary>本次运行收到过多少条解不开的密文。</summary>
     public int UndecryptableCount => Volatile.Read(ref _undecryptable);
+
+    /// <summary>最近一次成功同步的时间(本地时区); 还没同步过就是 null。</summary>
+    public DateTimeOffset? LastSyncTime { get; private set; }
 
     public ChatService(AppSettings settings)
     {
@@ -126,7 +133,97 @@ public sealed class ChatService : IDisposable
     {
         text = text.Trim();
         if (text.Length == 0) return null;
+        return await SendAsync(text, quote, null, ct);
+    }
 
+    /// <summary>
+    /// 上传一个本地文件并发一条带附件的消息(图片/文件/语音都走这里)。
+    /// kind = 0 时按扩展名猜; durationMs 只有语音用得上。
+    /// </summary>
+    public async Task<ChatMessage?> SendFileAsync(string localPath, int kind = 0, int durationMs = 0, CancellationToken ct = default)
+    {
+        if (!File.Exists(localPath)) return null;
+        var info = new FileInfo(localPath);
+        var ext = info.Extension;
+        var safeName = SanitizeFileName(info.Name);
+        var remoteName = "att_" + DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + "_" +
+                         Guid.NewGuid().ToString("N")[..6] + "_" + safeName;
+        var remotePath = WebDavClient.Combine(_settings.ChatFolder, remoteName);
+
+        StatusChanged?.Invoke("正在上传 " + safeName + " (" + Human(info.Length) + ") …");
+        try
+        {
+            var bytes = await File.ReadAllBytesAsync(localPath, ct);
+            if (_cipher.Enabled)
+            {
+                // 设了加密密码: 附件内容也加密上传(文件名作为附加认证数据)
+                var enc = _cipher.EncryptBytes(remoteName, bytes);
+                if (enc == null) { ErrorOccurred?.Invoke("附件加密失败"); return null; }
+                bytes = enc;
+            }
+
+            if (!await _dav.PutAsync(remotePath, bytes, GuessContentType(ext), ct))
+            {
+                ErrorOccurred?.Invoke("附件上传失败 (" + _dav.LastPutStatus + "): " + safeName);
+                return null;
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorOccurred?.Invoke("附件上传失败: " + ex.Message);
+            return null;
+        }
+
+        var attach = new Attachment
+        {
+            Name = info.Name,
+            Path = remotePath,
+            Size = info.Length,
+            Kind = kind > 0 ? kind : GuessKind(ext),
+            DurationMs = Math.Max(0, durationMs),
+        };
+        Diag?.Invoke($"附件已上传: {remoteName} ({Human(info.Length)}, kind={attach.Kind})");
+        StatusChanged?.Invoke("已上传 " + safeName);
+
+        if (attach.Kind == 5) return await SendAsync("", null, attach, ct);
+        return await SendAsync("", null, attach, ct);
+    }
+
+    /// <summary>把附件下载到本地缓存; 解不开(密码不一致)返回 null。</summary>
+    public async Task<string?> DownloadAttachmentAsync(ChatMessage msg, CancellationToken ct = default)
+    {
+        if (msg.Attach == null) return null;
+        var remoteFileName = Path.GetFileName(msg.Attach.Path);
+        var localPath = Path.Combine(AppSettings.CacheDir, remoteFileName);
+        if (File.Exists(localPath) && new FileInfo(localPath).Length == msg.Attach.Size) return localPath;
+
+        try
+        {
+            var bytes = await _dav.GetBytesAsync(msg.Attach.Path, ct);
+            if (bytes == null) return null;
+
+            if (_cipher.Enabled)
+            {
+                var plain = _cipher.TryDecryptBytes(remoteFileName, bytes);
+                if (plain == null)
+                {
+                    Interlocked.Increment(ref _undecryptable);
+                    ErrorOccurred?.Invoke("附件解密失败(密码与发送方不一致): " + msg.Attach.Name);
+                    return null;
+                }
+                bytes = plain;
+            }
+
+            await File.WriteAllBytesAsync(localPath, bytes, ct);
+            return localPath;
+        }
+        catch { return null; }
+    }
+
+    // ---------- 统一发送 ----------
+
+    private async Task<ChatMessage?> SendAsync(string text, string? quote, Attachment? attach, CancellationToken ct)
+    {
         var cleanQuote = string.IsNullOrWhiteSpace(quote) ? null : quote;
         var msg = new ChatMessage
         {
@@ -135,6 +232,7 @@ public sealed class ChatService : IDisposable
             Time = DateTimeOffset.UtcNow,
             Text = text,
             Quote = cleanQuote,
+            Attach = attach,
             Pending = true,
         };
 
@@ -147,8 +245,8 @@ public sealed class ChatService : IDisposable
             ChatMessage wire;
             if (_cipher.Enabled)
             {
-                // 上行的 JSON 里不含明文: 正文+引用打成一段 JSON 再整体加密
-                msg.Enc = _cipher.EncryptPayload(name, Nickname, text, cleanQuote);
+                // 上行的 JSON 里不含明文: 正文/引用/附件信息打成一段 JSON 再整体加密
+                msg.Enc = _cipher.EncryptPayload(name, Nickname, text, cleanQuote, attach);
                 msg.Version = 2;
                 wire = new ChatMessage
                 {
@@ -160,7 +258,7 @@ public sealed class ChatService : IDisposable
                 wire = new ChatMessage
                 {
                     Version = 1, Id = msg.Id, From = msg.From, Time = msg.Time,
-                    Text = text, Quote = cleanQuote,
+                    Text = text, Quote = cleanQuote, Attach = attach,
                 };
             }
 
@@ -208,6 +306,8 @@ public sealed class ChatService : IDisposable
         {
             var ok = await _dav.DeleteAsync(WebDavClient.Combine(_settings.ChatFolder, msg.RemoteName), ct);
             if (!ok) return false;
+            if (msg.Attach != null && !string.IsNullOrEmpty(msg.Attach.Path))
+                await _dav.DeleteAsync(msg.Attach.Path, ct);
             _deleted.Add(msg.RemoteName);
             MessageRemoved?.Invoke(msg.RemoteName);
             return true;
@@ -261,6 +361,7 @@ public sealed class ChatService : IDisposable
             return;
         }
 
+        LastSyncTime = DateTimeOffset.Now;
         var cutoff = DateTimeOffset.UtcNow.AddDays(-Math.Max(1, _settings.HistoryDays));
 
         // 只处理消息文件, 按名字排序保证时间顺序
@@ -274,7 +375,11 @@ public sealed class ChatService : IDisposable
 
         var fresh = files.Where(e => !_seen.ContainsKey(e.Name) && !_deleted.Contains(e.Name)).ToList();
         Diag?.Invoke($"同步: 目录 {entries.Count} 项 / 消息 {files.Count} 个 / 待取 {fresh.Count} 个");
-        if (fresh.Count == 0) return;
+        if (fresh.Count == 0)
+        {
+            Synced?.Invoke(LastSyncTime ?? DateTimeOffset.Now);
+            return;
+        }
 
         // 串行拉取时几十条历史消息要十几秒才显示完, 这里并发几路; 单条失败不置 seen, 下轮自动重试
         var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -290,8 +395,10 @@ public sealed class ChatService : IDisposable
                     var msg = JsonSerializer.Deserialize<ChatMessage>(text);
                     if (msg == null) { _seen[entry.Name] = 1; return; }
 
-                    // 10.0 的纯附件消息: 新版已经没有附件了, 直接忽略, 免得列表里出现空气泡
-                    if (!msg.IsEncrypted && string.IsNullOrWhiteSpace(msg.Text) && string.IsNullOrWhiteSpace(msg.Quote))
+                    // 既没有正文/引用、又没有附件的消息才丢掉(免得列表里出现空气泡);
+                    // 带附件的消息(10.0 的老附件消息也算)要留下来
+                    if (!msg.IsEncrypted && msg.Attach == null &&
+                        string.IsNullOrWhiteSpace(msg.Text) && string.IsNullOrWhiteSpace(msg.Quote))
                     {
                         Diag?.Invoke("跳过没有正文的消息(10.0 的附件消息?): " + entry.Name);
                         _seen[entry.Name] = 1;
@@ -314,6 +421,7 @@ public sealed class ChatService : IDisposable
                 }
             });
         Diag?.Invoke($"同步完成: {fresh.Count} 个文件, 耗时 {sw.ElapsedMilliseconds} ms");
+        Synced?.Invoke(LastSyncTime ?? DateTimeOffset.Now);
     }
 
     /// <summary>
@@ -335,8 +443,55 @@ public sealed class ChatService : IDisposable
 
         msg.Text = payload.Text;
         msg.Quote = payload.Quote;
+        msg.Attach = payload.Attach;
         if (!string.IsNullOrEmpty(payload.From)) msg.From = payload.From;
     }
+
+    // ---------- 工具 ----------
+
+    /// <summary>把危险字符换掉, 并限制长度(附件文件名要放进 URL)。</summary>
+    public static string SanitizeFileName(string name)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var chars = name.Select(c => invalid.Contains(c) ? '_' : c).ToArray();
+        var s = new string(chars);
+        if (s.Length > 80) s = s[^80..];
+        return string.IsNullOrWhiteSpace(s) ? "file" : s;
+    }
+
+    /// <summary>按扩展名猜类型: 1=文件 2=图片 3=视频 4=音频。</summary>
+    public static int GuessKind(string ext) => ext.ToLowerInvariant() switch
+    {
+        ".jpg" or ".jpeg" or ".png" or ".gif" or ".bmp" or ".webp" or ".ico" or ".tif" or ".tiff" => 2,
+        ".mp4" or ".mkv" or ".avi" or ".mov" or ".webm" or ".wmv" or ".flv" or ".m4v" => 3,
+        ".mp3" or ".wav" or ".ogg" or ".flac" or ".m4a" or ".aac" or ".wma" => 4,
+        _ => 1,
+    };
+
+    public static string GuessContentType(string ext) => ext.ToLowerInvariant() switch
+    {
+        ".png" => "image/png",
+        ".jpg" or ".jpeg" => "image/jpeg",
+        ".gif" => "image/gif",
+        ".bmp" => "image/bmp",
+        ".webp" => "image/webp",
+        ".mp4" => "video/mp4",
+        ".mp3" => "audio/mpeg",
+        ".wav" => "audio/wav",
+        ".pdf" => "application/pdf",
+        ".zip" => "application/zip",
+        ".txt" => "text/plain; charset=utf-8",
+        ".json" => "application/json; charset=utf-8",
+        _ => "application/octet-stream",
+    };
+
+    public static string Human(long bytes) => bytes switch
+    {
+        < 1024 => bytes + " B",
+        < 1024 * 1024 => (bytes / 1024) + " KB",
+        < 1024L * 1024 * 1024 => (bytes / (1024 * 1024)) + " MB",
+        _ => (bytes / (1024L * 1024 * 1024)) + " GB",
+    };
 
     public void Dispose()
     {

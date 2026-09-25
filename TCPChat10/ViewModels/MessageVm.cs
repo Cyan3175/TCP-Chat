@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
 using TCPChat10.Models;
 using TCPChat10.Services;
 using Windows.UI;
@@ -13,8 +14,24 @@ namespace TCPChat10.ViewModels;
 public sealed class MessageVm : INotifyPropertyChanged
 {
     public ChatMessage Model { get; }
+    private readonly ChatService? _chat;
 
-    public MessageVm(ChatMessage model) => Model = model;
+    /// <summary>窗口正在关闭时置位, 避免后台任务再去碰已经销毁的 XAML 对象。</summary>
+    public static bool ShuttingDown;
+
+    public MessageVm(ChatMessage model, ChatService? chat = null)
+    {
+        Model = model;
+        _chat = chat;
+
+        if (Model.Attach != null)
+        {
+            _imageVisible = HasThumb ? Visibility.Visible : Visibility.Collapsed;
+            _cardVisible = IsPlainAttach ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        if (HasThumb) _ = LoadPreviewAsync();
+    }
 
     public event PropertyChangedEventHandler? PropertyChanged;
     private void Raise([CallerMemberName] string? n = null) =>
@@ -41,12 +58,126 @@ public sealed class MessageVm : INotifyPropertyChanged
     public string StatusText => Model.Status ?? "";
     public Visibility PendingVisible => Model.Pending ? Visibility.Visible : Visibility.Collapsed;
 
-    /// <summary>解不开的密文: 正文位置显示锁定提示, 不显示引用块。</summary>
     public bool DecryptFailed => Model.DecryptFailed;
 
-    /// <summary>成功解密的密文消息上挂一把小锁, 便于确认"这条是加密发过来的"。</summary>
     public Visibility LockBadgeVisible => Model.IsEncrypted && !Model.DecryptFailed
         ? Visibility.Visible : Visibility.Collapsed;
+
+    // ---------- 附件 ----------
+    public Attachment? Attach => Model.Attach;
+    public Visibility AttachVisible => Model.Attach == null ? Visibility.Collapsed : Visibility.Visible;
+    public string AttachName => Model.Attach?.Name ?? "";
+    public string AttachSizeText => Model.Attach?.SizeText ?? "";
+    public string AttachGlyph => Model.Attach?.Kind switch { 2 => "🖼", 3 => "🎬", 4 => "🎵", 5 => "🎤", _ => "📄" };
+
+    public bool IsImageAttach => Model.Attach?.Kind == 2;
+    public bool IsVideoAttach => Model.Attach?.Kind == 3;
+    public bool IsAudioAttach => Model.Attach?.Kind == 4;
+    public bool IsVoiceAttach => Model.Attach?.Kind == 5;
+
+    /// <summary>图片/视频: 用缩略图预览。</summary>
+    public bool HasThumb => IsImageAttach || IsVideoAttach;
+
+    /// <summary>语音和音频都用同一条"播放"行。</summary>
+    public bool HasPlayRow => IsVoiceAttach || IsAudioAttach;
+
+    /// <summary>剩下的(文档/压缩包/未知类型)用文件卡片。</summary>
+    public bool IsPlainAttach => Model.Attach != null && !HasThumb && !HasPlayRow;
+
+    /// <summary>语音显示时长, 音频显示文件名。</summary>
+    public string PlayRowText => IsVoiceAttach
+        ? Model.Attach?.DurationText ?? ""
+        : Model.Attach?.Name ?? "";
+
+    public string PlayRowGlyph => IsVoiceAttach ? "🎤" : "🎵";
+    public string PlayRowTip => IsVoiceAttach ? "语音" : "音频";
+    public Visibility VoiceVisible => HasPlayRow ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>视频缩略图右下角那个播放角标。</summary>
+    public Visibility VideoBadgeVisible => IsVideoAttach ? Visibility.Visible : Visibility.Collapsed;
+
+    private Visibility _imageVisible = Visibility.Collapsed;
+    private Visibility _cardVisible = Visibility.Collapsed;
+    public Visibility ImageVisible { get => _imageVisible; private set { _imageVisible = value; Raise(); } }
+    public Visibility CardVisible { get => _cardVisible; private set { _cardVisible = value; Raise(); } }
+
+    private BitmapImage? _image;
+    public BitmapImage? ImageSource
+    {
+        get => _image;
+        private set { if (ShuttingDown) return; _image = value; Raise(); }
+    }
+
+    /// <summary>语音正在播放(按钮图标跟着变)。</summary>
+    private bool _playing;
+    public bool IsVoicePlaying
+    {
+        get => _playing;
+        set
+        {
+            if (_playing == value) return;
+            _playing = value;
+            Raise();
+            Raise(nameof(VoiceGlyph));
+            Raise(nameof(VoiceHint));
+        }
+    }
+
+    public string VoiceGlyph => _playing ? "\uE769" : "\uE768";     // Segoe 字体: 暂停 / 播放
+    public string VoiceHint => _playing ? "正在播放" : "点击播放";
+
+    public string? LocalAttachmentPath { get; private set; }
+
+    /// <summary>图片直接读; 视频用 MediaClip 抠第一帧当缩略图。</summary>
+    private async Task LoadPreviewAsync()
+    {
+        if (_chat == null || Model.Attach == null) return;
+        try
+        {
+            var path = await _chat.DownloadAttachmentAsync(Model);
+            if (path == null) { ShowCardFallback(); return; }
+            LocalAttachmentPath = path;
+
+            var bmp = new BitmapImage { DecodePixelType = DecodePixelType.Logical };
+            if (IsImageAttach)
+            {
+                using var fs = File.OpenRead(path);
+                await bmp.SetSourceAsync(fs.AsRandomAccessStream());
+            }
+            else
+            {
+                // 视频: 用 MediaComposition 取第 0 帧的缩略图(WinRT 自带, 不用额外解码器)
+                var file = await Windows.Storage.StorageFile.GetFileFromPathAsync(path);
+                var composition = new Windows.Media.Editing.MediaComposition();
+                composition.Clips.Add(await Windows.Media.Editing.MediaClip.CreateFromFileAsync(file));
+                using var thumb = await composition.GetThumbnailAsync(TimeSpan.Zero, 480, 270,
+                    Windows.Media.Editing.VideoFramePrecision.NearestFrame);
+                if (thumb == null) { ShowCardFallback(); return; }
+                await bmp.SetSourceAsync(thumb);
+            }
+
+            if (ShuttingDown) return;
+            ImageSource = bmp;
+        }
+        catch { ShowCardFallback(); }
+    }
+
+    /// <summary>图片拿不到(比如密码不一致)就退回文件卡片, 至少还能右键另存为。</summary>
+    private void ShowCardFallback()
+    {
+        if (ShuttingDown) return;
+        ImageVisible = Visibility.Collapsed;
+        CardVisible = Visibility.Visible;
+    }
+
+    /// <summary>拿到本地文件(缓存里没有就下载)。</summary>
+    public async Task<string?> EnsureLocalAsync()
+    {
+        if (LocalAttachmentPath != null) return LocalAttachmentPath;
+        if (_chat == null || Model.Attach == null) return null;
+        LocalAttachmentPath = await _chat.DownloadAttachmentAsync(Model);
+        return LocalAttachmentPath;
+    }
 
     // ---------- 外观 ----------
     public bool IsSelf => Model.IsSelf;
@@ -64,12 +195,8 @@ public sealed class MessageVm : INotifyPropertyChanged
             ? new SolidColorBrush(Colors.White)
             : ThemeLookup.Brush("BodyOtherBrush");
 
-    /// <summary>引用块里的字: 跟着气泡正文的颜色走, 否则在蓝色气泡上会是黑字 / 深色下看不清。</summary>
     public Brush QuoteBrush => BodyBrush;
-
-    /// <summary>发送失败等状态文字: 深浅色各一套红, 深色下不能再用暗红。</summary>
     public Brush StatusBrush => ThemeLookup.Brush("ErrorBrush");
-
     public Brush MetaBrush => IsSelf
         ? new SolidColorBrush(Color.FromArgb(215, 255, 255, 255))
         : ThemeLookup.Brush("MetaOtherBrush");
@@ -77,6 +204,11 @@ public sealed class MessageVm : INotifyPropertyChanged
     public Brush SenderBrush => IsSelf
         ? new SolidColorBrush(Color.FromArgb(245, 255, 255, 255))
         : ThemeLookup.Brush("AccentBrush");
+
+    /// <summary>附件卡片/语音条的底色: 跟气泡区分开。</summary>
+    public Brush AttachBrush => IsSelf
+        ? new SolidColorBrush(Color.FromArgb(38, 255, 255, 255))
+        : ThemeLookup.Brush("QuoteBrush");
 
     public string Key => Model.RemoteName.Length > 0 ? Model.RemoteName : Model.Id;
 }

@@ -153,6 +153,39 @@ public static class CryptoTest
         Check(string.Equals(AppSettings.DataDir, expectedDir, StringComparison.OrdinalIgnoreCase),
               "崩溃日志等数据目录也是系统统一位置");
 
+        Console.WriteLine("=== I) 附件与语音 (10.6) ===");
+        var fileKey = MessageCrypto.DeriveKey("附件密码", "目录A");
+        var blob = new byte[5000];
+        new Random(7).NextBytes(blob);
+        var sealed_ = MessageCrypto.EncryptBytes(fileKey, aad, blob);
+        Check(sealed_.Length == blob.Length + MessageCrypto.NonceLength + MessageCrypto.TagLength,
+              $"密文长度 = 明文 + nonce + tag ({sealed_.Length} = {blob.Length} + 28)");
+        var opened = MessageCrypto.TryDecryptBytes(fileKey, aad, sealed_);
+        Check(opened != null && opened.SequenceEqual(blob), "附件字节加解密往返一致");
+        Check(MessageCrypto.TryDecryptBytes(MessageCrypto.DeriveKey("别的密码", "目录A"), aad, sealed_) == null,
+              "密码不对解不开附件");
+        Check(MessageCrypto.TryDecryptBytes(fileKey, "别的文件名", sealed_) == null, "文件名(AAD)不对解不开附件");
+        var tamperedBlob = (byte[])sealed_.Clone();
+        tamperedBlob[20] ^= 0x01;
+        Check(MessageCrypto.TryDecryptBytes(fileKey, aad, tamperedBlob) == null, "附件密文被改动后解不开");
+
+        var withAttach = new TCPChat10.Models.Attachment
+        {
+            Name = "voice.wav", Path = "chat/att_1_voice.wav", Size = 48044, Kind = 5, DurationMs = 1500,
+        };
+        var packed2 = cipherA.EncryptPayload(aad, "张三", "", null, withAttach);
+        var unpacked2 = cipherB.TryDecryptPayload(aad, packed2);
+        Check(unpacked2?.Attach != null && unpacked2.Attach.Name == "voice.wav" &&
+              unpacked2.Attach.Kind == 5 && unpacked2.Attach.Size == 48044 && unpacked2.Attach.DurationMs == 1500,
+              "附件信息(名字/类型/大小/时长)跟着密文一起走");
+
+        Check(ChatService.SanitizeFileName("a/b\\c:d*e?.txt") == "a_b_c_d_e_.txt", "附件文件名会过滤非法字符");
+        Check(ChatService.SanitizeFileName("") == "file", "空文件名有兜底");
+        Check(ChatService.GuessKind(".PNG") == 2 && ChatService.GuessKind(".mp4") == 3 &&
+              ChatService.GuessKind(".wav") == 4 && ChatService.GuessKind(".zip") == 1, "按扩展名猜类型");
+        Check(ChatService.Human(48044) == "46 KB" && ChatService.Human(2032) == "1 KB", "大小显示: " + ChatService.Human(48044));
+        Check(withAttach.DurationText == "1\"", "语音时长显示: " + withAttach.DurationText);
+
         Console.WriteLine("=== G) 系统字体列表 ===");
         var fonts = FontList.GetInstalledFamilies();
         Check(fonts.Count > 10, "枚举到 " + fonts.Count + " 个字体族");
@@ -169,9 +202,12 @@ public static class CryptoTest
                                     "\"time\":\"2026-09-19T08:20:52+00:00\",\"text\":\"\"," +
                                     "\"attach\":{\"name\":\"图.png\",\"path\":\"x/att_1_图.png\",\"size\":4855,\"kind\":2}}";
         var legacy = JsonSerializer.Deserialize<TCPChat10.Models.ChatMessage>(legacyAttach);
-        Check(legacy != null && legacy.Enc == null, "10.0 的附件字段被安全忽略, 不抛异常");
+        Check(legacy != null && legacy.Enc == null, "10.0 的老消息(带附件)能正常解析, 不抛异常");
         Check(legacy != null && string.IsNullOrWhiteSpace(legacy.Text) && string.IsNullOrWhiteSpace(legacy.Quote),
-              "纯附件的老消息 = \"没有正文\", 同步时会被跳过");
+              "纯附件的老消息没有正文");
+        Check(legacy?.Attach != null && legacy.Attach.Kind == 2 && legacy.Attach.Size == 4855,
+              "老消息里的附件信息能读出来(10.6 起会正常显示)");
+        Check(!string.IsNullOrWhiteSpace(legacy?.Attach?.Name), "老附件文件名也在: " + legacy?.Attach?.Name);
 
         const string legacyText = "{\"v\":1,\"id\":\"1789800000001_bbbbbbbb\",\"from\":\"李四\"," +
                                   "\"time\":\"2026-09-19T08:21:00+00:00\",\"text\":\"老版本的明文消息\",\"quote\":\"被引用的那句\"}";

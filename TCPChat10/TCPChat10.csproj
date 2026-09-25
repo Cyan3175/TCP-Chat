@@ -1,11 +1,11 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
     <RootNamespace>TCPChat10</RootNamespace>
-    <AssemblyName>TCP-Chat-10.5</AssemblyName>
+    <AssemblyName>TCP-Chat-10.6</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <Platforms>x64</Platforms>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
@@ -22,8 +22,8 @@
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
-    <Version>10.5.0</Version>
-    <AssemblyTitle>TCP Chat 10.5</AssemblyTitle>
+    <Version>10.6.0</Version>
+    <AssemblyTitle>TCP Chat 10.6</AssemblyTitle>
     <Product>TCP Chat</Product>
     <ApplicationIcon></ApplicationIcon>
   </PropertyGroup>

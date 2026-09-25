@@ -83,6 +83,38 @@ public static class ChatTest
         await chat2.SyncOnceAsync();
         Check(received.Count == before, "第二次同步无重复 (仍为 " + received.Count + " 条)");
 
+        Console.WriteLine("=== 4b) 附件与语音传输 (10.6) ===");
+        var tmpFile = Path.Combine(Path.GetTempPath(), "tcpchat106_" + Guid.NewGuid().ToString("N")[..6] + ".bin");
+        var payload = new byte[20000];
+        new Random(11).NextBytes(payload);
+        await File.WriteAllBytesAsync(tmpFile, payload);
+
+        var mf = await chat.SendFileAsync(tmpFile);
+        Check(mf?.Attach != null, "附件消息已发送: " + mf?.Attach?.Name);
+        Check(mf?.Attach?.Size == payload.Length, "附件大小记录正确: " + mf?.Attach?.Size);
+        Check(mf?.Attach?.Kind == 1, "未知扩展名按文件处理 (kind=1)");
+
+        var got2 = new List<ChatMessage>();
+        chat2.MessageAdded += m => { lock (got2) got2.Add(m); };
+        await chat2.SyncOnceAsync();
+        var attachMsg = got2.FirstOrDefault(m => m.RemoteName == mf!.RemoteName);
+        Check(attachMsg?.Attach != null, "对端收到附件消息");
+        if (attachMsg?.Attach != null)
+        {
+            var local = await chat2.DownloadAttachmentAsync(attachMsg);
+            Check(local != null && File.Exists(local), "附件下载成功");
+            if (local != null)
+            {
+                var round = await File.ReadAllBytesAsync(local);
+                Check(round.Length == payload.Length && round.SequenceEqual(payload),
+                      "附件内容逐字节一致 (" + round.Length + " 字节)");
+            }
+        }
+
+        var voice = await chat.SendFileAsync(tmpFile, kind: 5, durationMs: 1500);
+        Check(voice?.Attach?.Kind == 5 && voice.Attach.DurationMs == 1500, "语音消息带 kind=5 与时长");
+        Check(voice?.Attach?.DurationText == "1\"", "语音时长显示: " + voice?.Attach?.DurationText);
+
         Console.WriteLine("=== 5) 端到端加密: 发送端 ===");
         using var sender = new ChatService(Make("王五", SharedPwd));
         Check(sender.EncryptionEnabled, "填了加密密码 -> EncryptionEnabled");
@@ -139,7 +171,7 @@ public static class ChatTest
               "改成正确密码后重新拉取即可解密");
         Check(stranger.UndecryptableCount == 0, "计数清零");
 
-        Console.WriteLine("=== 9) 10.0 的老附件消息被忽略 ===");
+        Console.WriteLine("=== 9) 10.0 的老附件消息(10.6 起正常显示) ===");
         using (var davLegacy = new WebDavClient(BaseUrl))
         {
             var legacyName = "msg_" + DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + "_0badf00d.json";
@@ -152,8 +184,10 @@ public static class ChatTest
             var freshGot = new List<ChatMessage>();
             fresh.MessageAdded += m => { lock (freshGot) freshGot.Add(m); };
             await fresh.SyncOnceAsync();
-            Check(freshGot.All(m => m.RemoteName != legacyName), "纯附件的老消息不出现在列表里(不会变成空气泡)");
-            Check((await davLegacy.PropFindAsync(TestFolder, 1)).Any(e => e.Name == legacyName), "老消息文件仍留在服务器上, 只是不显示");
+            var legacySeen = freshGot.FirstOrDefault(m => m.RemoteName == legacyName);
+            Check(legacySeen != null, "10.0 的老附件消息能显示出来");
+            Check(legacySeen?.Attach != null && legacySeen.Attach.Kind == 1, "老消息的附件信息读得出来");
+            Check((await davLegacy.PropFindAsync(TestFolder, 1)).Any(e => e.Name == legacyName), "老消息文件仍留在服务器上");
             await davLegacy.DeleteAsync(WebDavClient.Combine(TestFolder, legacyName));
         }
 

@@ -10,6 +10,12 @@ using TCPChat10.Models;
 using TCPChat10.Services;
 using TCPChat10.ViewModels;
 using Windows.ApplicationModel.DataTransfer;
+using Windows.Media.Capture;
+using Windows.Media.Core;
+using Windows.Media.MediaProperties;
+using Windows.Media.Playback;
+using Windows.Storage;
+using Windows.Storage.Pickers;
 using Windows.System;
 using Windows.UI;
 
@@ -22,6 +28,15 @@ public sealed partial class MainWindow : Window
     private DateTimeOffset _lastSync = DateTimeOffset.Now;
     /// <summary>窗口句柄(任务栏闪烁要用)。</summary>
     private readonly IntPtr _hwnd;
+
+    // ---------- 语音录制 / 播放 ----------
+    private MediaCapture? _capture;
+    private StorageFile? _voiceFile;
+    private DateTimeOffset _recordStart;
+    private bool _recording;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _recordTimer;
+    private readonly MediaPlayer _player = new();
+    private MessageVm? _playingVm;
 
     public ObservableCollection<MessageVm> Messages { get; } = new();
 
@@ -36,6 +51,9 @@ public sealed partial class MainWindow : Window
         _chat = new ChatService(_settings);
 
         _chat.MessageAdded += OnMessageAdded;
+        _chat.StatusChanged += s => DispatcherQueue.TryEnqueue(() => SetFooter(s));
+        // 每轮同步完都把底栏刷新一下(以前只在收到新消息时才更新, 所以"最近同步"一直停在旧时间)
+        _chat.Synced += t => DispatcherQueue.TryEnqueue(() => { _lastSync = t; UpdateFooter(); });
         _chat.MessageRemoved += OnMessageRemoved;
         _chat.ErrorOccurred += s => DispatcherQueue.TryEnqueue(() => SetFooter("⚠ " + s));
 
@@ -49,13 +67,27 @@ public sealed partial class MainWindow : Window
         InputBox.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(OnInputKeyDown), true);
 
         ResizeWindow(1120, 780);
-        this.AppWindow.Closing += (s, e) => _chat.Stop();
+        this.AppWindow.Closing += (s, e) =>
+        {
+            MessageVm.ShuttingDown = true;
+            _chat.Stop();
+            try { if (_recording) _capture?.StopRecordAsync(); } catch { }
+            try { _capture?.Dispose(); } catch { }
+            try { _player.Dispose(); } catch { }
+        };
+
+        // 语音播完了把按钮图标换回"播放"
+        _player.MediaEnded += (_, _) => DispatcherQueue.TryEnqueue(() =>
+        {
+            if (_playingVm != null) _playingVm.IsVoicePlaying = false;
+            _playingVm = null;
+        });
 
         ApplyTheme();
         ApplyFont();
         UpdateLockText();
         MeText.Text = string.IsNullOrWhiteSpace(_settings.Nickname) ? "(未设置昵称)" : "我：" + _settings.Nickname;
-        Title = "TCP Chat 10.5 — " + _settings.ChatFolder;
+        Title = "TCP Chat 10.6 — " + _settings.ChatFolder;
 
         RootLoaded();
 
@@ -110,7 +142,7 @@ public sealed partial class MainWindow : Window
                     var text = a[5..];
                     if (string.IsNullOrWhiteSpace(_settings.Nickname)) { _settings.Nickname = "测试用户"; _chat.Nickname = _settings.Nickname; }
                     var m = await _chat.SendTextAsync(text);
-                    if (m != null) { m.IsSelf = true; var lv = new MessageVm(m); Messages.Add(lv); ScrollToBottom(); }
+                    if (m != null) { m.IsSelf = true; var lv = new MessageVm(m, _chat); Messages.Add(lv); ScrollToBottom(); }
                     AutoLog("AUTO send -> " + (m != null ? "ok" : "fail"));
                 }
                 else if (a.StartsWith("sendq:"))
@@ -120,7 +152,7 @@ public sealed partial class MainWindow : Window
                     var qt = parts[0];
                     var bt = parts.Length > 1 ? parts[1] : "收到";
                     var m = await _chat.SendTextAsync(bt, qt);
-                    if (m != null) { m.IsSelf = true; Messages.Add(new MessageVm(m)); ScrollToBottom(); }
+                    if (m != null) { m.IsSelf = true; Messages.Add(new MessageVm(m, _chat)); ScrollToBottom(); }
                     AutoLog("AUTO sendq -> " + (m != null ? "ok" : "fail"));
                 }
                 else if (a.StartsWith("font:"))
@@ -143,6 +175,36 @@ public sealed partial class MainWindow : Window
                     RebuildCrypto();
                     UpdateLockText();
                     AutoLog("AUTO crypto -> " + (_chat.EncryptionEnabled ? "加密已启用" : "加密已关闭"));
+                }
+                else if (a == "receivecheck")
+                {
+                    // 收到的一方: 把带附件的消息都下载一遍, 报本地文件大小(验证附件真的取回来了)
+                    var withAttach = Messages.Where(v => v.Attach != null).ToList();
+                    var parts = new List<string>();
+                    foreach (var item in withAttach)
+                    {
+                        var local = await item.EnsureLocalAsync();
+                        var size = local != null && File.Exists(local) ? new FileInfo(local).Length : -1;
+                        parts.Add($"{item.Attach!.Name} kind={item.Attach.Kind} 声明={item.Attach.Size}B 本地={size}B");
+                    }
+                    AutoLog($"AUTO receivecheck 共 {withAttach.Count} 条带附件: " + string.Join(" | ", parts));
+                }
+                else if (a.StartsWith("attach:"))
+                {
+                    var path = a[7..].Trim();
+                    var m = await _chat.SendFileAsync(path);
+                    if (m != null) { m.IsSelf = true; Messages.Add(new MessageVm(m, _chat)); ScrollToBottom(); }
+                    AutoLog("AUTO attach -> " + (m != null ? $"ok {m.Attach?.Name} {m.Attach?.SizeText} kind={m.Attach?.Kind}" : "fail"));
+                }
+                else if (a.StartsWith("voicefile:"))
+                {
+                    // voicefile:路径|时长毫秒  (录音要麦克风, 自测用现成的 wav 走同一条发送路径)
+                    var parts = a[10..].Split('|');
+                    var path = parts[0].Trim();
+                    var ms = parts.Length > 1 ? int.Parse(parts[1]) : 3000;
+                    var m = await _chat.SendFileAsync(path, kind: 5, durationMs: ms);
+                    if (m != null) { m.IsSelf = true; Messages.Add(new MessageVm(m, _chat)); ScrollToBottom(); }
+                    AutoLog("AUTO voicefile -> " + (m != null ? $"ok {m.Attach?.Name} 时长={m.Attach?.DurationText}" : "fail"));
                 }
                 else if (a.StartsWith("theme:"))
                 {
@@ -253,7 +315,7 @@ public sealed partial class MainWindow : Window
                 }
                 else if (a.StartsWith("log:"))
                 {
-                    AutoLog("AUTO " + a[4..] + $"  [消息数={Messages.Count} 加密={(_chat.EncryptionEnabled ? "开" : "关")} " +
+                    AutoLog("AUTO " + a[4..] + $"  [底栏={FooterText.Text}] [消息数={Messages.Count} 加密={(_chat.EncryptionEnabled ? "开" : "关")} " +
                             $"解不开={_chat.UndecryptableCount} 输入框焦点={InputBox.FocusState} 文本=[{InputBox.Text.Replace("\r", "/")}]]");
                 }
                 else if (a == "quit")
@@ -430,7 +492,7 @@ public sealed partial class MainWindow : Window
         DispatcherQueue.TryEnqueue(() =>
         {
             if (Messages.Any(v => v.Key == (m.RemoteName.Length > 0 ? m.RemoteName : m.Id))) return;
-            var vm = new MessageVm(m);
+            var vm = new MessageVm(m, _chat);
 
             // 按时间插入到正确位置(轮询可能乱序)
             int idx = Messages.Count;
@@ -550,12 +612,208 @@ public sealed partial class MainWindow : Window
         {
             // 本地立即回显
             vm.IsSelf = true;
-            var local = new MessageVm(vm);
+            var local = new MessageVm(vm, _chat);
             Messages.Add(local);
             UpdateFooter();
             ScrollToBottom();
         }
         InputBox.Focus(FocusState.Programmatic);
+    }
+
+    // ---------- 文件 / 语音 ----------
+
+    /// <summary>📎 文件: 选一个文件上传, 图片/视频/音频按类型显示。</summary>
+    private async void OnAttachClick(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(_settings.Nickname))
+        {
+            await PromptNicknameAsync(false);
+            if (string.IsNullOrWhiteSpace(_settings.Nickname)) return;
+        }
+
+        var picker = new FileOpenPicker();
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, _hwnd);
+        picker.ViewMode = PickerViewMode.List;
+        picker.SuggestedStartLocation = PickerLocationId.DocumentsLibrary;
+        picker.FileTypeFilter.Add("*");
+
+        var file = await picker.PickSingleFileAsync();
+        if (file == null) return;
+
+        BusyRing.IsActive = true;
+        var msg = await _chat.SendFileAsync(file.Path);
+        BusyRing.IsActive = false;
+        if (msg == null) { SetFooter("⚠ 附件发送失败"); return; }
+
+        msg.IsSelf = true;
+        Messages.Add(new MessageVm(msg, _chat));
+        UpdateFooter();
+        ScrollToBottom();
+    }
+
+    /// <summary>🎤 语音: 第一次点开始录, 再点一下停止并发送。</summary>
+    private async void OnVoiceClick(object sender, RoutedEventArgs e)
+    {
+        if (_recording) { await StopRecordingAsync(); return; }
+
+        if (string.IsNullOrWhiteSpace(_settings.Nickname))
+        {
+            await PromptNicknameAsync(false);
+            if (string.IsNullOrWhiteSpace(_settings.Nickname)) return;
+        }
+
+        try
+        {
+            _capture = new MediaCapture();
+            await _capture.InitializeAsync(new MediaCaptureInitializationSettings
+            {
+                StreamingCaptureMode = StreamingCaptureMode.Audio,
+            });
+
+            var file = await StorageFile.GetFileFromPathAsync(
+                Path.Combine(AppSettings.CacheDir, "voice_" + Guid.NewGuid().ToString("N")[..8] + ".wav"));
+            await _capture.StartRecordToStorageFileAsync(MediaEncodingProfile.CreateWav(AudioEncodingQuality.Medium), file);
+
+            _voiceFile = file;
+            _recordStart = DateTimeOffset.Now;
+            _recording = true;
+            BtnVoice.Content = "⏹ 停止";
+            SetFooter("正在录音… 再点一下「停止」发送");
+
+            _recordTimer = DispatcherQueue.CreateTimer();
+            _recordTimer.Interval = TimeSpan.FromMilliseconds(500);
+            _recordTimer.Tick += (_, _) =>
+            {
+                if (_recording)
+                    SetFooter($"正在录音 {(DateTimeOffset.Now - _recordStart).TotalSeconds:F0} 秒… 再点一下「停止」发送");
+            };
+            _recordTimer.Start();
+        }
+        catch (Exception ex)
+        {
+            _recording = false;
+            BtnVoice.Content = "🎤 语音";
+            try { _capture?.Dispose(); } catch { }
+            _capture = null;
+            SetFooter("⚠ 录音打不开(检查麦克风权限/设备): " + ex.Message);
+        }
+    }
+
+    private async Task StopRecordingAsync()
+    {
+        _recordTimer?.Stop();
+        _recordTimer = null;
+        _recording = false;
+        BtnVoice.Content = "🎤 语音";
+
+        var capture = _capture;
+        var file = _voiceFile;
+        _capture = null;
+        _voiceFile = null;
+        if (capture == null || file == null) return;
+
+        var durationMs = (int)(DateTimeOffset.Now - _recordStart).TotalMilliseconds;
+        try
+        {
+            await capture.StopRecordAsync();
+            capture.Dispose();
+
+            if (durationMs < 700)
+            {
+                SetFooter("录音太短, 已丢弃");
+                try { File.Delete(file.Path); } catch { }
+                return;
+            }
+
+            var seconds = (int)Math.Round(durationMs / 1000.0);
+            var target = Path.Combine(AppSettings.CacheDir, $"语音 {seconds}秒.wav");
+            File.Copy(file.Path, target, true);
+            try { File.Delete(file.Path); } catch { }
+
+            BusyRing.IsActive = true;
+            var msg = await _chat.SendFileAsync(target, kind: 5, durationMs: durationMs);
+            BusyRing.IsActive = false;
+            if (msg == null) { SetFooter("⚠ 语音发送失败"); return; }
+
+            msg.IsSelf = true;
+            Messages.Add(new MessageVm(msg, _chat));
+            UpdateFooter();
+            ScrollToBottom();
+            SetFooter($"语音已发送 ({seconds} 秒)");
+        }
+        catch (Exception ex)
+        {
+            try { capture.Dispose(); } catch { }
+            SetFooter("⚠ 语音发送失败: " + ex.Message);
+        }
+    }
+
+    /// <summary>点语音条上的播放/暂停。</summary>
+    private async void OnVoicePlayClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement fe || fe.DataContext is not MessageVm vm) return;
+
+        if (_playingVm == vm && _player.PlaybackSession.PlaybackState == MediaPlaybackState.Playing)
+        {
+            _player.Pause();
+            vm.IsVoicePlaying = false;
+            return;
+        }
+
+        var path = await vm.EnsureLocalAsync();
+        if (path == null || !File.Exists(path)) { SetFooter("⚠ 语音下载失败(密码不一致或网络问题)"); return; }
+
+        _playingVm?.IsVoicePlaying = false;
+        _playingVm = vm;
+        _player.Source = MediaSource.CreateFromUri(new Uri(path));
+        _player.Play();
+        vm.IsVoicePlaying = true;
+    }
+
+    private async void OnImageTapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (sender is FrameworkElement fe && fe.DataContext is MessageVm vm) await OpenAttachmentAsync(vm);
+    }
+
+    private async void OnCardTapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (sender is FrameworkElement fe && fe.DataContext is MessageVm vm) await OpenAttachmentAsync(vm);
+    }
+
+    /// <summary>下载附件并用系统默认程序打开。</summary>
+    private async Task OpenAttachmentAsync(MessageVm vm)
+    {
+        try
+        {
+            var path = await vm.EnsureLocalAsync();
+            if (path == null || !File.Exists(path)) { SetFooter("⚠ 附件下载失败(密码不一致或网络问题)"); return; }
+            var file = await StorageFile.GetFileFromPathAsync(path);
+            await Launcher.LaunchFileAsync(file);
+        }
+        catch (Exception ex) { SetFooter("打开失败: " + ex.Message); }
+    }
+
+    /// <summary>把附件另存到用户选的位置。</summary>
+    private async Task SaveAttachmentAsync(MessageVm vm)
+    {
+        try
+        {
+            var path = await vm.EnsureLocalAsync();
+            if (path == null || !File.Exists(path)) { SetFooter("⚠ 附件下载失败"); return; }
+
+            var picker = new FileSavePicker();
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, _hwnd);
+            picker.SuggestedFileName = vm.AttachName;
+            var ext = Path.GetExtension(vm.AttachName);
+            if (!string.IsNullOrEmpty(ext))
+                picker.FileTypeChoices.Add(ext.TrimStart('.').ToUpperInvariant(), new List<string> { ext });
+            var target = await picker.PickSaveFileAsync();
+            if (target == null) return;
+
+            File.Copy(path, target.Path, true);
+            SetFooter("已保存到 " + target.Path);
+        }
+        catch (Exception ex) { SetFooter("保存失败: " + ex.Message); }
     }
 
     private async void OnMessageRightTapped(object sender, RightTappedRoutedEventArgs e)
@@ -591,6 +849,17 @@ public sealed partial class MainWindow : Window
             SetFooter("已引用，可继续输入");
         };
         flyout.Items.Add(miQuote);
+
+        if (vm.Attach != null)
+        {
+            var miOpen = new MenuFlyoutItem { Text = "打开附件", Icon = new FontIcon { Glyph = "\uE8E5" } };
+            miOpen.Click += async (_, _) => await OpenAttachmentAsync(vm);
+            flyout.Items.Add(miOpen);
+
+            var miSave = new MenuFlyoutItem { Text = "另存为…", Icon = new FontIcon { Glyph = "\uE74E" } };
+            miSave.Click += async (_, _) => await SaveAttachmentAsync(vm);
+            flyout.Items.Add(miSave);
+        }
 
         if (vm.IsSelf)
         {
@@ -784,8 +1053,9 @@ public sealed partial class MainWindow : Window
     private void UpdateFooter()
     {
         var bad = _chat.UndecryptableCount;
-        FooterText.Text = string.Format("共 {0} 条消息  ·  每 {1} 秒同步  ·  最近同步 {2:HH:mm:ss}  ·  {3}  ·  {4}{5}",
-            Messages.Count, _chat.PollSeconds, _lastSync, _settings.ChatFolder,
+        var syncTime = _chat.LastSyncTime?.ToString("HH:mm:ss") ?? "尚未同步";
+        FooterText.Text = string.Format("共 {0} 条消息  ·  每 {1} 秒同步  ·  最近同步 {2}  ·  {3}  ·  {4}{5}",
+            Messages.Count, _chat.PollSeconds, syncTime, _settings.ChatFolder,
             _chat.EncryptionEnabled ? "已加密" : "未加密",
             bad > 0 ? "  ·  ⚠ " + bad + " 条无法解密（密码不一致）" : "");
     }

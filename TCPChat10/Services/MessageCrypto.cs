@@ -60,6 +60,47 @@ public static class MessageCrypto
         return Prefix + Convert.ToBase64String(buf);
     }
 
+    /// <summary>加密一段字节(附件/语音用), 返回 nonce||密文||tag 的裸字节。</summary>
+    public static byte[] EncryptBytes(byte[] key, string aad, byte[] plain)
+    {
+        var nonce = RandomNumberGenerator.GetBytes(NonceLength);
+        var ct = new byte[plain.Length];
+        var tag = new byte[TagLength];
+        using (var aes = new AesGcm(key, TagLength))
+        {
+            // 签名是 Encrypt(nonce, 明文, 密文, tag, aad) —— 顺序别写反
+            aes.Encrypt(nonce, plain, ct, tag, Encoding.UTF8.GetBytes(aad));
+        }
+
+        var buf = new byte[NonceLength + ct.Length + TagLength];
+        nonce.CopyTo(buf, 0);
+        ct.CopyTo(buf, NonceLength);
+        tag.CopyTo(buf, NonceLength + ct.Length);
+        return buf;
+    }
+
+    /// <summary>解密附件字节; 密码不对/被改过返回 null。</summary>
+    public static byte[]? TryDecryptBytes(byte[] key, string aad, byte[]? blob)
+    {
+        if (blob == null || blob.Length < NonceLength + TagLength) return null;
+        try
+        {
+            var nonce = blob.AsSpan(0, NonceLength);
+            var ct = blob.AsSpan(NonceLength, blob.Length - NonceLength - TagLength);
+            var tag = blob.AsSpan(blob.Length - TagLength, TagLength);
+            var pt = new byte[ct.Length];
+            using (var aes = new AesGcm(key, TagLength))
+            {
+                aes.Decrypt(nonce, ct, tag, pt, Encoding.UTF8.GetBytes(aad));
+            }
+            return pt;
+        }
+        catch (Exception ex) when (ex is CryptographicException or ArgumentException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>解密信封; 密码不对 / 密文被改动 / 文件名被改过都返回 null。</summary>
     public static string? TryDecrypt(byte[] key, string aad, string? envelope)
     {
@@ -94,6 +135,8 @@ public sealed class CryptoPayload
     [JsonPropertyName("from")] public string From { get; set; } = "";
     [JsonPropertyName("text")] public string Text { get; set; } = "";
     [JsonPropertyName("quote")] public string? Quote { get; set; }
+    /// <summary>附件信息也放进密文, 这样文件名/大小不会明文躺在服务器上。</summary>
+    [JsonPropertyName("attach")] public TCPChat10.Models.Attachment? Attach { get; set; }
 }
 
 /// <summary>
@@ -118,13 +161,22 @@ public sealed class MessageCipher
 
     public bool Enabled => _key != null;
 
-    /// <summary>把正文与引用打包加密。未启用加密时返回 null。</summary>
-    public string? EncryptPayload(string aad, string from, string text, string? quote)
+    /// <summary>把正文 / 引用 / 附件信息打包加密。未启用加密时返回 null。</summary>
+    public string? EncryptPayload(string aad, string from, string text, string? quote,
+                                 TCPChat10.Models.Attachment? attach = null)
     {
         if (_key == null) return null;
-        var payload = new CryptoPayload { From = from, Text = text, Quote = quote };
+        var payload = new CryptoPayload { From = from, Text = text, Quote = quote, Attach = attach };
         return MessageCrypto.Encrypt(_key, aad, JsonSerializer.Serialize(payload, JsonOpts));
     }
+
+    /// <summary>加密附件字节(未启用加密返回 null)。</summary>
+    public byte[]? EncryptBytes(string aad, byte[] plain) =>
+        _key == null ? null : MessageCrypto.EncryptBytes(_key, aad, plain);
+
+    /// <summary>解密附件字节。</summary>
+    public byte[]? TryDecryptBytes(string aad, byte[] blob) =>
+        _key == null ? null : MessageCrypto.TryDecryptBytes(_key, aad, blob);
 
     /// <summary>解密正文载荷; 密码不一致返回 null。</summary>
     public CryptoPayload? TryDecryptPayload(string aad, string? envelope)

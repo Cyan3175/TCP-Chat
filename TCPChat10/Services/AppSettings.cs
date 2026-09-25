@@ -127,6 +127,17 @@ public sealed class AppSettings
         catch { /* 忽略保存失败 */ }
     }
 
+    /// <summary>附件/语音的本地缓存目录。</summary>
+    public static string CacheDir
+    {
+        get
+        {
+            var d = Path.Combine(DataDir, "cache");
+            Directory.CreateDirectory(d);
+            return d;
+        }
+    }
+
     /// <summary>程序数据目录(settings.json / crash.log 都在这儿, 即 %LOCALAPPDATA%\TCPChat10)。</summary>
     public static string DataDir
     {

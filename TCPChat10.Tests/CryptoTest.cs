@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using Markdig;
+using TCPChat10.Glass;
 using TCPChat10.Rendering;
 using TCPChat10.Services;
 
@@ -392,6 +393,53 @@ public static class CryptoTest
 
         Check(MarkdownParser.Parse("").Blocks.Count == 0, "空文本不报错");
         Check(MarkdownParser.Parse("##### 六级").Blocks.OfType<MdHeading>().First().Level == 5, "五级标题");
+
+        Console.WriteLine("=== L) 液态玻璃参数 (11.0) ===");
+        var gq0 = GlassParams.For(0);
+        var gq25 = GlassParams.For(25);
+        var gq60 = GlassParams.For(60);
+        var gq100 = GlassParams.For(100);
+        Check(gq0.Octaves == 1 && gq100.Octaves == 4, "质量越高湍流层数越多: " + gq0.Octaves + " -> " + gq100.Octaves);
+        Check(gq0.BlurScale < gq100.BlurScale, "模糊倍率随质量上升: " + gq0.BlurScale + " -> " + gq100.BlurScale);
+        Check(!gq0.ColorGrade && gq25.ColorGrade && gq60.ColorGrade && gq100.ColorGrade, "低质量不做色彩增强, 中/高质量做");
+        Check(gq0.DpiCap < gq60.DpiCap && gq60.DpiCap < gq100.DpiCap, "渲染分辨率上限随质量上升: " + gq0.DpiCap + " / " + gq60.DpiCap + " / " + gq100.DpiCap);
+        Check(GlassParams.For(-5).Quality == 0 && GlassParams.For(999).Quality == 100, "质量参数夹到 0~100");
+        Check(gq60.Describe().Contains("60") && gq60.Describe().Contains("湍流"), "Describe 能显示给用户: " + gq60.Describe());
+        bool monoOctaves = true; var prevOctaves = 0;
+        for (int q = 0; q <= 100; q += 5) { var pp = GlassParams.For(q); if (pp.Octaves < prevOctaves) monoOctaves = false; prevOctaves = pp.Octaves; }
+        Check(monoOctaves, "湍流层数随质量单调不降");
+
+        var tmpGlass = Path.Combine(Path.GetTempPath(), "tcpchat110_" + Guid.NewGuid().ToString("N")[..6] + ".json");
+        var oldEnvGlass = Environment.GetEnvironmentVariable("TCPCHAT10_TEST_SETTINGS");
+        try
+        {
+            Environment.SetEnvironmentVariable("TCPCHAT10_TEST_SETTINGS", tmpGlass);
+            new AppSettings { GlassEnabled = false, GlassQuality = 37, ChatFolder = "a/b" }.Save();
+            var backGlass = AppSettings.Load();
+            Check(!backGlass.GlassEnabled && backGlass.GlassQuality == 37, "玻璃开关与质量能写进设置再读回来: " + backGlass.GlassQuality);
+            File.WriteAllText(tmpGlass, "{\"glassQuality\":999,\"chatFolder\":\"a/b\"}");
+            Check(AppSettings.Load().GlassQuality == 100, "设置里越界的质量会被夹到 100");
+            File.WriteAllText(tmpGlass, "{\"glassQuality\":-8,\"chatFolder\":\"a/b\"}");
+            Check(AppSettings.Load().GlassQuality == 0, "负数质量会被夹到 0");
+            Check(new AppSettings().GlassEnabled, "玻璃默认是开的");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("TCPCHAT10_TEST_SETTINGS", oldEnvGlass);
+            try { File.Delete(tmpGlass); } catch { }
+        }
+
+        Console.WriteLine("=== M) 背景图 cover 摆放 (11.0) ===");
+        var fitSame = CoverMath.Fit(1000, 500, 2000, 1000);
+        Check(Math.Abs(fitSame.Scale - 0.5) < 1e-6 && Math.Abs(fitSame.OffsetX) < 1e-6, "宽高比一致时正好铺满");
+        var fitTall = CoverMath.Fit(1000, 500, 500, 1000);
+        Check(Math.Abs(fitTall.Scale - 2.0) < 1e-6 && Math.Abs(fitTall.OffsetY + 750) < 1e-6,
+              "竖图放大到铺满, 上下对称溢出: scale=" + fitTall.Scale + " offsetY=" + fitTall.OffsetY);
+        var fitWide = CoverMath.Fit(1000, 500, 4000, 1000);
+        Check(Math.Abs(fitWide.Scale - 0.5) < 1e-6 && Math.Abs(fitWide.OffsetY) < 1e-6, "横图按宽度铺满: offsetY=" + fitWide.OffsetY);
+        Check(CoverMath.Fit(1000, 500, 4000, 2000).Scale == 0.25, "按缩放比更大的一边算");
+        var fitZero = CoverMath.Fit(0, 0, 100, 100);
+        Check(fitZero.Scale == 1 && fitZero.OffsetX == 0, "尺寸为 0 时返回安全值(不崩)");
 
         Console.WriteLine();
         Console.WriteLine("==== 离线测试: " + _pass + " 通过, " + _fail + " 失败 ====");

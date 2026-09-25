@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using TCPChat10.Glass;
 using TCPChat10.Models;
 using TCPChat10.Rendering;
 using TCPChat10.Services;
@@ -41,6 +42,9 @@ public sealed partial class MainWindow : Window
 
     /// <summary>10.7: 正在等用户去系统设置里打开麦克风开关 —— 回到窗口时自动接着录音。</summary>
     private bool _waitingMic;
+
+    /// <summary>11.0: 液态玻璃层(整窗 Win2D 画布 + 注册的玻璃面)。</summary>
+    private GlassHost? _glass;
 
     public ObservableCollection<MessageVm> Messages { get; } = new();
 
@@ -90,11 +94,13 @@ public sealed partial class MainWindow : Window
         // 10.7: 从"麦克风设置"页回到窗口时自动继续(用户不用再点一次语音)
         this.Activated += OnWindowActivated;
 
+        InitGlass();
+
         ApplyTheme();
         ApplyFont();
         UpdateLockText();
         MeText.Text = string.IsNullOrWhiteSpace(_settings.Nickname) ? "(未设置昵称)" : "我：" + _settings.Nickname;
-        Title = "TCP Chat 10.7 — " + _settings.ChatFolder;
+        Title = "TCP Chat 11.0 — " + _settings.ChatFolder;
 
         RootLoaded();
 
@@ -221,6 +227,39 @@ public sealed partial class MainWindow : Window
                     var m = await _chat.SendFileAsync(path, kind: 5, durationMs: ms);
                     if (m != null) { m.IsSelf = true; Messages.Add(new MessageVm(m, _chat)); ScrollToBottom(); }
                     AutoLog("AUTO voicefile -> " + (m != null ? $"ok {m.Attach?.Name} 时长={m.Attach?.DurationText}" : "fail"));
+                }
+                else if (a.StartsWith("glass:"))
+                {
+                    _settings.GlassEnabled = a[6..].Trim().Equals("on", StringComparison.OrdinalIgnoreCase);
+                    _settings.Save();
+                    ApplyGlass();
+                    AutoLog("AUTO glass -> " + (_settings.GlassEnabled ? "开" : "关") + " [" + (_glass?.Status ?? "无") + "]");
+                }
+                else if (a.StartsWith("glassq:"))
+                {
+                    _settings.GlassQuality = (int)Math.Clamp(double.Parse(a[7..]), 0, 100);
+                    _settings.Save();
+                    ApplyGlass();
+                    AutoLog("AUTO glassq -> " + _settings.GlassQuality + " [" + (_glass?.Status ?? "无") + "]");
+                }
+                else if (a.StartsWith("glassshot:"))
+                {
+                    // 直接把玻璃画布自己的内容存成 PNG(桌面被别的窗口挡住时也能核对效果)
+                    var path = a[10..].Trim();
+                    try
+                    {
+                        var ok = _glass != null && await _glass.RenderToFileAsync(path);
+                        AutoLog("AUTO glassshot -> " + (ok ? "ok " + path + " (" + _glass!.LastDrawMs.ToString("F1") + " ms)" : "画布还没准备好"));
+                    }
+                    catch (Exception ex) { AutoLog("AUTO glassshot -> 失败: " + ex.Message); }
+                }
+                else if (a == "glassinfo")
+                {
+                    AutoLog("AUTO glassinfo -> 开关=" + (_settings.GlassEnabled ? "开" : "关") +
+                            " 质量=" + _settings.GlassQuality + " 玻璃面=" + (_glass?.SurfaceCount ?? 0) +
+                            " 画布=" + GlassCanvas.ActualWidth.ToString("F0") + "x" + GlassCanvas.ActualHeight.ToString("F0") +
+                            " 绘制=" + (_glass?.LastDrawMs ?? 0).ToString("F1") + "ms" +
+                            " 背景=" + (_glass?.Status ?? "无"));
                 }
                 else if (a.StartsWith("poll:"))
                 {
@@ -1069,10 +1108,14 @@ public sealed partial class MainWindow : Window
         // 对话框保存时会直接改 _settings, 这里先把"当前生效"的值记下来
         var oldCrypto = _settings.CryptoPassword;
         var oldFont = _settings.FontFamily;
+        var oldGlass = _settings.GlassEnabled;
+        var oldGlassQuality = _settings.GlassQuality;
 
         var dlg = new SettingsDialog(_settings) { XamlRoot = Content.XamlRoot };
         ApplyThemeTo(dlg);
         ApplyFontTo(dlg);
+        // 玻璃的开关/滑块是实时生效的, 所以对话框里一动就重新应用
+        dlg.GlassChanged += ApplyGlass;
         ContentDialogResult r;
         try
         {
@@ -1084,7 +1127,17 @@ public sealed partial class MainWindow : Window
             SetFooter("⚠ 打不开设置窗口: " + ex.Message);
             return;
         }
-        if (r != ContentDialogResult.Primary) return;
+        if (r != ContentDialogResult.Primary)
+        {
+            // 取消: 把实时改掉的玻璃设置恢复回去
+            if (_settings.GlassEnabled != oldGlass || _settings.GlassQuality != oldGlassQuality)
+            {
+                _settings.GlassEnabled = oldGlass;
+                _settings.GlassQuality = oldGlassQuality;
+                ApplyGlass();
+            }
+            return;
+        }
 
         var restart = dlg.NeedReconnect;
         var cryptoChanged = !string.Equals(oldCrypto, _settings.CryptoPassword, StringComparison.Ordinal);
@@ -1110,6 +1163,7 @@ public sealed partial class MainWindow : Window
 
         _chat.Nickname = _settings.Nickname;
         ApplyTheme();
+        ApplyGlass();
         if (fontChanged) ApplyFont();
         MeText.Text = string.IsNullOrWhiteSpace(_settings.Nickname) ? "(未设置昵称)" : "我：" + _settings.Nickname;
 
@@ -1141,6 +1195,94 @@ public sealed partial class MainWindow : Window
         2 => ElementTheme.Dark,
         _ => ElementTheme.Default,
     };
+
+    // ---------- 液态玻璃(11.0) ----------
+
+    /// <summary>建玻璃层: 顶栏/输入栏/状态栏先注册, 气泡在加载时自己注册(见 OnBubbleLoaded)。</summary>
+    private void InitGlass()
+    {
+        _glass = new GlassHost(GlassCanvas);
+
+        foreach (var bar in new[] { TopBar, InputBar, FooterBar })
+            _glass.Register(new GlassEntry
+            {
+                Element = bar,
+                Radius = 0,
+                Style = ChromeGlassStyle,
+            });
+
+        // 布局一变(滚动/换行/窗口缩放/新消息)就重新量一遍玻璃面的位置
+        if (Content is FrameworkElement root)
+            root.LayoutUpdated += (_, _) => _glass?.Refresh();
+
+        ApplyGlass();
+    }
+
+    /// <summary>开/关 + 质量: 立即生效(不用重启)。</summary>
+    private void ApplyGlass()
+    {
+        var on = _settings.GlassEnabled;
+        GlassCanvas.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+        MessageVm.GlassBubbles = on;                 // 气泡底色改成透明, 让画布上的玻璃透出来
+        _glass?.Configure(on, _settings.GlassQuality);
+
+        if (on)
+        {
+            // 面板底色交给玻璃层画, XAML 这边留透明
+            RootGrid.Background = TransparentBrush;
+            TopBar.Background = TransparentBrush;
+            InputBar.Background = TransparentBrush;
+            FooterBar.Background = TransparentBrush;
+        }
+        else
+        {
+            RootGrid.Background = ThemeLookup.Brush("PageBrush");
+            TopBar.Background = ThemeLookup.Brush("PanelBrush");
+            InputBar.Background = ThemeLookup.Brush("PanelBrush");
+            FooterBar.Background = ThemeLookup.Brush("PanelBrush");
+        }
+
+        RefreshBodies();        // 气泡底色跟着变, 让绑定重新求值
+        _glass?.Refresh();
+        UpdateFooter();
+    }
+
+    private static readonly SolidColorBrush TransparentBrush = new(Colors.Transparent);
+
+    /// <summary>顶栏/输入栏/状态栏的玻璃色调: 浅色主题用白、深色用近黑, 保证上面的字看得清。</summary>
+    private static (Color Tint, double Opacity) ChromeGlassStyle()
+        => ThemeLookup.IsDark
+            ? (Color.FromArgb(255, 22, 24, 30), 0.55)
+            : (Color.FromArgb(255, 255, 255, 255), 0.55);
+
+    /// <summary>气泡的玻璃色调: 自己的用主题里的蓝色, 别人的浅色用白/深色用近黑。</summary>
+    private static (Color Tint, double Opacity) BubbleGlassStyle(MessageVm? vm)
+    {
+        if (vm is { IsSelf: true })
+            return (ThemeLookup.Color("BubbleSelfColor"), 0.62);
+        return ThemeLookup.IsDark
+            ? (Color.FromArgb(255, 22, 24, 30), 0.64)
+            : (Color.FromArgb(255, 255, 255, 255), 0.66);
+    }
+
+    /// <summary>气泡出现在列表里: 注册成一个玻璃面(位置由 LayoutUpdated 统一量)。</summary>
+    private void OnBubbleLoaded(object sender, RoutedEventArgs e)
+    {
+        if (_glass == null || sender is not Border border) return;
+        var vm = border.DataContext as MessageVm;
+        _glass.Register(new GlassEntry
+        {
+            Element = border,
+            Radius = 10,
+            Style = () => BubbleGlassStyle(vm),
+        });
+        _glass.Refresh();
+    }
+
+    private void OnBubbleUnloaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement element) _glass?.Unregister(element);
+    }
 
     /// <summary>把设置里的主题应用到整窗。</summary>
     private void ApplyTheme()

@@ -1,0 +1,19 @@
+{
+  "profiles": {
+    "GlassEffectApp (Package)": {
+      "commandName": "MsixPackage",
+      "nativeDebugging": true
+    },
+    "GlassEffectApp (Unpackaged)": {
+      "commandName": "Project"
+    },
+    "GlassEffectApp (x64 Debug)": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "nativeDebugging": false,
+      "environmentVariables": {
+        "DOTNET_RUNTIME_ID": "win-x64"
+      }
+    }
+  }
+}

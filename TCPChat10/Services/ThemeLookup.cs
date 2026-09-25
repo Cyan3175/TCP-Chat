@@ -16,6 +16,9 @@ public static class ThemeLookup
     /// <summary>窗口根元素当前的实际主题(Default = 跟随系统)。</summary>
     public static ElementTheme Current { get; set; } = ElementTheme.Default;
 
+    /// <summary>当前是不是深色(跟随系统时按系统来)。玻璃层的色调也要用它。</summary>
+    public static bool IsDark => Dark;
+
     private static bool Dark => Current switch
     {
         ElementTheme.Dark => true,

@@ -248,9 +248,16 @@ public sealed class MessageVm : INotifyPropertyChanged
     public Thickness BubbleMargin => IsSelf ? new Thickness(60, 2, 0, 2) : new Thickness(0, 2, 60, 2);
     public CornerRadius BubbleRadius => IsSelf ? new CornerRadius(12, 12, 3, 12) : new CornerRadius(12, 12, 12, 3);
 
-    public Brush BubbleBrush => IsSelf
-        ? new SolidColorBrush(ThemeLookup.Color("BubbleSelfColor"))
-        : ThemeLookup.Brush("BubbleOtherBrush");
+    /// <summary>11.0: 开了液态玻璃时气泡底色透明 —— 玻璃由底下的 Win2D 画布画。</summary>
+    public static bool GlassBubbles;
+
+    private static readonly SolidColorBrush Transparent = new(Colors.Transparent);
+
+    public Brush BubbleBrush => GlassBubbles
+        ? Transparent
+        : IsSelf
+            ? new SolidColorBrush(ThemeLookup.Color("BubbleSelfColor"))
+            : ThemeLookup.Brush("BubbleOtherBrush");
 
     public Brush BodyBrush => Model.DecryptFailed
         ? ThemeLookup.Brush("MetaOtherBrush")

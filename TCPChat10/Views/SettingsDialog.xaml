@@ -52,6 +52,27 @@
             <TextBlock Text="字体列表来自本机已安装的字体，选完保存即生效并写进设置文件，下次启动照旧。"
                        FontSize="12" Opacity="0.65" TextWrapping="Wrap" />
 
+            <TextBlock Text="液态玻璃" FontWeight="SemiBold" Margin="0,6,0,0" />
+            <ToggleSwitch x:Name="GlassSwitch" Header="开启液态玻璃（11.0）"
+                          OnContent="开" OffContent="关"
+                          Toggled="OnGlassToggled" />
+            <StackPanel Spacing="4">
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="质量（湍流层数 / 模糊 / 色彩增强 / 渲染分辨率）" FontSize="13"
+                               VerticalAlignment="Center" TextWrapping="Wrap" />
+                    <TextBlock x:Name="GlassQualityText" Grid.Column="1" FontSize="13" FontWeight="SemiBold"
+                               VerticalAlignment="Center" MinWidth="34" TextAlignment="Right" />
+                </Grid>
+                <Slider x:Name="GlassQualitySlider" Minimum="0" Maximum="100" StepFrequency="1"
+                        ValueChanged="OnGlassQualityChanged" />
+                <TextBlock x:Name="GlassHint" FontSize="12" Opacity="0.65" TextWrapping="Wrap"
+                           Text="背景用系统的桌面壁纸（读不到就程序生成一张），面板/气泡按折射玻璃绘制。质量越低越省 GPU。" />
+            </StackPanel>
+
         </StackPanel>
     </ScrollViewer>
 </ContentDialog>

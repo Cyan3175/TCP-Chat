@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using TCPChat10.Glass;
 using TCPChat10.Services;
 
 namespace TCPChat10.Views;
@@ -17,6 +18,35 @@ public sealed partial class SettingsDialog : ContentDialog
 
     /// <summary>服务器地址或聊天目录变了, 需要重连。</summary>
     public bool NeedReconnect { get; private set; }
+
+    /// <summary>玻璃开关/质量被改动(立即生效用): 主窗口订这个事件重新应用。</summary>
+    public event Action? GlassChanged;
+
+    /// <summary>构造时回填控件会触发 Toggled/ValueChanged, 用它挡一下。</summary>
+    private bool _glassSwitchGuard;
+
+    private void OnGlassToggled(object sender, RoutedEventArgs e)
+    {
+        if (_glassSwitchGuard) return;
+        _settings.GlassEnabled = GlassSwitch.IsOn;
+        GlassChanged?.Invoke();
+    }
+
+    private void OnGlassQualityChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+    {
+        var quality = (int)Math.Round(e.NewValue);
+        UpdateGlassText(quality);
+        if (_glassSwitchGuard) return;
+        _settings.GlassQuality = quality;
+        GlassChanged?.Invoke();
+    }
+
+    private void UpdateGlassText(int quality)
+    {
+        GlassQualityText.Text = quality.ToString();
+        GlassHint.Text = GlassParams.For(quality).Describe() +
+                         "　·　背景用系统桌面壁纸（读不到就程序生成），改完立即生效。";
+    }
 
     public SettingsDialog(AppSettings settings)
     {
@@ -42,6 +72,13 @@ public sealed partial class SettingsDialog : ContentDialog
         AutoScrollBox.IsChecked = settings.AutoScroll;
         ThemeBox.SelectedIndex = Math.Clamp(settings.Theme, 0, 2);
         LoadFonts(settings.FontFamily);
+
+        // 液态玻璃(11.0): 开关与质量滑块都是"改了就立刻生效", 不用等保存
+        _glassSwitchGuard = true;
+        GlassSwitch.IsOn = settings.GlassEnabled;
+        GlassQualitySlider.Value = Math.Clamp(settings.GlassQuality, 0, 100);
+        _glassSwitchGuard = false;
+        UpdateGlassText(settings.GlassQuality);
 
         this.PrimaryButtonClick += OnSave;
     }

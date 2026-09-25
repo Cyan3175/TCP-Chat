@@ -26,6 +26,12 @@ public sealed class AppSettings
     /// <summary>端到端加密密码: 收发双方必须完全一致, 留空表示不加密(明文发送)。</summary>
     [JsonPropertyName("cryptoPassword")] public string CryptoPassword { get; set; } = "";
 
+    /// <summary>11.0: 液态玻璃(背景图 + 折射面板)。默认开。</summary>
+    [JsonPropertyName("glassEnabled")] public bool GlassEnabled { get; set; } = true;
+
+    /// <summary>11.0: 玻璃质量 0~100(湍流层数 / 模糊 / 色彩增强 / 渲染分辨率)。</summary>
+    [JsonPropertyName("glassQuality")] public int GlassQuality { get; set; } = 60;
+
     /// <summary>数据目录名。10.7 起用 TCPChat(之前叫 TCPChat10)。</summary>
     private const string DirName = "TCPChat";
 
@@ -131,6 +137,7 @@ public sealed class AppSettings
             ChatFolder = DefaultChatFolder;
         if (PollSeconds < 1) PollSeconds = 3;
         if (HistoryDays < 1) HistoryDays = 7;
+        GlassQuality = Math.Clamp(GlassQuality, 0, 100);
         return this;
     }
 

@@ -561,7 +561,7 @@ public sealed partial class MainWindow : Window
         {
             ListHost.Clip = new Microsoft.UI.Xaml.Media.RectangleGeometry
             {
-                Rect = new Windows.Foundation.Rect(0, 0, e.NewSize.Width, e.NewSize.Height),
+                Rect = new Windows.Foundation.Rect(0, 0, e.NewSize.Width, Math.Max(0, e.NewSize.Height - 2)),
             };
         }
         catch { }
@@ -1276,8 +1276,8 @@ public sealed partial class MainWindow : Window
     /// <summary>顶栏/输入栏/状态栏的玻璃色调: 浅色主题用白、深色用近黑, 保证上面的字看得清。</summary>
     private static (Color Tint, double Opacity) ChromeGlassStyle()
         => ThemeLookup.IsDark
-            ? (Color.FromArgb(255, 22, 24, 30), 0.55)
-            : (Color.FromArgb(255, 255, 255, 255), 0.55);
+            ? (Color.FromArgb(255, 22, 24, 30), 0.84)
+            : (Color.FromArgb(255, 255, 255, 255), 0.86);
 
     /// <summary>
     /// 气泡的玻璃色调。

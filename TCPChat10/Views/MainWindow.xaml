@@ -52,7 +52,7 @@
         <!-- 消息列表 -->
         <Grid x:Name="ListHost" Grid.Row="1" SizeChanged="OnListHostSizeChanged">
         <ListView x:Name="MessageList"
-                  SelectionMode="None" Padding="14,10,14,10"
+                  SelectionMode="None" Padding="14,10,14,26"
                   Background="Transparent"
                   ScrollViewer.HorizontalScrollMode="Disabled"
                   ScrollViewer.HorizontalScrollBarVisibility="Disabled">

@@ -28,10 +28,16 @@
             <TextBox x:Name="NickBox" Header="昵称" PlaceholderText="显示在每条消息上" MaxLength="24" />
 
             <TextBlock Text="端到端加密" FontWeight="SemiBold" Margin="0,6,0,0" />
-            <TextBox x:Name="CryptoListBox" Header="密码列表（每行一个，收消息时按顺序依次尝试）"
-                     AcceptsReturn="True" TextWrapping="NoWrap" Height="92"
-                     PlaceholderText="每行一个密码&#x0a;第 1 行优先尝试" />
-            <ComboBox x:Name="SendPasswordBox" Header="默认用哪一个加密发送" HorizontalAlignment="Stretch" />
+            <TextBlock Text="密码列表（收消息时按顺序依次尝试；选中的那把用于加密发送）" />
+            <StackPanel x:Name="PasswordRows" Spacing="6" />
+            <Grid ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <PasswordBox x:Name="NewPasswordBox" PlaceholderText="再加一个密码…" />
+                <Button Grid.Column="1" Content="添加" Click="OnAddPasswordClick" />
+            </Grid>
             <TextBlock x:Name="CryptoError" FontSize="12" Foreground="#D9534F" TextWrapping="Wrap"
                        Visibility="Collapsed" Text="密码列表里有空行，或者没有可用的密码。" />
             <TextBlock FontSize="12" Opacity="0.65" TextWrapping="Wrap"

@@ -22,6 +22,10 @@
                     <SolidColorBrush x:Key="ErrorBrush" Color="#C0392B" />
                     <Color x:Key="BubbleSelfColor">#2B6CB0</Color>
                     <SolidColorBrush x:Key="AccentBrush" Color="#2B6CB0" />
+                    <!-- 11.4 液态玻璃: 昵称/时间画在壁纸上, 给一层浅衬底 + 更深的字色, 才不会糊在背景里 -->
+                    <SolidColorBrush x:Key="MetaChipBrush" Color="#D1FFFFFF" />
+                    <SolidColorBrush x:Key="SenderGlassBrush" Color="#17497F" />
+                    <SolidColorBrush x:Key="MetaGlassBrush" Color="#B3000000" />
                     <SolidColorBrush x:Key="QuoteBrush" Color="#0F000000" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Dark">
@@ -34,6 +38,10 @@
                     <SolidColorBrush x:Key="ErrorBrush" Color="#FF9E9E" />
                     <Color x:Key="BubbleSelfColor">#3E7CC7</Color>
                     <SolidColorBrush x:Key="AccentBrush" Color="#7FB2E5" />
+                    <!-- 11.4 液态玻璃: 同上, 深色下用深衬底 + 更亮的字色 -->
+                    <SolidColorBrush x:Key="MetaChipBrush" Color="#C2000000" />
+                    <SolidColorBrush x:Key="SenderGlassBrush" Color="#A9CDF2" />
+                    <SolidColorBrush x:Key="MetaGlassBrush" Color="#D9FFFFFF" />
                     <SolidColorBrush x:Key="QuoteBrush" Color="#18FFFFFF" />
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>

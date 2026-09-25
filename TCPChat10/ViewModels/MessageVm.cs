@@ -111,7 +111,10 @@ public sealed class MessageVm : INotifyPropertyChanged
         Raise(nameof(BubbleBrush));
         Raise(nameof(BodyBrush));
         Raise(nameof(MetaBrush));
+        Raise(nameof(MetaChipBrush));
         Raise(nameof(SenderBrush));
+        Raise(nameof(SenderFontSize));
+        Raise(nameof(MetaFontSize));
         Raise(nameof(QuoteBrush));
         Raise(nameof(StatusBrush));
         Raise(nameof(AttachBrush));
@@ -244,6 +247,10 @@ public sealed class MessageVm : INotifyPropertyChanged
 
     // ---------- 外观 ----------
     public bool IsSelf => Model.IsSelf;
+
+    /// <summary>11.4: 昵称/时间的字号也跟着 Ctrl +/- 缩放走。</summary>
+    public double SenderFontSize => 12 * UiZoom.Level;
+    public double MetaFontSize => 11 * UiZoom.Level;
     public HorizontalAlignment Alignment => IsSelf ? HorizontalAlignment.Right : HorizontalAlignment.Left;
     public Thickness BubbleMargin => IsSelf ? new Thickness(60, 2, 0, 2) : new Thickness(0, 2, 60, 2);
     public CornerRadius BubbleRadius => IsSelf ? new CornerRadius(12, 12, 3, 12) : new CornerRadius(12, 12, 12, 3);
@@ -267,13 +274,22 @@ public sealed class MessageVm : INotifyPropertyChanged
 
     public Brush QuoteBrush => BodyBrush;
     public Brush StatusBrush => ThemeLookup.Brush("ErrorBrush");
+
     // 昵称和时间画在气泡"外面"(页面底色上), 不是画在气泡里 ——
     // 10.6 及以前自己这边用的是半透明白, 浅色模式下几乎看不见(10.7 修正)。
-    public Brush MetaBrush => ThemeLookup.Brush("MetaOtherBrush");
+    //
+    // 11.4: 开了液态玻璃以后列表底下是壁纸, 昵称/时间直接压在照片上,
+    // 深色切浅色时字色跟着主题变深, 背景却还是那张照片 —— 就看不清了。
+    // 所以玻璃模式下给这行加一层跟主题走的衬底, 字色也换成专门配过的。
+    public Brush MetaChipBrush => GlassBubbles ? ThemeLookup.Brush("MetaChipBrush") : Transparent;
+
+    public Brush MetaBrush => GlassBubbles
+        ? ThemeLookup.Brush("MetaGlassBrush")
+        : ThemeLookup.Brush("MetaOtherBrush");
 
     public Brush SenderBrush => IsSelf
         ? ThemeLookup.Brush("BodyOtherBrush")
-        : ThemeLookup.Brush("AccentBrush");
+        : GlassBubbles ? ThemeLookup.Brush("SenderGlassBrush") : ThemeLookup.Brush("AccentBrush");
 
     /// <summary>附件卡片/语音条的底色: 跟气泡区分开。</summary>
     public Brush AttachBrush => IsSelf

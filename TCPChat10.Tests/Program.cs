@@ -42,8 +42,10 @@ if (args.Length >= 2 && args[0] == "clean")
 
 if (args.Length >= 2 && args[0] == "ls") return await Probe.RunAsync(args[1].Trim('/'));
 
-// 离线部分(加密 / 设置持久化 / 字体列表)不依赖网络, 每次都跑
+// 离线部分(加密 / 设置持久化 / 字体列表 / markdown / 公式排版)不依赖网络, 每次都跑
 int offlineFail = CryptoTest.Run();
+offlineFail += MathTest.Run();
+offlineFail += LuoguTest.Run();
 
 // 在线部分打真实 WebDAV 服务器, 加 --offline 可以跳过
 if (args.Contains("--offline"))

@@ -18,10 +18,19 @@
     <Compile Include="../TCPChat10/Services/AppSettings.cs" Link="AppSettings.cs" />
     <Compile Include="../TCPChat10/Services/MessageCrypto.cs" Link="MessageCrypto.cs" />
     <Compile Include="../TCPChat10/Services/FontList.cs" Link="FontList.cs" />
+    <Compile Include="../TCPChat10/Services/UiZoom.cs" Link="UiZoom.cs" />
     <Compile Include="../TCPChat10/Models/ChatMessage.cs" Link="ChatMessage.cs" />
     <Compile Include="../TCPChat10/Glass/GlassParams.cs" Link="GlassParams.cs" />
     <Compile Include="../TCPChat10/Rendering/MarkdownModel.cs" Link="MarkdownModel.cs" />
     <Compile Include="../TCPChat10/Rendering/MarkdownParser.cs" Link="MarkdownParser.cs" />
+    <Compile Include="../TCPChat10/Rendering/MathModel.cs" Link="MathModel.cs" />
+    <Compile Include="../TCPChat10/Rendering/MathParser.cs" Link="MathParser.cs" />
+    <Compile Include="../TCPChat10/Rendering/MathLayout.cs" Link="MathLayout.cs" />
+    <Compile Include="../TCPChat10/Rendering/MathPlain.cs" Link="MathPlain.cs" />
+    <Compile Include="../TCPChat10/Rendering/MathDelimiters.cs" Link="MathDelimiters.cs" />
+    <Compile Include="MathTest.cs" />
+    <Compile Include="LuoguTest.cs" />
+    <Compile Include="../TCPChat10/Rendering/MarkdownPreprocess.cs" Link="MarkdownPreprocess.cs" />
   </ItemGroup>
 
   <ItemGroup>

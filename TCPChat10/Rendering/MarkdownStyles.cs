@@ -17,7 +17,8 @@ public static class MarkdownStyles
 
     public static MarkdownStyle For(bool self, bool decryptFailed)
     {
-        var s = new MarkdownStyle();
+        // 11.4: 缩放(Ctrl +/-)就是把这个基准字号乘一下 —— 正文/代码块/表格/公式都按它算
+        var s = new MarkdownStyle { FontSize = UiZoom.BaseFontSize * UiZoom.Level };
 
         if (decryptFailed)
         {
@@ -49,6 +50,7 @@ public static class MarkdownStyles
             s.Number = new SolidColorBrush(Color.FromArgb(255, 0xC3, 0xF0, 0xD8));
             s.QuoteBar = new SolidColorBrush(Color.FromArgb(235, 255, 255, 255));
             s.QuoteBack = new SolidColorBrush(Color.FromArgb(36, 255, 255, 255));
+            s.HighlightBack = new SolidColorBrush(Color.FromArgb(64, 255, 255, 255));   // 代码块高亮行
             s.Rule = new SolidColorBrush(Color.FromArgb(90, 255, 255, 255));
             s.TableEdge = new SolidColorBrush(Color.FromArgb(85, 255, 255, 255));
             s.TableHead = new SolidColorBrush(Color.FromArgb(40, 255, 255, 255));

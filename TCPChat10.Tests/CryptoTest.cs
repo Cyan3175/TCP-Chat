@@ -400,6 +400,32 @@ public static class CryptoTest
         Check(MarkdownParser.Parse("").Blocks.Count == 0, "空文本不报错");
         Check(MarkdownParser.Parse("##### 六级").Blocks.OfType<MdHeading>().First().Level == 5, "五级标题");
 
+        Console.WriteLine("=== Z) 缩放 (11.4) ===");
+        Check(Math.Abs(UiZoom.Level - 1.0) < 0.0001, "默认 100%");
+        UiZoom.Set(1.5);
+        Check(Math.Abs(UiZoom.Level - 1.5) < 0.0001, "设置 1.5 生效: " + UiZoom.Percent);
+        UiZoom.Step(+1);
+        Check(Math.Abs(UiZoom.Level - 1.6) < 0.0001, "放大一档 +10%: " + UiZoom.Percent);
+        UiZoom.Step(-1); UiZoom.Step(-1);
+        Check(Math.Abs(UiZoom.Level - 1.4) < 0.0001, "缩小一档 -10%: " + UiZoom.Percent);
+        UiZoom.Set(99);
+        Check(Math.Abs(UiZoom.Level - UiZoom.Max) < 0.0001, "超上限夹到 " + UiZoom.Max);
+        UiZoom.Set(-3);
+        Check(Math.Abs(UiZoom.Level - 1.0) < 0.0001, "非法值(负数)回到 100%");
+        UiZoom.Set(double.NaN);
+        Check(Math.Abs(UiZoom.Level - 1.0) < 0.0001, "NaN 也回到 100%");
+        UiZoom.Set(0.0001);
+        Check(Math.Abs(UiZoom.Level - UiZoom.Min) < 0.0001, "超下限夹到 " + UiZoom.Min);
+        UiZoom.Reset();
+        Check(Math.Abs(UiZoom.Level - 1.0) < 0.0001, "Ctrl+0 复位到 100%");
+        int zoomEvents = 0;
+        Action onZoom = () => zoomEvents++;
+        UiZoom.Changed += onZoom;
+        UiZoom.Step(+1); UiZoom.Step(+1); UiZoom.Set(UiZoom.Level);
+        UiZoom.Changed -= onZoom;
+        Check(zoomEvents == 2, "缩放变化会通知界面(同值不重复通知): " + zoomEvents);
+        UiZoom.Reset();
+
         Console.WriteLine("=== L) 液态玻璃参数 (11.0) ===");
         var gq0 = GlassParams.For(0);
         var gq25 = GlassParams.For(25);
@@ -428,6 +454,10 @@ public static class CryptoTest
             File.WriteAllText(tmpGlass, "{\"glassQuality\":-8,\"chatFolder\":\"a/b\"}");
             Check(AppSettings.Load().GlassQuality == 0, "负数质量会被夹到 0");
             Check(new AppSettings().GlassEnabled, "玻璃默认是开的");
+            File.WriteAllText(tmpGlass, "{\"zoom\":1.8,\"chatFolder\":\"a/b\"}");
+            Check(Math.Abs(AppSettings.Load().Zoom - 1.8) < 0.0001, "缩放比例能从设置里读回来: " + AppSettings.Load().Zoom);
+            File.WriteAllText(tmpGlass, "{\"zoom\":42,\"chatFolder\":\"a/b\"}");
+            Check(Math.Abs(AppSettings.Load().Zoom - UiZoom.Max) < 0.0001, "设置里越界的缩放夹到上限 " + UiZoom.Max);
         }
         finally
         {

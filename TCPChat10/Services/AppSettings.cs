@@ -72,6 +72,9 @@ public sealed class AppSettings
     /// <summary>11.0: 玻璃质量 0~100(湍流层数 / 模糊 / 色彩增强 / 渲染分辨率)。</summary>
     [JsonPropertyName("glassQuality")] public int GlassQuality { get; set; } = 60;
 
+    /// <summary>11.4: 消息缩放(Ctrl +/-/0、Ctrl+滚轮), 1.0 = 原始大小。</summary>
+    [JsonPropertyName("zoom")] public double Zoom { get; set; } = 1.0;
+
     /// <summary>数据目录名。10.7 起用 TCPChat(之前叫 TCPChat10)。</summary>
     private const string DirName = "TCPChat";
 
@@ -185,6 +188,7 @@ public sealed class AppSettings
         if (PollSeconds < 1) PollSeconds = 3;
         if (HistoryDays < 1) HistoryDays = 7;
         GlassQuality = Math.Clamp(GlassQuality, 0, 100);
+        Zoom = UiZoom.Clamp(Zoom);
 
         // 11.2: 老设置文件里只有一个 cryptoPassword —— 并进列表当第一项
         // 11.2: 允许空项 —— 空项代表"不加密(明文)"这一把; 相同内容只留一个, 空项也只留一个

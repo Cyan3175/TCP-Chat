@@ -75,6 +75,9 @@ public sealed partial class MainWindow : Window
         InputBox.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(OnInputKeyDown), true);
 
         ResizeWindow(1120, 780);
+        AppIcon.Apply(AppWindow);          // 11.4: 窗口/任务栏图标
+        _ = LoadAppMarkAsync();            // 顶栏左上角的小图标
+        InitZoom();                        // 11.4: Ctrl +/-/0、Ctrl+滚轮 缩放
         this.AppWindow.Closing += (s, e) =>
         {
             MessageVm.ShuttingDown = true;
@@ -108,7 +111,7 @@ public sealed partial class MainWindow : Window
         ApplyFont();
         UpdateLockText();
         MeText.Text = string.IsNullOrWhiteSpace(_settings.Nickname) ? "(未设置昵称)" : "我：" + _settings.Nickname;
-        Title = "TCP Chat 11.3 — " + _settings.ChatFolder;
+        Title = "TCP Chat 11.4 — " + _settings.ChatFolder;
 
         RootLoaded();
 
@@ -278,6 +281,57 @@ public sealed partial class MainWindow : Window
                     var ok = _dlg != null && await _dlg.RenderGlassControlsAsync(dir);
                     AutoLog("AUTO glassctl -> " + (ok ? "ok " + dir : "设置对话框没开着"));
                 }
+                else if (a.StartsWith("mdpreview:"))
+                {
+                    // mdpreview:文件路径[|other] —— 把本地的 markdown 文件当成一条消息渲染出来。
+                    // 只加进列表、不发送(核对 markdown/公式的排版用, 不打扰真实的聊天记录)
+                    var spec = a[10..].Trim();
+                    var other = false;
+                    var bar = spec.LastIndexOf('|');
+                    if (bar > 0 && spec[(bar + 1)..].Trim().Equals("other", StringComparison.OrdinalIgnoreCase))
+                    {
+                        other = true;
+                        spec = spec[..bar].Trim();
+                    }
+                    var text = File.ReadAllText(spec, System.Text.Encoding.UTF8);
+                    var preview = new ChatMessage
+                    {
+                        Id = "preview_" + DateTime.Now.Ticks,
+                        From = other ? "同学" : (string.IsNullOrWhiteSpace(_settings.Nickname) ? "我" : _settings.Nickname),
+                        Time = DateTimeOffset.Now,
+                        Text = text,
+                        IsSelf = !other,
+                        RemoteName = "preview.json",
+                    };
+                    Messages.Add(new MessageVm(preview, null));
+                    ScrollToBottom();
+                    AutoLog("AUTO mdpreview -> 渲染 " + spec + (other ? " (别人)" : " (自己)") + " " + text.Length + " 字符");
+                    // 顺带把解析结果报一遍: 公式没排出来时, 一眼能看出是被当成普通段落还是解析失败
+                    var parsed = MarkdownParser.Parse(text);
+                    AutoLog("AUTO mdpreview 解析 -> 块 " + parsed.Blocks.Count +
+                            ", 公式块 " + parsed.Blocks.OfType<MdMathBlock>().Count() +
+                            ", 行内公式 " + parsed.Blocks.OfType<MdParagraph>().Sum(p => p.Inlines.OfType<MdMathSpan>().Count()));
+                    foreach (var b in parsed.Blocks)
+                    {
+                        if (b is MdMathBlock mb)
+                        {
+                            MathParser.Parse(mb.Code);
+                            AutoLog("   · 公式块 [" + Cut(mb.Code, 60) + "] 解析=" + (MathParser.LastError ?? "正常"));
+                        }
+                        else if (b is MdCodeBlock cb) AutoLog("   · 代码块(" + cb.Language + ") [" + Cut(cb.Code, 50) + "]");
+                        else if (b is MdParagraph pp) AutoLog("   · 段落 [" + Cut(string.Concat(pp.Inlines.Select(InlineText)), 70) + "]");
+                    }
+                }
+                else if (a.StartsWith("zoom:"))
+                {
+                    // zoom:+ / zoom:- / zoom:0(复位) / zoom:1.25
+                    var spec = a[5..].Trim();
+                    if (spec == "+") UiZoom.Step(+1);
+                    else if (spec == "-") UiZoom.Step(-1);
+                    else if (spec == "0") UiZoom.Reset();
+                    else UiZoom.Set(double.Parse(spec));
+                    AutoLog("AUTO zoom -> " + UiZoom.Percent + " (正文基准 " + (UiZoom.BaseFontSize * UiZoom.Level).ToString("F1") + ")");
+                }
                 else if (a == "glassinfo")
                 {
                     AutoLog("AUTO glassinfo -> 开关=" + (_settings.GlassEnabled ? "开" : "关") +
@@ -438,6 +492,25 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    /// <summary>自测日志里截断长文本用。</summary>
+    private static string Cut(string? s, int n)
+    {
+        s = (s ?? "").Replace("\r", "").Replace("\n", "¶");
+        return s.Length <= n ? s : s[..n] + "…";
+    }
+
+    /// <summary>自测日志里把一段行内内容摊平成文字。</summary>
+    private static string InlineText(MdInline inline) => inline switch
+    {
+        MdText t => t.Text,
+        MdCodeSpan c => (char)96 + c.Text + (char)96,
+        MdMathSpan m => "⟨公式:" + m.Text + "⟩",
+        MdStyle s => string.Concat(s.Children.Select(InlineText)),
+        MdLink l => string.Concat(l.Children.Select(InlineText)),
+        MdBreak => "¶",
+        _ => "",
+    };
+
     private async Task ShowDialogLoggedAsync(ContentDialog d, string tag)
     {
         try
@@ -524,6 +597,92 @@ public sealed partial class MainWindow : Window
                 area.Y + Math.Max(0, (area.Height - h) / 2)));
         }
         catch { }
+    }
+
+    // ---------- 缩放(11.4) ----------
+
+    /// <summary>Ctrl + 加号/减号/0, 以及 Ctrl + 滚轮。</summary>
+    private void InitZoom()
+    {
+        UiZoom.Set(_settings.Zoom, notify: false);     // 上次的缩放比例
+        UiZoom.Changed += OnZoomChanged;
+
+        if (Content is UIElement root)
+        {
+            // 用 Preview(隧道) + handledEventsToo: 输入框/列表先处理了也能收到
+            root.AddHandler(UIElement.PreviewKeyDownEvent, new KeyEventHandler(OnGlobalPreviewKeyDown), true);
+            root.PointerWheelChanged += OnZoomWheel;
+        }
+    }
+
+    private static bool CtrlDown()
+    {
+        try
+        {
+            var state = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control);
+            return state.HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
+        }
+        catch { return false; }
+    }
+
+    private void OnGlobalPreviewKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (!CtrlDown()) return;
+        switch ((int)e.Key)
+        {
+            case 187:                                    // = / +(Shift)
+            case (int)VirtualKey.Add:                    // 小键盘 +
+                UiZoom.Step(+1);
+                e.Handled = true;
+                break;
+            case 189:                                    // - / _
+            case (int)VirtualKey.Subtract:               // 小键盘 -
+                UiZoom.Step(-1);
+                e.Handled = true;
+                break;
+            case (int)VirtualKey.Number0:
+            case (int)VirtualKey.NumberPad0:
+                UiZoom.Reset();
+                e.Handled = true;
+                break;
+        }
+    }
+
+    private void OnZoomWheel(object sender, PointerRoutedEventArgs e)
+    {
+        if (!CtrlDown()) return;
+        try
+        {
+            var delta = e.GetCurrentPoint(MessageList).Properties.MouseWheelDelta;
+            if (delta == 0) return;
+            UiZoom.Step(delta > 0 ? +1 : -1);
+            e.Handled = true;
+        }
+        catch { }
+    }
+
+    /// <summary>缩放变了: 重排所有消息(颜色/字号/公式都是算好的, 必须重建), 并写进设置。</summary>
+    private void OnZoomChanged()
+    {
+        try
+        {
+            MarkdownStyles.Invalidate();
+            RefreshBodies();
+            MessageList.UpdateLayout();
+            _glass?.Refresh();
+            _settings.Zoom = UiZoom.Level;
+            _settings.Save();
+            SetFooter("缩放 " + UiZoom.Percent + "　·　Ctrl+0 复位, Ctrl+滚轮 也行");
+        }
+        catch (Exception ex) { App.LogCrash("应用缩放失败", ex); }
+    }
+
+    /// <summary>顶栏小图标(嵌在程序里的那份, 单文件发布也能用)。</summary>
+    private async Task LoadAppMarkAsync()
+    {
+        var bmp = await AppIcon.LoadMarkAsync();
+        if (bmp == null) return;
+        DispatcherQueue.TryEnqueue(() => { try { AppMark.Source = bmp; } catch { } });
     }
 
     private async void RootLoaded()
@@ -1335,12 +1494,15 @@ public sealed partial class MainWindow : Window
         try
         {
             if (_glass == null || sender is not Border border) return;
-            var vm = border.DataContext as MessageVm;
+            // 11.4 修: 色调要"画的时候"再问当前的 DataContext, 不能在这里把 vm 抓死 ——
+            // ListView 会回收气泡容器, 复用以后 DataContext 已经换成别的消息(或者还没赋上),
+            // 抓死的那个 vm 会把"自己/别人"判错: 自己的消息用上白玻璃 + 白字 = 一片白,
+            // 深色切浅色时尤其明显(深色下白玻璃本来就偏暗, 看不出来)。
             _glass.Register(new GlassEntry
             {
                 Element = border,
                 Radius = 10,
-                Style = () => BubbleGlassStyle(vm),
+                Style = () => BubbleGlassStyle(border.DataContext as MessageVm),
             });
             _glass.Refresh();
         }

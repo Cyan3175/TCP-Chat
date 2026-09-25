@@ -44,8 +44,10 @@ public static class MarkdownParser
 
         try
         {
-            var ctx = new Ctx(text);
-            var md = Markdown.Parse(text, Pipeline);
+            // 11.4: 先做文本预处理(LaTeX 定界符归一化 + 洛谷 cute-table 标记行, 详见 MarkdownPreprocess)
+            var prepared = MarkdownPreprocess.Apply(text);
+            var ctx = new Ctx(prepared);
+            var md = Markdown.Parse(prepared, Pipeline);
             doc.Blocks = ParseBlocks(ctx, md);
             doc.PlainText = PlainText(doc).Trim();
             return doc;
@@ -86,6 +88,11 @@ public static class MarkdownParser
                 case '\\': case '`': case '*': case '_': case '~': case '^':
                 case '[': case ']': case '<': case '>': case '|': case '#':
                     return true;
+                case '$':
+                    // 成对的 $ 才是公式($5 这种单独一个不算, 免得白跑一遍解析器)
+                    if (text.IndexOf('$', i + 1) > i) return true;
+                    lineStart = false;
+                    continue;
                 case '\n':
                     lineStart = true;
                     continue;
@@ -130,10 +137,24 @@ public static class MarkdownParser
     private static List<MdBlock> ParseBlocks(Ctx ctx, ContainerBlock container)
     {
         var list = new List<MdBlock>();
+        bool tuack = false;
         foreach (var b in container)
         {
+            // 11.4 洛谷语法: ::cute-table{tuack} 单独成段, 只给紧跟其后的表格定样式, 自己不显示
+            if (b is ParagraphBlock marker && MarkdownPreprocess.IsCuteTableMarker(ctx.Slice(marker.Span)))
+            {
+                tuack = true;
+                continue;
+            }
+
             var blk = ParseBlock(ctx, b);
-            if (blk != null) list.Add(blk);
+            if (blk == null) continue;
+            if (blk is MdTable table && tuack)
+            {
+                table.Tuack = true;
+                tuack = false;
+            }
+            list.Add(blk);
         }
         return list;
     }
@@ -147,7 +168,7 @@ public static class MarkdownParser
 
         // 这几个互相有继承关系(数学块 : 围栏块 : 代码块), 派生类必须排在基类前面
         MathBlock m => new MdMathBlock { Code = Code(m.Lines) },
-        FencedCodeBlock f => new MdCodeBlock { Language = Clean(f.Info), Code = Code(f.Lines) },
+        FencedCodeBlock f => ParseFence(ctx, f),
         CodeBlock c => new MdCodeBlock { Language = null, Code = Code(c.Lines) },
 
         // AlertBlock 继承自 QuoteBlock, 也要排在前面
@@ -159,7 +180,7 @@ public static class MarkdownParser
         FootnoteGroup fg => ParseFootnotes(ctx, fg),
         Footnote fn => new MdContainer { Label = fn.Label, Blocks = ParseBlocks(ctx, fn) },
         DefinitionList dl => ParseDefinitionList(ctx, dl),
-        CustomContainer cc => new MdContainer { Label = Clean(cc.Info?.ToString()), Blocks = ParseBlocks(ctx, cc) },
+        CustomContainer cc => ParseContainer(ctx, cc),
         ThematicBreakBlock => new MdRule(),
 
         // 不显示的东西: 链接引用定义
@@ -195,6 +216,131 @@ public static class MarkdownParser
         return list;
     }
 
+
+    // ---------- 11.4: 洛谷那套扩展语法 ----------
+
+    private const char Tick = (char)96;      // 反引号
+
+    /// <summary>某个位置所在的那一整行(用于把 Markdig 吞掉的容器参数/代码块参数捞回来)。</summary>
+    private static string LineAt(Ctx ctx, int start)
+    {
+        if (start < 0 || start >= ctx.Source.Length) return "";
+        int end = ctx.Source.IndexOf('\n', start);
+        if (end < 0) end = ctx.Source.Length;
+        return ctx.Source[start..end].Trim();
+    }
+
+    /// <summary>从 start 开始找第一行以 ch 开头的行(容器/围栏的起始行)。</summary>
+    private static string FindFenceLine(Ctx ctx, int start, char ch)
+    {
+        var line = LineAt(ctx, start);
+        if (line.StartsWith(ch)) return line;
+        int end = ctx.Source.IndexOf('\n', start);
+        if (end < 0) return line;
+        for (int i = 0; i < 3 && end + 1 < ctx.Source.Length; i++)
+        {
+            var next = LineAt(ctx, end + 1);
+            if (next.StartsWith(ch)) return next;
+            end = ctx.Source.IndexOf('\n', end + 1);
+            if (end < 0) break;
+        }
+        return line;
+    }
+
+    /// <summary>:::name[标题]{参数} —— 容器名、标题、参数都从原始行里取。</summary>
+    private static MdContainer ParseContainer(Ctx ctx, CustomContainer cc)
+    {
+        var node = new MdContainer();
+        var raw = FindFenceLine(ctx, cc.Span.Start, ':');
+        if (raw.Length == 0) raw = ":::" + (cc.Info?.ToString() ?? "");
+
+        var body = raw.TrimStart();
+        while (body.StartsWith(':')) body = body[1..];
+
+        int lb = body.IndexOf('[');
+        int rb = lb >= 0 ? body.IndexOf(']', lb + 1) : -1;
+        if (lb >= 0 && rb > lb)
+        {
+            node.Title = ParseInlineText(body[(lb + 1)..rb]);
+            body = body[..lb] + body[(rb + 1)..];
+        }
+
+        int lc = body.IndexOf('{');
+        int rc = lc >= 0 ? body.IndexOf('}', lc + 1) : -1;
+        if (lc >= 0 && rc > lc)
+        {
+            foreach (var a in body[(lc + 1)..rc].Split(new[] { ' ', ',', ';' }, StringSplitOptions.RemoveEmptyEntries))
+                node.Args.Add(a.Trim());
+            body = body[..lc] + body[(rc + 1)..];
+        }
+
+        node.Label = Clean(body)?.ToLowerInvariant();
+        node.Blocks = ParseBlocks(ctx, cc);
+        return node;
+    }
+
+    /// <summary>把一小段文本按 markdown 解析成行内元素(容器标题里可以写公式)。</summary>
+    private static List<MdInline> ParseInlineText(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return new List<MdInline>();
+        try
+        {
+            var prepared = MarkdownPreprocess.Apply(text);
+            var md = Markdown.Parse(prepared, Pipeline);
+            if (md.Count > 0 && md[0] is LeafBlock leaf && leaf.Inline != null)
+                return ParseInlines(new Ctx(prepared), leaf.Inline);
+        }
+        catch { }
+        return new List<MdInline> { new MdText { Text = text } };
+    }
+
+    /// <summary>围栏代码块: 语言后面的 line-numbers / lines=6-9 参数(洛谷语法)。</summary>
+    private static MdCodeBlock ParseFence(Ctx ctx, FencedCodeBlock f)
+    {
+        var block = new MdCodeBlock { Code = Code(f.Lines), Language = Clean(f.Info?.ToString()) };
+        var raw = FindFenceLine(ctx, f.Span.Start, Tick);
+        if (!raw.StartsWith(Tick)) raw = FindFenceLine(ctx, f.Span.Start, '~');
+        if (raw.StartsWith(Tick) || raw.StartsWith('~'))
+        {
+            var spec = raw.TrimStart(Tick, '~').Trim();
+            var parts = spec.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+            block.Language = Clean(parts.Length > 0 ? parts[0] : null);
+            for (int i = 1; i < parts.Length; i++)
+            {
+                if (string.Equals(parts[i], "line-numbers", StringComparison.OrdinalIgnoreCase)) block.LineNumbers = true;
+                else if (parts[i].StartsWith("lines=", StringComparison.OrdinalIgnoreCase))
+                    ParseLineRanges(parts[i][6..], block.HighlightLines);
+            }
+        }
+        return block;
+    }
+
+    /// <summary>lines=6-9,12 这种范围。</summary>
+    private static void ParseLineRanges(string spec, List<(int Start, int End)> into)
+    {
+        foreach (var part in spec.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var t = part.Trim();
+            int dash = t.IndexOf('-');
+            if (dash > 0)
+            {
+                if (int.TryParse(t[..dash], out var a) && int.TryParse(t[(dash + 1)..], out var b) && a > 0 && b >= a)
+                    into.Add((a, b));
+            }
+            else if (int.TryParse(t, out var one) && one > 0)
+            {
+                into.Add((one, one));
+            }
+        }
+    }
+
+    /// <summary>单元格内容是不是"就是这一个合并标记"。</summary>
+    private static bool IsMergeMark(List<MdInline> inlines, string mark)
+    {
+        if (inlines.Count != 1) return false;
+        return inlines[0] is MdText t && string.Equals(t.Text.Trim(), mark, StringComparison.Ordinal);
+    }
+
     private static MdTable ParseTable(Ctx ctx, Table t)
     {
         var table = new MdTable();
@@ -211,17 +357,27 @@ public static class MarkdownParser
                     if (b is ParagraphBlock pb) inlines.AddRange(ParseInlines(ctx, pb.Inline));
                     else if (b is LeafBlock lb && lb.Inline != null) inlines.AddRange(ParseInlines(ctx, lb.Inline));
 
-                cells.Add(new MdTableCell
+                var mdCell = new MdTableCell
                 {
                     Inlines = inlines,
                     Align = ColumnAlign(t, col),
                     IsHeader = tr.IsHeader,
-                });
+                };
+
+                // 11.4 洛谷语法: 单元格里只有一个 ^(与上合并) 或 <(与左合并)
+                if (!tr.IsHeader)
+                {
+                    if (IsMergeMark(inlines, "^")) { mdCell.MergeUp = true; mdCell.Inlines = new List<MdInline>(); }
+                    else if (IsMergeMark(inlines, "<")) { mdCell.MergeLeft = true; mdCell.Inlines = new List<MdInline>(); }
+                }
+
+                cells.Add(mdCell);
                 col++;
             }
             if (tr.IsHeader) table.Headers = cells;
             else table.Rows.Add(cells);
         }
+        table.ResolveSpans();
         return table;
     }
 
@@ -413,7 +569,7 @@ public static class MarkdownParser
                 case MdLink l: AppendInlineText(sb, l.Children); break;
                 case MdImage img: sb.Append(string.IsNullOrEmpty(img.Alt) ? img.Url : img.Alt); break;
                 case MdBreak: sb.Append('\n'); break;
-                case MdMathSpan m: sb.Append(m.Text); break;
+                case MdMathSpan m: sb.Append(MathParser.ToPlainText(m.Text)); break;
                 case MdFootnoteRef f: sb.Append('[').Append(f.Label).Append(']'); break;
             }
         }
@@ -435,7 +591,7 @@ public static class MarkdownParser
                 case MdHeading h: AppendInlineText(sb, h.Inlines); break;
                 case MdParagraph p: AppendInlineText(sb, p.Inlines); break;
                 case MdCodeBlock c: sb.Append(c.Code); break;
-                case MdMathBlock m: sb.Append(m.Code); break;
+                case MdMathBlock m: sb.Append(MathParser.ToPlainText(m.Code)); break;
                 case MdHtmlBlock h: sb.Append(h.Text); break;
                 case MdRule: break;
                 case MdQuote q:

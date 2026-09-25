@@ -4,7 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:vm="using:TCPChat10.ViewModels"
     xmlns:canvas="using:Microsoft.Graphics.Canvas.UI.Xaml"
-    Title="TCP Chat 11.3">
+    Title="TCP Chat 11.4">
 
     <Grid x:Name="RootGrid" Background="{ThemeResource PageBrush}">
         <Grid.RowDefinitions>
@@ -30,7 +30,10 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <TextBlock Text="TCP Chat 11.3" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <Image x:Name="AppMark" Width="22" Height="22" VerticalAlignment="Center" />
+                    <TextBlock Text="TCP Chat 11.4" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
+                </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                     <Ellipse x:Name="StatusDot" Width="9" Height="9" Fill="#9AA0A6" VerticalAlignment="Center" />
@@ -69,19 +72,24 @@
                     <Grid HorizontalAlignment="{x:Bind Alignment}" Margin="{x:Bind BubbleMargin}"
                           MaxWidth="760" RightTapped="OnMessageRightTapped">
                         <StackPanel>
+                            <!-- 11.4: 玻璃模式下这行底下垫一层跟主题走的衬底(关掉玻璃时是透明的) -->
+                            <Border Background="{x:Bind MetaChipBrush, Mode=OneWay}"
+                                    CornerRadius="6" Padding="6,1,6,1"
+                                    HorizontalAlignment="{x:Bind Alignment}">
                             <StackPanel Orientation="Horizontal" Spacing="8"
                                         HorizontalAlignment="{x:Bind Alignment}">
-                                <TextBlock Text="{x:Bind SenderText}" FontSize="12" FontWeight="SemiBold"
+                                <TextBlock Text="{x:Bind SenderText}" FontSize="{x:Bind SenderFontSize, Mode=OneWay}" FontWeight="SemiBold"
                                            Foreground="{x:Bind SenderBrush, Mode=OneWay}" />
-                                <TextBlock Text="{x:Bind TimeText}" FontSize="11" VerticalAlignment="Center"
+                                <TextBlock Text="{x:Bind TimeText}" FontSize="{x:Bind MetaFontSize, Mode=OneWay}" VerticalAlignment="Center"
                                            Foreground="{x:Bind MetaBrush, Mode=OneWay}" />
-                                <TextBlock Text="🔒" FontSize="11" VerticalAlignment="Center"
+                                <TextBlock Text="🔒" FontSize="{x:Bind MetaFontSize, Mode=OneWay}" VerticalAlignment="Center"
                                            Visibility="{x:Bind LockBadgeVisible}" />
-                                <TextBlock Text="发送中…" FontSize="11" VerticalAlignment="Center"
+                                <TextBlock Text="发送中…" FontSize="{x:Bind MetaFontSize, Mode=OneWay}" VerticalAlignment="Center"
                                            Foreground="{x:Bind MetaBrush, Mode=OneWay}" Visibility="{x:Bind PendingVisible, Mode=OneWay}" />
-                                <TextBlock Text="{x:Bind StatusText}" FontSize="11" VerticalAlignment="Center"
+                                <TextBlock Text="{x:Bind StatusText}" FontSize="{x:Bind MetaFontSize, Mode=OneWay}" VerticalAlignment="Center"
                                            Foreground="{x:Bind StatusBrush, Mode=OneWay}" Visibility="{x:Bind HasStatus, Mode=OneWay}" />
                             </StackPanel>
+                            </Border>
 
                             <Border x:Name="BubbleBorder" Background="{x:Bind BubbleBrush, Mode=OneWay}"
                                     CornerRadius="{x:Bind BubbleRadius}"

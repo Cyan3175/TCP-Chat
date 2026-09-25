@@ -32,6 +32,8 @@ public sealed class MarkdownStyle
     public Brush Rule = new SolidColorBrush(Color.FromArgb(60, 0, 0, 0));
     public Brush TableEdge = new SolidColorBrush(Color.FromArgb(50, 0, 0, 0));
     public Brush TableHead = new SolidColorBrush(Color.FromArgb(22, 0, 0, 0));
+    /// <summary>11.4: 代码块里 lines=6-9 那种高亮行的底色。</summary>
+    public Brush HighlightBack = new SolidColorBrush(Color.FromArgb(40, 0x2B, 0x6C, 0xB0));
     public double FontSize = 14;
 }
 
@@ -84,10 +86,11 @@ public static class MarkdownView
                 AddParagraph(host, h.Inlines, style, depth, heading: h.Level);
                 break;
             case MdCodeBlock c:
-                host.Children.Add(CodeBlock(c.Code, c.Language, style));
+                host.Children.Add(CodeBlock(c, style));
                 break;
             case MdMathBlock m:
-                host.Children.Add(CodeBlock(m.Code, "math", style));
+                // 11.4: 真的排版 LaTeX(分数/根号/矩阵环境), 排版不出来才退回等宽原文
+                host.Children.Add(MathView.BuildDisplay(m.Code, style));
                 break;
             case MdRule:
                 host.Children.Add(new Border { Height = 1, Background = style.Rule, Margin = new Thickness(0, 4, 0, 4) });
@@ -239,13 +242,9 @@ public static class MarkdownView
                     break;
 
                 case MdMathSpan m:
-                {
-                    var run = TextRun(m.Text, style, fmt);
-                    run.FontFamily = UiFont.Mono;
-                    run.FontStyle = FontStyle.Italic;
-                    target.Add(run);
+                    // 11.4: 行内公式跟着文字走(排不出来时内部会退回等宽原文)
+                    target.Add(MathView.BuildInline(m.Text, style));
                     break;
-                }
 
                 case MdFootnoteRef f:
                 {
@@ -285,7 +284,12 @@ public static class MarkdownView
 
     // ---------- 代码块 ----------
 
-    private static FrameworkElement CodeBlock(string code, string? language, MarkdownStyle style)
+    /// <summary>代码块(11.4 起支持洛谷的 line-numbers / lines=6-9 参数)。</summary>
+    private static FrameworkElement CodeBlock(MdCodeBlock block, MarkdownStyle style)
+        => CodeBlock(block.Code, block.Language, style, block.LineNumbers, block.HasHighlight ? block.IsHighlighted : null);
+
+    private static FrameworkElement CodeBlock(string code, string? language, MarkdownStyle style,
+                                              bool lineNumbers = false, Func<int, bool>? highlight = null)
     {
         code = (code ?? "").TrimEnd('\n', '\r');
         var inner = new StackPanel { Spacing = 4 };
@@ -303,16 +307,23 @@ public static class MarkdownView
             inner.Children.Add(label);
         }
 
-        var tb = new TextBlock
+        if (lineNumbers || highlight != null)
         {
-            TextWrapping = TextWrapping.NoWrap,
-            FontSize = style.FontSize - 1,
-            IsTextSelectionEnabled = true,
-            Foreground = style.CodeText,
-        };
-        UiFont.ApplyToText(tb, mono: true);
-        Highlighter.Fill(tb, code, language, style);
-        inner.Children.Add(tb);
+            inner.Children.Add(CodeWithLines(code, language, style, lineNumbers, highlight));
+        }
+        else
+        {
+            var tb = new TextBlock
+            {
+                TextWrapping = TextWrapping.NoWrap,
+                FontSize = style.FontSize - 1,
+                IsTextSelectionEnabled = true,
+                Foreground = style.CodeText,
+            };
+            UiFont.ApplyToText(tb, mono: true);
+            Highlighter.Fill(tb, code, language, style);
+            inner.Children.Add(tb);
+        }
 
         var scroller = new ScrollViewer
         {
@@ -332,6 +343,65 @@ public static class MarkdownView
             Padding = new Thickness(10, 8, 10, 8),
             Child = scroller,
         };
+    }
+
+    /// <summary>逐行画(要行号或要高亮时用): 左边一列行号, 右边一列代码。</summary>
+    private static FrameworkElement CodeWithLines(string code, string? language, MarkdownStyle style,
+                                                  bool lineNumbers, Func<int, bool>? highlight)
+    {
+        var lines = code.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+        var grid = new Grid { ColumnSpacing = 10 };
+
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        double numberWidth = Math.Max(2, lines.Length.ToString().Length) * (style.FontSize - 1) * 0.62;
+
+        for (int i = 0; i < lines.Length; i++)
+        {
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            int number = i + 1;
+
+            if (highlight?.Invoke(number) == true)
+            {
+                var back = new Border { Background = style.HighlightBack, CornerRadius = new CornerRadius(3) };
+                Grid.SetRow(back, i);
+                Grid.SetColumn(back, 0);
+                Grid.SetColumnSpan(back, 2);
+                grid.Children.Add(back);
+            }
+
+            if (lineNumbers)
+            {
+                var num = new TextBlock
+                {
+                    Text = number.ToString(),
+                    FontSize = style.FontSize - 2,
+                    Foreground = style.Muted,
+                    TextAlignment = TextAlignment.Right,
+                    MinWidth = numberWidth,
+                    VerticalAlignment = VerticalAlignment.Top,
+                };
+                UiFont.ApplyToText(num, mono: true);
+                Grid.SetRow(num, i);
+                Grid.SetColumn(num, 0);
+                grid.Children.Add(num);
+            }
+
+            var line = new TextBlock
+            {
+                TextWrapping = TextWrapping.NoWrap,
+                FontSize = style.FontSize - 1,
+                Foreground = style.CodeText,
+                IsTextSelectionEnabled = true,
+            };
+            UiFont.ApplyToText(line, mono: true);
+            Highlighter.Fill(line, lines[i], language, style);
+            Grid.SetRow(line, i);
+            Grid.SetColumn(line, 1);
+            grid.Children.Add(line);
+        }
+        return grid;
     }
 
     // ---------- 引用 / 提示块 ----------
@@ -438,28 +508,28 @@ public static class MarkdownView
     private static FrameworkElement Table(MdTable table, MarkdownStyle style)
     {
         int cols = Math.Max(1, table.Columns);
+        var rows = table.Grid();                       // 表头是第一行
         var grid = new Grid();
         for (int i = 0; i < cols; i++)
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
-        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        for (int r = 0; r < table.Rows.Count; r++)
+        for (int r = 0; r < rows.Count; r++)
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-        for (int c = 0; c < cols; c++)
+        for (int r = 0; r < rows.Count; r++)
         {
-            var cell = table.Headers.ElementAtOrDefault(c);
-            grid.Children.Add(TableCell(cell, style, c, 0, isHeader: true, lastRow: table.Rows.Count == 0, lastCol: c == cols - 1));
-        }
-
-        for (int r = 0; r < table.Rows.Count; r++)
-        {
-            var row = table.Rows[r];
-            for (int c = 0; c < cols; c++)
+            for (int c = 0; c < rows[r].Count && c < cols; c++)
             {
-                var cell = row.ElementAtOrDefault(c);
-                grid.Children.Add(TableCell(cell, style, c, r + 1, isHeader: false,
-                                            lastRow: r == table.Rows.Count - 1, lastCol: c == cols - 1));
+                var cell = rows[r][c];
+                if (cell.Hidden) continue;             // 11.4: ^ / < 合并掉的格子不画
+
+                var el = TableCell(cell, style, c, r, isHeader: r == 0 && table.Headers.Count > 0,
+                                   lastRow: r == rows.Count - 1, lastCol: c == cols - 1, tuack: table.Tuack);
+                Grid.SetRow(el, r);
+                Grid.SetColumn(el, c);
+                if (cell.RowSpan > 1) Grid.SetRowSpan(el, cell.RowSpan);
+                if (cell.ColSpan > 1) Grid.SetColumnSpan(el, cell.ColSpan);
+                grid.Children.Add(el);
             }
         }
 
@@ -482,7 +552,7 @@ public static class MarkdownView
     }
 
     private static FrameworkElement TableCell(MdTableCell? cell, MarkdownStyle style, int col, int row,
-                                              bool isHeader, bool lastRow, bool lastCol)
+                                              bool isHeader, bool lastRow, bool lastCol, bool tuack = false)
     {
         var rtb = new RichTextBlock
         {
@@ -507,7 +577,8 @@ public static class MarkdownView
             BorderThickness = new Thickness(0, 0, lastCol ? 0 : 1, lastRow ? 0 : 1),
         };
 
-        var align = (cell?.Align ?? "Left").ToLowerInvariant();
+        // 11.4: ::cute-table{tuack} 的表一律居中(和洛谷一致)
+        var align = (tuack ? "Center" : cell?.Align ?? "Left").ToLowerInvariant();
         switch (align)
         {
             case "center":
@@ -527,8 +598,96 @@ public static class MarkdownView
 
     // ---------- 自定义容器 / 定义列表 / 脚注 ----------
 
+    /// <summary>
+    /// ::: 容器(11.4 按洛谷那套语法渲染):
+    /// info / success / warning / error = 折叠框(标题可写公式, {open} 默认展开),
+    /// align{center|right|left} = 对齐, epigraph[——作者] = 引言, 其余按带边框的普通容器画。
+    /// </summary>
     private static FrameworkElement Container(MdContainer c, MarkdownStyle style, int depth)
     {
+        var body = new StackPanel { Spacing = 4 };
+        foreach (var b in c.Blocks) AddBlock(body, b, style, depth + 1);
+
+        // 对齐
+        if (c.Align is { Length: > 0 } align)
+        {
+            var host = new StackPanel { Spacing = 4 };
+            foreach (var b in c.Blocks) AddBlock(host, b, style, depth);
+            host.HorizontalAlignment = align switch
+            {
+                "center" => HorizontalAlignment.Center,
+                "right" => HorizontalAlignment.Right,
+                "left" => HorizontalAlignment.Left,
+                _ => HorizontalAlignment.Stretch,
+            };
+            return host;
+        }
+
+        // 引言: 内容缩进 + 右下角的署名
+        if (c.Label == "epigraph")
+        {
+            var quote = new StackPanel { Spacing = 6, Margin = new Thickness(14, 2, 6, 2) };
+            foreach (var b in c.Blocks) AddBlock(quote, b, style, depth + 1);
+            if (c.Title.Count > 0)
+            {
+                var attr = BuildText(c.Title, style, new List<MdImage>(), out bool hasAttr);
+                if (hasAttr)
+                {
+                    attr.TextAlignment = TextAlignment.Right;
+                    attr.Opacity = 0.85;
+                    quote.Children.Add(attr);
+                }
+            }
+            return quote;
+        }
+
+        // 折叠框
+        if (c.IsCallout)
+        {
+            var (icon, name, color) = CalloutStyle(c.Label!);
+            var accent = new SolidColorBrush(color);
+
+            var header = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            var title = new TextBlock
+            {
+                Text = icon + " " + name,
+                FontSize = style.FontSize - 1,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = accent,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            UiFont.ApplyToText(title);
+            header.Children.Add(title);
+
+            if (c.Title.Count > 0)
+            {
+                var custom = BuildText(c.Title, style, new List<MdImage>(), out bool hasCustom);
+                if (hasCustom) header.Children.Add(custom);
+            }
+
+            var expander = new Expander
+            {
+                Header = header,
+                Content = body,
+                IsExpanded = c.Open,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                Padding = new Thickness(0),
+            };
+            UiFont.ApplyTo(expander);
+
+            return new Border
+            {
+                BorderBrush = accent,
+                BorderThickness = new Thickness(3, 0, 0, 0),
+                Background = style.QuoteBack,
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(10, 4, 8, 6),
+                Child = expander,
+            };
+        }
+
+        // 普通容器
         var panel = new StackPanel { Spacing = 4 };
         if (!string.IsNullOrWhiteSpace(c.Label))
         {
@@ -556,6 +715,19 @@ public static class MarkdownView
             Child = panel,
         };
     }
+
+    /// <summary>洛谷那四种折叠框的样子(图标 / 默认标题 / 颜色)。</summary>
+    private static (string Icon, string Name, Color Color) CalloutStyle(string label) => label switch
+    {
+        "success" => ("✅", "成功", Color.FromArgb(255, 0x2E, 0x9E, 0x5B)),
+        "warning" => ("⚠️", "警告", Color.FromArgb(255, 0xD9, 0x8A, 0x1E)),
+        "error" => ("🛑", "错误", Color.FromArgb(255, 0xD1, 0x3A, 0x3A)),
+        "tip" => ("💡", "提示", Color.FromArgb(255, 0x2E, 0x9E, 0x5B)),
+        "important" => ("❗", "重要", Color.FromArgb(255, 0x8B, 0x5C, 0xF6)),
+        "caution" => ("🛑", "注意", Color.FromArgb(255, 0xD1, 0x3A, 0x3A)),
+        "note" => ("ℹ️", "说明", Color.FromArgb(255, 0x2B, 0x7C, 0xD6)),
+        _ => ("ℹ️", "说明", Color.FromArgb(255, 0x2B, 0x7C, 0xD6)),
+    };
 
     private static FrameworkElement DefinitionList(MdDefinitionList dl, MarkdownStyle style, int depth)
     {

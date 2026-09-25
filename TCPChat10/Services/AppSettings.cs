@@ -9,8 +9,15 @@ public sealed class AppSettings
     /// <summary>共享目录里直接放消息文件, 不再另建"聊天"子文件夹。</summary>
     public const string DefaultChatFolder = "nw集训/学生资料临存/tcp_chat";
 
-    /// <summary>11.2 及以前的默认目录(共享目录本身): 读到它自动下移到 tcp_chat 子目录。</summary>
+    /// <summary>11.2 及以前的默认目录(共享目录本身)。升级到 11.3 时**只自动迁移一次**。</summary>
     public const string LegacySharedChatFolder = "nw集训/学生资料临存";
+
+    /// <summary>
+    /// 11.3: 老默认目录是否已经迁移过。
+    /// 用它保证"共享目录本身 → tcp_chat"只做一次 —— 之后用户在设置里手动填什么就是什么
+    /// (之前每次加载都强制改写, 用户根本改不回去)。
+    /// </summary>
+    [JsonPropertyName("folderMigratedV113")] public bool FolderMigrated { get; set; }
 
     /// <summary>10.0/10.1 的默认值: 会在共享目录下单独建一个"聊天"文件夹, 读到它自动上移一级。</summary>
     public const string LegacyDefaultChatFolder = "nw集训/学生资料临存/聊天";
@@ -166,9 +173,15 @@ public sealed class AppSettings
         if (string.IsNullOrWhiteSpace(ServerUrl)) ServerUrl = DefaultServerUrl;
         if (string.IsNullOrWhiteSpace(ChatFolder)) ChatFolder = DefaultChatFolder;
         ChatFolder = ChatFolder.Trim().Trim('/');
-        if (string.Equals(ChatFolder, LegacyDefaultChatFolder, StringComparison.Ordinal) ||
-            string.Equals(ChatFolder, LegacySharedChatFolder, StringComparison.Ordinal))
-            ChatFolder = DefaultChatFolder;
+        // 只迁移一次: 老默认目录(共享目录本身 / 更早的 聊天 子目录)升级时自动下移到 tcp_chat;
+        // 迁移过之后, 用户手动填的目录(哪怕就是共享目录本身)一律尊重。
+        if (!FolderMigrated)
+        {
+            FolderMigrated = true;
+            if (string.Equals(ChatFolder, LegacyDefaultChatFolder, StringComparison.Ordinal) ||
+                string.Equals(ChatFolder, LegacySharedChatFolder, StringComparison.Ordinal))
+                ChatFolder = DefaultChatFolder;
+        }
         if (PollSeconds < 1) PollSeconds = 3;
         if (HistoryDays < 1) HistoryDays = 7;
         GlassQuality = Math.Clamp(GlassQuality, 0, 100);

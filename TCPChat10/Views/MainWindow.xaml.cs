@@ -100,7 +100,7 @@ public sealed partial class MainWindow : Window
         ApplyFont();
         UpdateLockText();
         MeText.Text = string.IsNullOrWhiteSpace(_settings.Nickname) ? "(未设置昵称)" : "我：" + _settings.Nickname;
-        Title = "TCP Chat 11.1 — " + _settings.ChatFolder;
+        Title = "TCP Chat 11.2 — " + _settings.ChatFolder;
 
         RootLoaded();
 
@@ -192,7 +192,16 @@ public sealed partial class MainWindow : Window
                 }
                 else if (a.StartsWith("crypto:"))
                 {
-                    _settings.CryptoPassword = a[7..];
+                    var spec = a[7..].Trim();
+                    var send = 0;
+                    if (spec.StartsWith("!"))                       // crypto:!2|密码A|密码B
+                    {
+                        var bar = spec.IndexOf('|');
+                        if (bar > 0) { send = Math.Max(0, int.Parse(spec[1..bar]) - 1); spec = spec[(bar + 1)..]; }
+                    }
+                    _settings.CryptoPasswords = spec.Split('|', StringSplitOptions.RemoveEmptyEntries)
+                        .Select(p => p.Trim()).Where(p => p.Length > 0).ToList();
+                    _settings.SendPasswordIndex = send;
                     _settings.Save();
                     RebuildCrypto();
                     UpdateLockText();
@@ -1130,7 +1139,7 @@ public sealed partial class MainWindow : Window
     private async Task ShowSettingsAsync()
     {
         // 对话框保存时会直接改 _settings, 这里先把"当前生效"的值记下来
-        var oldCrypto = _settings.CryptoPassword;
+        var oldCrypto = _settings.SendPassword + "|" + string.Join("\u0001", _settings.CryptoPasswords) + "|" + _settings.SendPasswordIndex;
         var oldFont = _settings.FontFamily;
         var oldGlass = _settings.GlassEnabled;
         var oldGlassQuality = _settings.GlassQuality;
@@ -1164,7 +1173,8 @@ public sealed partial class MainWindow : Window
         }
 
         var restart = dlg.NeedReconnect;
-        var cryptoChanged = !string.Equals(oldCrypto, _settings.CryptoPassword, StringComparison.Ordinal);
+        var newCrypto = _settings.SendPassword + "|" + string.Join("\u0001", _settings.CryptoPasswords) + "|" + _settings.SendPasswordIndex;
+        var cryptoChanged = !string.Equals(oldCrypto, newCrypto, StringComparison.Ordinal);
         var fontChanged = !string.Equals(oldFont, _settings.FontFamily, StringComparison.Ordinal);
         _settings.Save();
 
@@ -1208,7 +1218,7 @@ public sealed partial class MainWindow : Window
     private void RebuildCrypto()
     {
         Messages.Clear();
-        _chat.ApplyCryptoPassword(_settings.CryptoPassword);
+        _chat.ApplyCryptoPasswords(_settings.DecryptCandidates, _settings.SendPasswordIndex);
         BusyRing.IsActive = true;
     }
 
@@ -1410,7 +1420,9 @@ public sealed partial class MainWindow : Window
             : "";
         FooterText.Text = string.Format("共 {0} 条消息  ·  每 {1} 秒同步  ·  最近同步 {2}  ·  {3}  ·  {4}{5}{6}",
             Messages.Count, _chat.PollSeconds, syncTime, _settings.ChatFolder,
-            _chat.EncryptionEnabled ? "已加密" : "未加密",
+            _chat.EncryptionEnabled
+                ? "已加密(发送用第 " + _chat.SendPasswordNumber + " 个 / 共 " + _chat.PasswordCount + " 个密码)"
+                : "未加密",
             bad > 0 ? "  ·  ⚠ " + bad + " 条无法解密（密码不一致）" : "",
             fontNote);
     }

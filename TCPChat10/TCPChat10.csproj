@@ -5,7 +5,7 @@
     <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
     <RootNamespace>TCPChat10</RootNamespace>
-    <AssemblyName>TCP-Chat-11.1</AssemblyName>
+    <AssemblyName>TCP-Chat-11.2</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <Platforms>x64</Platforms>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
@@ -22,8 +22,8 @@
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
-    <Version>11.1.0</Version>
-    <AssemblyTitle>TCP Chat 11.1</AssemblyTitle>
+    <Version>11.2.0</Version>
+    <AssemblyTitle>TCP Chat 11.2</AssemblyTitle>
     <Product>TCP Chat</Product>
     <ApplicationIcon></ApplicationIcon>
   </PropertyGroup>

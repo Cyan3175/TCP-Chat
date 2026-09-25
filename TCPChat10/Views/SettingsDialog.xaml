@@ -28,13 +28,14 @@
             <TextBox x:Name="NickBox" Header="昵称" PlaceholderText="显示在每条消息上" MaxLength="24" />
 
             <TextBlock Text="端到端加密" FontWeight="SemiBold" Margin="0,6,0,0" />
-            <PasswordBox x:Name="CryptoBox" Header="加密密码（收发双方必须完全一致）"
-                         PasswordChanged="OnCryptoChanged" />
-            <PasswordBox x:Name="CryptoBox2" Header="确认加密密码" PasswordChanged="OnCryptoChanged" />
+            <TextBox x:Name="CryptoListBox" Header="密码列表（每行一个，收消息时按顺序依次尝试）"
+                     AcceptsReturn="True" TextWrapping="NoWrap" Height="92"
+                     FontFamily="Consolas" PlaceholderText="每行一个密码&#x0a;第 1 行优先尝试" />
+            <ComboBox x:Name="SendPasswordBox" Header="默认用哪一个加密发送" HorizontalAlignment="Stretch" />
             <TextBlock x:Name="CryptoError" FontSize="12" Foreground="#D9534F" TextWrapping="Wrap"
-                       Visibility="Collapsed" Text="两次输入的加密密码不一致。" />
+                       Visibility="Collapsed" Text="密码列表里有空行，或者没有可用的密码。" />
             <TextBlock FontSize="12" Opacity="0.65" TextWrapping="Wrap"
-                       Text="留空 = 不加密，消息正文以明文写在服务器上。填了密码后，正文与引用会用 AES-256-GCM 加密后再上传；对方必须填一模一样的密码才看得到内容，密码不一致时那条消息显示“无法解密”。这个密码只用于消息内容，和上面的服务器账号密码是两回事。" />
+                       Text="列表留空 = 不加密（正文以明文写在服务器上）。填了密码后，正文与引用会用 AES-256-GCM 加密后再上传；收消息时会把列表里的密码从选中的那把开始依次尝试，解不开才显示“无法解密”。注意：列表里任何一把都能解开用它加密的历史消息，整体强度等于最弱的那把 —— 只建议“换过密码、还想读老消息”时这么用。这些密码只用于消息内容，和服务器账号密码是两回事。" />
 
             <TextBlock Text="同步" FontWeight="SemiBold" Margin="0,6,0,0" />
             <NumberBox x:Name="PollBox" Header="同步间隔（秒）" Minimum="1" Maximum="120"

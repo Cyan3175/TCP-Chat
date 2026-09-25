@@ -77,8 +77,9 @@ public sealed partial class SettingsDialog : ContentDialog
         UrlBox.Text = settings.ServerUrl;
         FolderBox.Text = settings.ChatFolder;
         NickBox.Text = settings.Nickname;
-        CryptoBox.Password = settings.CryptoPassword;
-        CryptoBox2.Password = settings.CryptoPassword;
+        LoadCrypto(settings);
+        CryptoListBox.TextChanged += (_, _) => OnCryptoListChanged();
+        SendPasswordBox.SelectionChanged += (_, _) => OnSendPasswordChanged();
         PollBox.Value = settings.PollSeconds;
         DaysBox.Value = settings.HistoryDays;
         AutoScrollBox.IsChecked = settings.AutoScroll;
@@ -138,7 +139,9 @@ public sealed partial class SettingsDialog : ContentDialog
     public string Describe() =>
         $"url={UrlBox.Text} folder={FolderBox.Text} nick={NickBox.Text} " +
         $"poll={PollBox.Value} days={DaysBox.Value} autoscroll={AutoScrollBox.IsChecked} theme={ThemeBox.SelectedIndex} " +
-        $"fonts={_fontValues.Count - 1} font={SelectedFontValue()} crypto={CryptoBox.Password.Length switch { 0 => "off", _ => "on:" + CryptoBox.Password.Length + "位" }}";
+        $"fonts={_fontValues.Count - 1} font={SelectedFontValue()} " +
+        $"crypto={(_settings.CryptoPasswords.Count == 0 ? "off" : "on:" + _settings.CryptoPasswords.Count + "个/发送第" + (_settings.SendPasswordIndex + 1) + "个")} " +
+        $"cryptoLines={CryptoPasswords().Count} sendPick={SendPasswordBox.SelectedIndex}";
 
     private string SelectedFontValue()
     {
@@ -147,9 +150,43 @@ public sealed partial class SettingsDialog : ContentDialog
     }
 
     /// <summary>输入时把"两次不一致"的提示收起来。</summary>
-    private void OnCryptoChanged(object sender, RoutedEventArgs e)
+    /// <summary>把密码列表 / 默认发送密码回填到控件(回填不触发事件)。</summary>
+    private void LoadCrypto(AppSettings settings)
     {
-        if (CryptoError != null) CryptoError.Visibility = Visibility.Collapsed;
+        CryptoListBox.Text = string.Join(Environment.NewLine, settings.CryptoPasswords);
+        RefreshSendPasswordItems(settings.SendPasswordIndex);
+    }
+
+    /// <summary>按当前列表重建"默认用哪一个加密"下拉项。</summary>
+    private void RefreshSendPasswordItems(int selected)
+    {
+        var lines = CryptoPasswords();
+        SendPasswordBox.Items.Clear();
+        for (int i = 0; i < lines.Count; i++)
+            SendPasswordBox.Items.Add("第 " + (i + 1) + " 个（" + lines[i].Length + " 位）");
+        SendPasswordBox.SelectedIndex = lines.Count == 0 ? -1 : Math.Clamp(selected, 0, lines.Count - 1);
+        SendPasswordBox.IsEnabled = lines.Count > 0;
+    }
+
+    private List<string> CryptoPasswords() =>
+        (CryptoListBox.Text ?? "")
+            .Replace("\r\n", "\n").Replace('\r', '\n')
+            .Split('\n')
+            .Select(p => p.Trim())
+            .Where(p => p.Length > 0)
+            .ToList();
+
+    /// <summary>列表变了: 刷新下拉项并清掉错误提示。</summary>
+    private void OnCryptoListChanged()
+    {
+        var keep = SendPasswordBox.SelectedIndex;
+        RefreshSendPasswordItems(keep < 0 ? 0 : keep);
+        CryptoError.Visibility = Visibility.Collapsed;
+    }
+
+    private void OnSendPasswordChanged()
+    {
+        CryptoError.Visibility = Visibility.Collapsed;
     }
 
     private void OnSave(ContentDialog sender, ContentDialogButtonClickEventArgs args)
@@ -163,10 +200,20 @@ public sealed partial class SettingsDialog : ContentDialog
         }
         if (!url.StartsWith("http://") && !url.StartsWith("https://")) url = "https://" + url;
 
-        // 收发两端密码必须一致, 输入笔误要当场拦下来
-        if (!string.Equals(CryptoBox.Password, CryptoBox2.Password, StringComparison.Ordinal))
+        // 11.2: 密码列表 —— 不允许出现空行(粘贴时容易多出空行), 也不能选不出默认发送密码
+        var lines = CryptoPasswords();
+        var rawLines = (CryptoListBox.Text ?? "").Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+        if (rawLines.Any(l => l.Trim().Length == 0 && rawLines.Length > 1 && rawLines.Any(x => x.Trim().Length > 0)))
         {
             args.Cancel = true;
+            CryptoError.Text = "密码列表里有空行，请删掉空行（每行一个密码）。";
+            CryptoError.Visibility = Visibility.Visible;
+            return;
+        }
+        if (lines.Count > 0 && SendPasswordBox.SelectedIndex < 0)
+        {
+            args.Cancel = true;
+            CryptoError.Text = "请选择默认用哪一个密码加密发送。";
             CryptoError.Visibility = Visibility.Visible;
             return;
         }
@@ -177,7 +224,8 @@ public sealed partial class SettingsDialog : ContentDialog
         _settings.ServerUrl = url;
         _settings.ChatFolder = folder;
         _settings.Nickname = NickBox.Text.Trim();
-        _settings.CryptoPassword = CryptoBox.Password;
+        _settings.CryptoPasswords = CryptoPasswords();
+        _settings.SendPasswordIndex = Math.Max(0, SendPasswordBox.SelectedIndex);
         _settings.PollSeconds = (int)Math.Clamp(PollBox.Value, 1, 120);
         _settings.HistoryDays = (int)Math.Clamp(DaysBox.Value, 1, 365);
         _settings.AutoScroll = AutoScrollBox.IsChecked == true;

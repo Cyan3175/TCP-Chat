@@ -151,15 +151,33 @@ public sealed class MessageCipher
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
-    private readonly byte[]? _key;
+    private readonly byte[]? _key;                 // 发送用的钥匙
+    private readonly List<byte[]> _tryKeys = new();  // 解密时依次尝试(发送那把排第一)
 
     public MessageCipher(string? password, string saltSeed)
+        : this(string.IsNullOrEmpty(password) ? Array.Empty<string>() : new[] { password! }, 0, saltSeed) { }
+
+    /// <summary>11.2: 密码列表 + 用第几把发送。解密会把整张列表依次试一遍。</summary>
+    public MessageCipher(IReadOnlyList<string> passwords, int sendIndex, string saltSeed)
     {
-        if (!string.IsNullOrEmpty(password))
-            _key = MessageCrypto.DeriveKey(password, saltSeed);
+        var list = (passwords ?? Array.Empty<string>())
+            .Select(p => (p ?? "").Trim())
+            .Where(p => p.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        if (list.Count == 0) return;
+
+        sendIndex = Math.Clamp(sendIndex, 0, list.Count - 1);
+        _key = MessageCrypto.DeriveKey(list[sendIndex], saltSeed);
+        _tryKeys.Add(_key);
+        for (int i = 0; i < list.Count; i++)
+            if (i != sendIndex) _tryKeys.Add(MessageCrypto.DeriveKey(list[i], saltSeed));
     }
 
     public bool Enabled => _key != null;
+
+    /// <summary>参与解密的密码个数(底栏显示用)。</summary>
+    public int PasswordCount => _tryKeys.Count;
 
     /// <summary>把正文 / 引用 / 附件信息打包加密。未启用加密时返回 null。</summary>
     public string? EncryptPayload(string aad, string from, string text, string? quote,
@@ -174,15 +192,27 @@ public sealed class MessageCipher
     public byte[]? EncryptBytes(string aad, byte[] plain) =>
         _key == null ? null : MessageCrypto.EncryptBytes(_key, aad, plain);
 
-    /// <summary>解密附件字节。</summary>
-    public byte[]? TryDecryptBytes(string aad, byte[] blob) =>
-        _key == null ? null : MessageCrypto.TryDecryptBytes(_key, aad, blob);
+    /// <summary>解密附件字节: 挨个密码试。</summary>
+    public byte[]? TryDecryptBytes(string aad, byte[] blob)
+    {
+        foreach (var key in _tryKeys)
+        {
+            var plain = MessageCrypto.TryDecryptBytes(key, aad, blob);
+            if (plain != null) return plain;
+        }
+        return null;
+    }
 
     /// <summary>解密正文载荷; 密码不一致返回 null。</summary>
     public CryptoPayload? TryDecryptPayload(string aad, string? envelope)
     {
         if (_key == null) return null;
-        var json = MessageCrypto.TryDecrypt(_key, aad, envelope);
+        string? json = null;
+        foreach (var key in _tryKeys)
+        {
+            json = MessageCrypto.TryDecrypt(key, aad, envelope);
+            if (!string.IsNullOrEmpty(json)) break;
+        }
         if (string.IsNullOrEmpty(json)) return null;
         try { return JsonSerializer.Deserialize<CryptoPayload>(json); }
         catch { return null; }

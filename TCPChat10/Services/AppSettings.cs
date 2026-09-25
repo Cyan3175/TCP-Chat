@@ -23,8 +23,38 @@ public sealed class AppSettings
     [JsonPropertyName("theme")] public int Theme { get; set; } = 0;   // 0=跟随系统 1=浅色 2=深色
     [JsonPropertyName("fontFamily")] public string FontFamily { get; set; } = "";   // 空 = 系统默认字体
 
-    /// <summary>端到端加密密码: 收发双方必须完全一致, 留空表示不加密(明文发送)。</summary>
+    /// <summary>
+    /// 11.2: 密码列表。解密时按顺序依次尝试; 加密只用 <see cref="SendPasswordIndex"/> 指定的那一把。
+    /// 列表为空 = 不加密。
+    /// </summary>
+    [JsonPropertyName("cryptoPasswords")] public List<string> CryptoPasswords { get; set; } = new();
+
+    /// <summary>11.2: 默认用列表里的第几个密码加密(0 基; 越界自动回退到 0)。</summary>
+    [JsonPropertyName("sendPasswordIndex")] public int SendPasswordIndex { get; set; }
+
+    /// <summary>老版本(≤11.1)的单密码字段: 读的时候并进列表, 存的时候同步写一份, 保持向下兼容。</summary>
     [JsonPropertyName("cryptoPassword")] public string CryptoPassword { get; set; } = "";
+
+    /// <summary>实际用于发送的密码(列表为空 / 未填 = 不加密)。</summary>
+    [JsonIgnore]
+    public string SendPassword => CryptoPasswords.Count == 0
+        ? ""
+        : CryptoPasswords[Math.Clamp(SendPasswordIndex, 0, CryptoPasswords.Count - 1)];
+
+    /// <summary>解密时要挨个尝试的密码: 先用发送那把, 再按列表顺序试其余。</summary>
+    [JsonIgnore]
+    public IReadOnlyList<string> DecryptCandidates
+    {
+        get
+        {
+            var list = new List<string>();
+            var send = SendPassword;
+            if (send.Length > 0) list.Add(send);
+            foreach (var p in CryptoPasswords)
+                if (p.Length > 0 && !list.Contains(p, StringComparer.Ordinal)) list.Add(p);
+            return list;
+        }
+    }
 
     /// <summary>11.0: 液态玻璃(背景图 + 折射面板)。默认开。</summary>
     [JsonPropertyName("glassEnabled")] public bool GlassEnabled { get; set; } = true;
@@ -138,6 +168,17 @@ public sealed class AppSettings
         if (PollSeconds < 1) PollSeconds = 3;
         if (HistoryDays < 1) HistoryDays = 7;
         GlassQuality = Math.Clamp(GlassQuality, 0, 100);
+
+        // 11.2: 老设置文件里只有一个 cryptoPassword —— 并进列表当第一项
+        CryptoPasswords = (CryptoPasswords ?? new List<string>())
+            .Select(p => (p ?? "").Trim())
+            .Where(p => p.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        if (CryptoPasswords.Count == 0 && !string.IsNullOrWhiteSpace(CryptoPassword))
+            CryptoPasswords.Add(CryptoPassword.Trim());
+        SendPasswordIndex = CryptoPasswords.Count == 0 ? 0 : Math.Clamp(SendPasswordIndex, 0, CryptoPasswords.Count - 1);
+        CryptoPassword = SendPassword;      // 老版本读这个字段, 保持同步
         return this;
     }
 

@@ -44,6 +44,14 @@ public sealed class ChatService : IDisposable
     public string ChatFolder => _settings.ChatFolder;
     public string Nickname { get; set; }
     /// <summary>同步周期(秒)。范围跟设置对话框一致(1~120), 否则底栏显示的周期和实际不一致。</summary>
+    private int _sendIndex;
+
+    /// <summary>底栏显示用: 当前用于发送的是第几个密码(1 基, 0 = 未启用)。</summary>
+    public int SendPasswordNumber => _cipher.Enabled ? _sendIndex + 1 : 0;
+
+    /// <summary>参与解密的密码个数。</summary>
+    public int PasswordCount => _cipher.PasswordCount;
+
     public int PollSeconds => Math.Clamp(_settings.PollSeconds, 1, 120);
     public bool IsRunning => _loop is { IsCompleted: false };
 
@@ -61,7 +69,8 @@ public sealed class ChatService : IDisposable
         _settings = settings;
         Nickname = settings.Nickname;
         _dav = new WebDavClient(settings.ServerUrl);
-        _cipher = new MessageCipher(settings.CryptoPassword, CryptoSaltSeed);
+        _cipher = new MessageCipher(settings.DecryptCandidates, settings.SendPasswordIndex, CryptoSaltSeed);
+        _sendIndex = settings.CryptoPasswords.IndexOf(settings.SendPassword);
     }
 
     public WebDavClient Dav => _dav;
@@ -76,9 +85,11 @@ public sealed class ChatService : IDisposable
     /// 改加密密码后重建密钥, 并清空"已读"记录让下一轮把服务器上的消息重新拉一遍。
     /// (密码变了以后, 之前解不开的消息要重新尝试解密)
     /// </summary>
-    public void ApplyCryptoPassword(string? password)
+    /// <summary>密码列表 / 默认发送密码变了: 重建密钥, 并让下一轮把所有消息重试一遍。</summary>
+    public void ApplyCryptoPasswords(IReadOnlyList<string> passwords, int sendIndex)
     {
-        _cipher = new MessageCipher(password, CryptoSaltSeed);
+        _cipher = new MessageCipher(passwords, sendIndex, CryptoSaltSeed);
+        _sendIndex = sendIndex;
         _seen.Clear();
         _deleted.Clear();
         Interlocked.Exchange(ref _undecryptable, 0);

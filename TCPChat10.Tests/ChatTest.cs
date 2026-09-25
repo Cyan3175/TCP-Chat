@@ -162,7 +162,7 @@ public static class ChatTest
         Check(locked2 != null && locked2.DecryptFailed, "完全没填密码的客户端同样解不开");
 
         Console.WriteLine("=== 8) 换密码后重新同步能解开 ===");
-        stranger.ApplyCryptoPassword(SharedPwd);      // 相当于在设置里改成对方的密码
+        stranger.ApplyCryptoPasswords(new[] { SharedPwd }, 0);      // 相当于在设置里改成对方的密码
         var again = new List<ChatMessage>();
         stranger.MessageAdded += m => { lock (again) again.Add(m); };
         await stranger.SyncOnceAsync();

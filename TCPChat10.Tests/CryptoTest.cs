@@ -429,6 +429,48 @@ public static class CryptoTest
             try { File.Delete(tmpGlass); } catch { }
         }
 
+        Console.WriteLine("=== N) 密码列表与默认发送密码 (11.2) ===");
+        var aadN = "msg_1790300000000_abcdef12.json";
+        var keyA = MessageCrypto.DeriveKey("passA", "目录X");
+        var keyB = MessageCrypto.DeriveKey("passB", "目录X");
+        // 注意: 必须用 EncryptPayload 产出 JSON 载荷 —— TryDecryptPayload 解的是载荷,
+        // 直接 Encrypt 一段纯文本会在反序列化时失败(我自己先踩了这个坑)
+        var envA = new MessageCipher(new[] { "passA" }, 0, "目录X").EncryptPayload(aadN, "李四", "用A加密的消息", null)!;
+        var envB = new MessageCipher(new[] { "passB" }, 0, "目录X").EncryptPayload(aadN, "李四", "用B加密的消息", null)!;
+        var cipher = new MessageCipher(new[] { "passA", "passB" }, 1, "目录X");
+        Check(cipher.Enabled && cipher.PasswordCount == 2, "两个密码都参与尝试: " + cipher.PasswordCount);
+        Check(cipher.TryDecryptPayload(aadN, envB)?.Text == "用B加密的消息", "选中的发送密码能解开自己发的");
+        Check(cipher.TryDecryptPayload(aadN, envA)?.Text == "用A加密的消息", "列表里另一把也能解开老消息");
+        Check(new MessageCipher(new[] { "passB" }, 0, "目录X").TryDecryptPayload(aadN, envA) == null, "不在列表里的密码解不开");
+        var outA = new MessageCipher(new[] { "passA", "passB" }, 0, "目录X").EncryptPayload(aadN, "张三", "发给对方", null);
+        Check(MessageCrypto.TryDecrypt(keyA, aadN, outA) != null && MessageCrypto.TryDecrypt(keyB, aadN, outA) == null,
+              "加密只用选中的那一把(选 1 -> A)");
+        Check(new MessageCipher(new[] { "passA", "passB" }, 0, "目录X").TryDecryptPayload(aadN, "AESGCM1:AAAA") == null,
+              "残缺密文返回 null 而不是抛异常");
+
+        var tmpPw = Path.Combine(Path.GetTempPath(), "tcpchat112_" + Guid.NewGuid().ToString("N")[..6] + ".json");
+        var oldEnvPw = Environment.GetEnvironmentVariable("TCPCHAT10_TEST_SETTINGS");
+        try
+        {
+            Environment.SetEnvironmentVariable("TCPCHAT10_TEST_SETTINGS", tmpPw);
+            new AppSettings { CryptoPasswords = new List<string> { "a1", "b2", "c3" }, SendPasswordIndex = 1, ChatFolder = "x/y" }.Save();
+            var backPw = AppSettings.Load();
+            Check(backPw.CryptoPasswords.Count == 3 && backPw.SendPassword == "b2", "列表与默认发送密码能存能读: " + backPw.SendPassword);
+            Check(backPw.DecryptCandidates[0] == "b2" && backPw.DecryptCandidates.Count == 3, "解密顺序: 发送那把排第一");
+            File.WriteAllText(tmpPw, "{\"cryptoPassword\":\"老密码\",\"chatFolder\":\"x/y\"}");
+            var legacyPw = AppSettings.Load();
+            Check(legacyPw.CryptoPasswords.Count == 1 && legacyPw.SendPassword == "老密码", "老设置文件的单密码自动进列表");
+            File.WriteAllText(tmpPw, "{\"cryptoPasswords\":[\"p1\",\"p2\"],\"sendPasswordIndex\":9,\"chatFolder\":\"x/y\"}");
+            Check(AppSettings.Load().SendPasswordIndex == 1, "越界的默认下标被夹回列表范围");
+            File.WriteAllText(tmpPw, "{\"cryptoPasswords\":[\"\",\"  \"],\"chatFolder\":\"x/y\"}");
+            Check(AppSettings.Load().CryptoPasswords.Count == 0, "空白密码被忽略(等于不加密)");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("TCPCHAT10_TEST_SETTINGS", oldEnvPw);
+            try { File.Delete(tmpPw); } catch { }
+        }
+
         Console.WriteLine("=== M) 背景图 cover 摆放 (11.0) ===");
         var fitSame = CoverMath.Fit(1000, 500, 2000, 1000);
         Check(Math.Abs(fitSame.Scale - 0.5) < 1e-6 && Math.Abs(fitSame.OffsetX) < 1e-6, "宽高比一致时正好铺满");

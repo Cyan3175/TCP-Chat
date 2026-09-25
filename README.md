@@ -1,4 +1,4 @@
-# TCP Chat 11.5
+# TCP Chat 11.5.1
 
 用 **WinUI 3（Windows App SDK）** 重写的桌面聊天客户端。
 
@@ -11,7 +11,7 @@
 
 ## 快速开始
 
-1. 下载 `TCP-Chat-11.5.exe`，**放在哪个目录都行**，双击即可（自包含，不需要装 .NET，也不需要 Windows App Runtime）
+1. 下载 `TCP-Chat-11.5.1.exe`，**放在哪个目录都行**，双击即可（自包含，不需要装 .NET，也不需要 Windows App Runtime）
    > ⚠️ **文件名里不要有空格或括号**（浏览器下载常加 " (1)"）：Windows App SDK 在含空格的路径下定位不到程序自己的界面资源，会启动失败；遇到这种名字程序会弹框提示改名。
 2. 首次启动会让你填昵称（顶栏「改昵称」随时可改）
 3. 默认连到 `https://dev.zhaohans.cn`，消息目录 `nw集训/学生资料临存/tcp_chat`（**消息文件就放在这一层**，目录要事先存在）
@@ -37,6 +37,10 @@
 - **同步**：定时对消息目录发 `PROPFIND Depth:1`，只对没见过的文件名发 `GET`，收到后反序列化并插到正确的时间位置
 - **撤回**：`DELETE` 自己的消息文件
 - **目录不会被自动创建**：填错或还没建会直接提示「聊天目录不存在」，免得在你的共享目录里凭空多出一个文件夹
+
+## 11.5.1 更新
+
+- **底栏不再显示「⚠ N 条无法解密（密码不一致）」**：解不开的消息在自己的气泡上已经写明了原因，底栏一直挂着这句警告只是噪音。计数本身还留着（自测日志里能看到），只是不再显示。
 
 ## 11.5 更新
 
@@ -170,13 +174,13 @@ TCPChat10.Tests/           控制台回归测试(直接引用上面的源码, �
 ```powershell
 cd TCPChat10
 dotnet build -c Release                    # 调试构建产物(文件夹形式, 便于反复启动)
-dotnet publish -c Release -o ..\dist115    # 发布: 只产出一个 TCP-Chat-11.5.exe
+dotnet publish -c Release -o ..\dist1151   # 发布: 只产出一个 TCP-Chat-11.5.1.exe
 ```
 
 关键工程设置：
 
 - `WindowsPackageType=None`（免打包运行，双击 exe 即用）、`WindowsAppSDKSelfContained=true`（把 Windows App Runtime 打进去，目标机不需要预装运行时）
-- `PublishSingleFile` + `IncludeAllContentForSelfExtract` + `EnableCompressionInSingleFile`（发布成**单个 exe**；代价是首次启动会把自己解压到 `%TEMP%\.net\TCP-Chat-11.5\` 下，之后复用）
+- `PublishSingleFile` + `IncludeAllContentForSelfExtract` + `EnableCompressionInSingleFile`（发布成**单个 exe**；代价是首次启动会把自己解压到 `%TEMP%\.net\TCP-Chat-11.5.1\` 下，之后复用）
 - `ApplicationIcon` 指向 `Assets\app.ico`，控件与顶栏图标从**嵌入资源**里解出来（单文件发布时 exe 旁边没有 Assets 目录）
 - 设置文件位置用 `Environment.ProcessPath` 定位 exe 目录 —— 单文件发布时 `AppContext.BaseDirectory` 指向的是 `%TEMP%` 里的解压目录，不能用
 - `Markdig` 1.4.0（MIT）负责 markdown 解析，纯托管代码，单文件发布没问题
@@ -233,7 +237,7 @@ dotnet run -c Release -- ls     "nw集训/学生资料临存"                   
 $env:TCPCHAT10_TEST_SETTINGS = "test_settings.json"   # 指向测试目录，避免污染真实聊天
 $env:TCPCHAT10_TEST_LOG      = "ui_test.log"
 $env:TCPCHAT10_AUTOTEST      = "theme:1;zoom:1.5;mdpreview:C:\md.md;waitmsg:1;mscroll:0;shot:C:\shot.png;settings;dshot:C:\dlg.png;closedlg;quit"
-.\TCP-Chat-11.5.exe
+.\TCP-Chat-11.5.1.exe
 ```
 
 支持的动作：`wait:N` / `waitmsg:N` / `send:文本` / `sendmd:文件路径`（把整份 markdown 当成一条消息发出去） / `sendq:引用|正文` /
@@ -249,7 +253,7 @@ $env:TCPCHAT10_AUTOTEST      = "theme:1;zoom:1.5;mdpreview:C:\md.md;waitmsg:1;ms
 - **同一目录 + 同一密码 = 同一把钥匙**：密码是双方共享的口令，谁拿到密码谁就能解密；没有每用户密钥对 / 前向保密
 - **消息目录是公开的**：知道 WebDAV 地址和目录名就能读到消息文件（加密后读到的是密文）。**不要在共享目录里发隐私内容**，除非开了加密
 - **程序不会自动新建目录**：目录填错或还没建会直接提示，消息不会写到别的地方去
-- **单文件 exe 首次启动稍慢**：会把自己解压到 `%TEMP%\.net\TCP-Chat-11.5\`（约 240 MB，之后复用；换新版本会再解一份），程序每次启动会自动清理自己以前留下的旧解压目录
+- **单文件 exe 首次启动稍慢**：会把自己解压到 `%TEMP%\.net\TCP-Chat-11.5.1\`（约 240 MB，之后复用；换新版本会再解一份），程序每次启动会自动清理自己以前留下的旧解压目录
 - **消息不是实时推送**：靠轮询，默认 3 秒（1~120 秒可调，**改完立刻生效**），对方最多慢一个周期看到；服务器偶发把某个请求挂住几十秒时，客户端会自动跳过并在下一轮重试
 - **历史只按文件名时间戳排**：客户端时钟不准会导致消息顺序错乱
 - **附件与语音**：整份文件先读进内存再上传（几十 MB 没问题，超大文件请直接用资源管理器拷）；设了密码时附件也是密文上传
@@ -264,7 +268,8 @@ $env:TCPCHAT10_AUTOTEST      = "theme:1;zoom:1.5;mdpreview:C:\md.md;waitmsg:1;ms
 
 | 版本 | 主要变化 |
 |---|---|
-| **11.5** | 本地消息缓存（启动直接显示 + 对方撤回清理）；修深色下语音条的播放三角不显示；修关掉液态玻璃后设置里的开关/滑块看不清 |
+| **11.5.1** | 底栏不再显示「N 条无法解密」的提醒（消息气泡上仍写明原因） |
+| 11.5 | 本地消息缓存（启动直接显示 + 对方撤回清理）；修深色下语音条的播放三角不显示；修关掉液态玻璃后设置里的开关/滑块看不清 |
 | 11.4 | LaTeX 公式排版；洛谷 Markdown 扩展语法（折叠框/对齐/引言/代码块参数/表格合并/tuack）；程序图标；缩放（Ctrl 加减 0 与滚轮）；修玻璃下深色切浅色的可读性与根号横线粗细 |
 | 11.3 | 默认聊天目录改成 `nw集训/学生资料临存/tcp_chat`（老默认目录自动迁移一次）；空密码项保留（表示明文发送） |
 | 11.2 | 密码列表 + 默认发送密码（逐把尝试解密）；设置对话框字体/圆角跟随；密码列表可增删 |

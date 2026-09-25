@@ -111,7 +111,7 @@ public sealed partial class MainWindow : Window
         ApplyFont();
         UpdateLockText();
         MeText.Text = string.IsNullOrWhiteSpace(_settings.Nickname) ? "(未设置昵称)" : "我：" + _settings.Nickname;
-        Title = "TCP Chat 11.5 — " + _settings.ChatFolder;
+        Title = "TCP Chat 11.5.1 — " + _settings.ChatFolder;
 
         RootLoaded();
 
@@ -1602,18 +1602,18 @@ public sealed partial class MainWindow : Window
 
     private void UpdateFooter()
     {
-        var bad = _chat.UndecryptableCount;
         var syncTime = _chat.LastSyncTime?.ToString("HH:mm:ss") ?? "尚未同步";
         // 字体没装的话一直挂在这儿(只在设置里提示一次容易被之后的同步状态覆盖掉)
         var fontNote = UiFont.MissingFont.Length > 0
             ? "  ·  ⚠ 字体「" + UiFont.MissingFont + "」本机没有，已用系统默认"
             : "";
-        FooterText.Text = string.Format("共 {0} 条消息  ·  每 {1} 秒同步  ·  最近同步 {2}  ·  {3}  ·  {4}{5}{6}",
+        // 11.5.1: 底栏不再提示「N 条无法解密」(解不开的消息在自己的气泡上已经写清楚了,
+        // 底栏一直挂着一句警告只是噪音)。计数本身还留着, 自测日志里能看到。
+        FooterText.Text = string.Format("共 {0} 条消息  ·  每 {1} 秒同步  ·  最近同步 {2}  ·  {3}  ·  {4}{5}",
             Messages.Count, _chat.PollSeconds, syncTime, _settings.ChatFolder,
             _chat.EncryptionEnabled
                 ? "已加密(发送用第 " + _chat.SendPasswordNumber + " 个 / 共 " + _chat.PasswordCount + " 个密码)"
                 : "未加密",
-            bad > 0 ? "  ·  ⚠ " + bad + " 条无法解密（密码不一致）" : "",
             fontNote);
     }
 }

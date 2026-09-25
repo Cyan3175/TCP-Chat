@@ -96,6 +96,10 @@ public sealed partial class MainWindow : Window
 
         InitGlass();
 
+        // 顶栏那几个按钮也是直角, 加载完统一刷圆角
+        if (Content is FrameworkElement cornerRoot)
+            cornerRoot.Loaded += (_, _) => UiFont.RoundAll(cornerRoot, 8);
+
         ApplyTheme();
         ApplyFont();
         UpdateLockText();
@@ -1147,6 +1151,8 @@ public sealed partial class MainWindow : Window
         var dlg = new SettingsDialog(_settings) { XamlRoot = Content.XamlRoot };
         ApplyThemeTo(dlg);
         ApplyFontTo(dlg);
+        // 按钮在对话框模板里, 要等 Opened 之后才拿得到 —— 那时统一刷圆角
+        dlg.Opened += (_, _) => UiFont.RoundAll(dlg, 8);
         // 玻璃的开关/滑块是实时生效的, 所以对话框里一动就重新应用
         dlg.GlassChanged += ApplyGlass;
         ContentDialogResult r;

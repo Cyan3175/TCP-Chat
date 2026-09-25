@@ -92,6 +92,26 @@ public static class UiFont
         }
     }
 
+    /// <summary>
+    /// 11.2: 把可视树里所有控件的圆角设成统一值。
+    /// 之前试过覆盖主题资源 ControlCornerRadius —— 对话框按钮/顶栏按钮并不吃那套(实测仍是直角),
+    /// 所以改成直接给控件逐个设; 对话框的按钮在模板里, 要等 Opened 之后才拿得到。
+    /// </summary>
+    public static void RoundAll(DependencyObject? root, double radius = 8)
+    {
+        if (root == null) return;
+        try { if (root is Control c) c.CornerRadius = new CornerRadius(radius); } catch { }
+
+        int count;
+        try { count = VisualTreeHelper.GetChildrenCount(root); } catch { return; }
+        for (int i = 0; i < count; i++)
+        {
+            DependencyObject? child;
+            try { child = VisualTreeHelper.GetChild(root, i); } catch { continue; }
+            RoundAll(child, radius);
+        }
+    }
+
     private static void ApplyOne(DependencyObject o)
     {
         // 图标字体不能动: FontIcon 用的是 Segoe MDL2 Assets / Segoe Fluent Icons

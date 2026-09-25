@@ -157,13 +157,8 @@ public sealed partial class SettingsDialog : ContentDialog
     {
         _passwords.Clear();
         _passwords.AddRange(settings.CryptoPasswords);
+        // 存的默认下标必须原样尊重 —— 指向空项就是"明文发送"
         _sendIndex = Math.Clamp(settings.SendPasswordIndex, 0, Math.Max(0, _passwords.Count - 1));
-        if (_passwords.Count > 0 && _passwords[_sendIndex].Length == 0)
-        {
-            // 默认那把指到了空项: 回退到第一把真密码(全空则发送本来就是明文)
-            var firstReal = _passwords.FindIndex(p => p.Length > 0);
-            _sendIndex = firstReal >= 0 ? firstReal : 0;
-        }
         RebuildPasswordRows();
     }
 
@@ -205,11 +200,8 @@ public sealed partial class SettingsDialog : ContentDialog
             pick.Checked += (_, _) => _sendIndex = index;
             if (_passwords[index].Length == 0)
             {
-                // 用户要求: 空项(不加密)可以加、可以用来兼容明文消息, 但不能被选成发送密码
-                pick.IsEnabled = false;
-                pick.Content = "（空项）";
-                ToolTipService.SetToolTip(pick, "空项代表「不加密」，只用于兼容明文消息，不能作为发送密码");
-                pick.IsChecked = false;
+                // 空项 = 不加密这一把, 选中它就是"明文发送" —— 必须是能选的(之前误禁用了, 已改回)
+                ToolTipService.SetToolTip(pick, "选中它 = 发送不加密(明文)");
             }
             Grid.SetColumn(pick, 1);
             row.Children.Add(pick);
@@ -240,7 +232,7 @@ public sealed partial class SettingsDialog : ContentDialog
     {
         if (_passwords.Contains("", StringComparer.Ordinal))
         {
-            CryptoError.Text = "列表里已经有一条「不加密」了（它只用于兼容明文消息，不能作为发送密码）。";
+            CryptoError.Text = "列表里已经有一条「不加密」了。";
             CryptoError.Visibility = Visibility.Visible;
             return;
         }

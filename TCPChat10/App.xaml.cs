@@ -91,11 +91,17 @@ public partial class App : Application
 
             var dir = Path.Combine(Services.AppSettings.DataDir, "app");
             Directory.CreateDirectory(dir);
-            var safe = Path.Combine(dir, "TCP-Chat-11.0.exe");
+            // 固定用不带空格的名字, 并且把以前留下的旧副本清掉(否则可能启动到旧版本)
+            var safe = Path.Combine(dir, "TCP-Chat-latest.exe");
+            foreach (var old in Directory.GetFiles(dir, "*.exe"))
+                if (!string.Equals(old, safe, StringComparison.OrdinalIgnoreCase))
+                    try { File.Delete(old); } catch { }
 
             // 每次都刷新一份, 免得用户换了新版本而副本还是旧的
             File.Copy(exe, safe, overwrite: true);
-            Process.Start(new ProcessStartInfo(safe) { UseShellExecute = true });
+            // 注意: 不能用 System.Diagnostics.Process —— 单文件发布里没有这个程序集,
+            // 一调就是 FileNotFoundException(11.1 刚踩过)。直接用系统 ShellExecute。
+            ShellExecute(IntPtr.Zero, "open", safe, null, null, 1);
             LogCrash("文件名带空格, 已改用 " + safe + " 启动(原文件: " + name + ")", null);
             return true;
         }
@@ -146,4 +152,7 @@ public partial class App : Application
 
     [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
     private static extern int MessageBox(IntPtr hWnd, string text, string caption, uint type);
+
+    [System.Runtime.InteropServices.DllImport("shell32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern IntPtr ShellExecute(IntPtr hwnd, string op, string file, string? parameters, string? dir, int showCmd);
 }

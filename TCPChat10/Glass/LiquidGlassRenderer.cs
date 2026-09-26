@@ -232,7 +232,7 @@ public sealed class LiquidGlassRenderer
         using (var rds = result.CreateDrawingSession())
             rds.DrawImage(soft);
 
-        if (_masks.Count > 24)
+        if (_masks.Count > 96)
         {
             foreach (var m in _masks.Values) { try { m.Dispose(); } catch { } }
             _masks.Clear();

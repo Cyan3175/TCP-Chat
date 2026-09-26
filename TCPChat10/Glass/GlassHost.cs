@@ -18,6 +18,12 @@ public sealed class GlassEntry
 
     /// <summary>重画时现取色调(主题会变, 所以用委托而不是固定值)。</summary>
     public required Func<(Color Tint, double Opacity)> Style { get; init; }
+
+    /// <summary>11.7: 可选裁剪宿主(例如 ListHost: 气泡滚出消息列表时在此裁剪, 不会画到顶栏或输入栏上)。</summary>
+    public FrameworkElement? ClipHost { get; init; }
+
+    /// <summary>11.7: 是否为固定镀铬层(顶栏、输入栏等置顶画)。</summary>
+    public bool IsChrome { get; init; }
 }
 
 /// <summary>
@@ -32,7 +38,7 @@ public sealed class GlassHost
     private readonly List<Surface> _current = new();
     private readonly List<Surface> _pending = new();
 
-    private readonly record struct Surface(Rect Rect, Color Tint, double Opacity, double Radius);
+    private readonly record struct Surface(Rect Rect, Color Tint, double Opacity, double Radius, bool IsChrome);
 
     public GlassHost(CanvasControl canvas)
     {
@@ -126,10 +132,11 @@ public sealed class GlassHost
         }
 
         _pending.Clear();
-        foreach (var entry in _entries)
+        var snapshot = _entries.ToArray();
+        foreach (var entry in snapshot)
         {
             var el = entry.Element;
-            if (el.Visibility != Visibility.Visible) continue;
+            if (!el.IsLoaded || el.Visibility != Visibility.Visible) continue;
             if (el.ActualWidth < 8 || el.ActualHeight < 8) continue;
 
             Rect rect;
@@ -142,12 +149,33 @@ public sealed class GlassHost
 
             if (rect.Width < 8 || rect.Height < 8) continue;
 
-            // 视口裁剪: 滚出去的面不画(列表里几十个气泡时, 这一条能省掉大半开销)
+            // 视口裁剪: 滚出画布的面不画
             if (rect.Bottom <= 0 || rect.Right <= 0 ||
                 rect.X >= _canvas.ActualWidth || rect.Y >= _canvas.ActualHeight) continue;
 
+            // 11.7: 裁剪宿主(如 ListHost) —— 气泡滚出消息列表区域时被精准截断, 绝不侵入顶栏/输入栏
+            if (entry.ClipHost != null && entry.ClipHost.IsLoaded && entry.ClipHost.Visibility == Visibility.Visible)
+            {
+                try
+                {
+                    var hostTransform = entry.ClipHost.TransformToVisual(_canvas);
+                    var hostBounds = hostTransform.TransformBounds(new Rect(0, 0, entry.ClipHost.ActualWidth, entry.ClipHost.ActualHeight));
+
+                    double x1 = Math.Max(rect.X, hostBounds.X);
+                    double y1 = Math.Max(rect.Y, hostBounds.Y);
+                    double x2 = Math.Min(rect.X + rect.Width, hostBounds.X + hostBounds.Width);
+                    double y2 = Math.Min(rect.Y + rect.Height, hostBounds.Y + hostBounds.Height);
+
+                    if (x2 <= x1 || y2 <= y1) continue;
+                    rect = new Rect(x1, y1, x2 - x1, y2 - y1);
+                }
+                catch { }
+            }
+
+            if (rect.Width < 8 || rect.Height < 8) continue;
+
             var (tint, opacity) = entry.Style();
-            _pending.Add(new Surface(rect, tint, opacity, entry.Radius));
+            _pending.Add(new Surface(rect, tint, opacity, entry.Radius, entry.IsChrome));
         }
 
         if (Same(_pending, _current)) return;
@@ -212,7 +240,8 @@ public sealed class GlassHost
         {
             var x = a[i];
             var y = b[i];
-            if (Math.Abs(x.Rect.X - y.Rect.X) > 0.5 || Math.Abs(x.Rect.Y - y.Rect.Y) > 0.5 ||
+            if (x.IsChrome != y.IsChrome ||
+                Math.Abs(x.Rect.X - y.Rect.X) > 0.5 || Math.Abs(x.Rect.Y - y.Rect.Y) > 0.5 ||
                 Math.Abs(x.Rect.Width - y.Rect.Width) > 0.5 || Math.Abs(x.Rect.Height - y.Rect.Height) > 0.5 ||
                 Math.Abs(x.Opacity - y.Opacity) > 0.01 || x.Tint != y.Tint || Math.Abs(x.Radius - y.Radius) > 0.5)
                 return false;
@@ -269,8 +298,25 @@ public sealed class GlassHost
     {
         _renderer.DrawWallpaper(ds, size);
         var surfaces = _current.Count > 0 ? _current : _pending;
-        foreach (var s in surfaces)
+
+        // 11.7: 先画普通内容(气泡), 后画置顶 Chrome 条(顶栏、输入栏、状态栏)
+        for (int i = 0; i < surfaces.Count; i++)
         {
+            var s = surfaces[i];
+            if (s.IsChrome) continue;
+            _renderer.DrawSurface(ds, size, new GlassSurface
+            {
+                Rect = s.Rect,
+                Radius = s.Radius,
+                Tint = s.Tint,
+                TintOpacity = s.Opacity,
+            }, Params);
+        }
+
+        for (int i = 0; i < surfaces.Count; i++)
+        {
+            var s = surfaces[i];
+            if (!s.IsChrome) continue;
             _renderer.DrawSurface(ds, size, new GlassSurface
             {
                 Rect = s.Rect,

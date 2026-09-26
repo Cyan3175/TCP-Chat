@@ -116,7 +116,7 @@ public sealed partial class MainWindow : Window
         ApplyFont();
         UpdateLockText();
         MeText.Text = string.IsNullOrWhiteSpace(_settings.Nickname) ? "(未设置昵称)" : "我：" + _settings.Nickname;
-        Title = "TCP Chat 11.6 — " + _settings.ChatFolder;
+        Title = "TCP Chat 11.7 — " + _settings.ChatFolder;
 
         RootLoaded();
 
@@ -776,6 +776,8 @@ public sealed partial class MainWindow : Window
     private void ScrollToBottom()
     {
         if (Messages.Count == 0) return;
+        EnsureScrollHook();
+        StartScrollTracking(25);
         MessageList.ScrollIntoView(Messages[^1], ScrollIntoViewAlignment.Default);
         MessageList.UpdateLayout();
         if (FindScrollViewer(MessageList) is ScrollViewer sv)
@@ -787,6 +789,7 @@ public sealed partial class MainWindow : Window
             MessageList.UpdateLayout();
             if (FindScrollViewer(MessageList) is ScrollViewer sv2)
                 sv2.ChangeView(null, sv2.ScrollableHeight, null, true);
+            StartScrollTracking(15);
         });
     }
 
@@ -1538,6 +1541,68 @@ public sealed partial class MainWindow : Window
 
     // ---------- 液态玻璃(11.0) ----------
 
+    // ---------- 11.7: 液态玻璃滚动同步 ----------
+    private ScrollViewer? _messageScrollViewer;
+    private bool _scrollHooked;
+    private int _scrollingFramesLeft = 0;
+    private bool _renderingHooked = false;
+
+    private void EnsureScrollHook()
+    {
+        if (_scrollHooked) return;
+        _messageScrollViewer ??= FindScrollViewer(MessageList);
+        if (_messageScrollViewer == null) return;
+        _scrollHooked = true;
+
+        _messageScrollViewer.ViewChanging += OnScrollViewChanging;
+        _messageScrollViewer.ViewChanged += OnScrollViewChanged;
+    }
+
+    private void StartScrollTracking(int frames = 30)
+    {
+        if (!_settings.GlassEnabled || _glass == null) return;
+        _scrollingFramesLeft = Math.Max(_scrollingFramesLeft, frames);
+        if (!_renderingHooked)
+        {
+            _renderingHooked = true;
+            CompositionTarget.Rendering += OnCompositionRendering;
+        }
+        _glass.Refresh();
+    }
+
+    private void OnScrollViewChanging(object? sender, ScrollViewerViewChangingEventArgs e)
+    {
+        StartScrollTracking(20);
+    }
+
+    private void OnScrollViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
+    {
+        if (e.IsIntermediate)
+        {
+            StartScrollTracking(15);
+        }
+        else
+        {
+            // 滚动停止: 多刷几帧确保最终静止位置分毫不差
+            StartScrollTracking(8);
+        }
+    }
+
+    private void OnCompositionRendering(object? sender, object e)
+    {
+        if (_scrollingFramesLeft <= 0)
+        {
+            if (_renderingHooked)
+            {
+                _renderingHooked = false;
+                CompositionTarget.Rendering -= OnCompositionRendering;
+            }
+            return;
+        }
+        _scrollingFramesLeft--;
+        _glass?.Refresh();
+    }
+
     /// <summary>建玻璃层: 顶栏/输入栏/状态栏先注册, 气泡在加载时自己注册(见 OnBubbleLoaded)。</summary>
     private void InitGlass()
     {
@@ -1549,11 +1614,18 @@ public sealed partial class MainWindow : Window
                 Element = bar,
                 Radius = 0,
                 Style = ChromeGlassStyle,
+                IsChrome = true,
             });
 
-        // 布局一变(滚动/换行/窗口缩放/新消息)就重新量一遍玻璃面的位置
+        // 布局一变(换行/窗口缩放/新消息)就重新量一遍玻璃面的位置
         if (Content is FrameworkElement root)
             root.LayoutUpdated += (_, _) => _glass?.Refresh();
+
+        // 11.7: 滚动跟手同步 —— 挂接 ScrollViewer 事件与 Composition 渲染循环
+        EnsureScrollHook();
+        MessageList.Loaded += (_, _) => EnsureScrollHook();
+        MessageList.PointerWheelChanged += (_, _) => { EnsureScrollHook(); StartScrollTracking(30); };
+        ListHost.SizeChanged += (_, _) => _glass?.Refresh();
 
         ApplyGlass();
     }
@@ -1583,6 +1655,12 @@ public sealed partial class MainWindow : Window
         }
 
         RefreshBodies();        // 气泡底色跟着变, 让绑定重新求值
+        if (!on && _renderingHooked)
+        {
+            _renderingHooked = false;
+            CompositionTarget.Rendering -= OnCompositionRendering;
+            _scrollingFramesLeft = 0;
+        }
         _glass?.Refresh();
         UpdateFooter();
     }
@@ -1643,11 +1721,14 @@ public sealed partial class MainWindow : Window
             if (_glass == null || sender is not Border border) return;
             // 色调要"画的时候"再问当前的 DataContext, 不能在这里把 vm 抓死 ——
             // 列表复用气泡以后 DataContext 会换成别的消息, 抓死的 vm 会把"自己/别人"判错。
+            EnsureScrollHook();
             _glass.Register(new GlassEntry
             {
                 Element = border,
                 Radius = 10,
                 Style = () => BubbleGlassStyle(border.DataContext as MessageVm),
+                ClipHost = ListHost,
+                IsChrome = false,
             });
             _glass.Refresh();
         }

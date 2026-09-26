@@ -1,4 +1,4 @@
-# TCP Chat 11.6
+# TCP Chat 11.7
 
 用 **WinUI 3（Windows App SDK）** 重写的桌面聊天客户端。
 
@@ -11,7 +11,7 @@
 
 ## 快速开始
 
-1. 下载 `TCP-Chat-11.6.exe`，**放在哪个目录都行**，双击即可（自包含，不需要装 .NET，也不需要 Windows App Runtime）
+1. 下载 `TCP-Chat-11.7.exe`，**放在哪个目录都行**，双击即可（自包含，不需要装 .NET，也不需要 Windows App Runtime）
    > ⚠️ **文件名里不要有空格或括号**（浏览器下载常加 " (1)"）：Windows App SDK 在含空格的路径下定位不到程序自己的界面资源，会启动失败；遇到这种名字程序会弹框提示改名。
 2. 首次启动会让你填昵称（顶栏「改昵称」随时可改）
 3. 默认连到 `https://dev.zhaohans.cn`，消息目录 `nw集训/学生资料临存/tcp_chat`（**消息文件就放在这一层**，目录要事先存在）
@@ -37,6 +37,14 @@
 - **同步**：定时对消息目录发 `PROPFIND Depth:1`，只对没见过的文件名发 `GET`，收到后反序列化并插到正确的时间位置
 - **撤回**：`DELETE` 自己的消息文件
 - **目录不会被自动创建**：填错或还没建会直接提示「聊天目录不存在」，免得在你的共享目录里凭空多出一个文件夹
+
+## 11.7 更新
+
+- **解决液态玻璃模式下滚动跟不上的问题**：
+  - **实时帧同步（CompositionTarget.Rendering）**：挂接 `ScrollViewer.ViewChanging`、`ViewChanged` 以及鼠标滚轮、触控板手势与 `CompositionTarget.Rendering` 渲染帧循环。在用户滚动的每一帧，玻璃画布都与 XAML 控件在同一 VSync 刷新率下重新量算位置并重画，彻底解决以往滑屏时玻璃气泡掉帧、卡顿、与文字脱节脱离的现象；惯性滚动平息后自动停止帧循环，静止时 0 额外 CPU/GPU 负担。
+  - **可视区域精准裁剪（ClipHost）**：气泡玻璃面与消息列表可视区域（`ListHost`）对齐裁剪边界。气泡向上或向下滚出列表边界时自动裁切，绝不会侵入或污染顶栏和底部输入栏。
+  - **图层渲染分层**：顶栏、输入栏、状态栏等固定镀铬层永远置顶绘制，无论滚动速度多快，界面分层始终干净利落。
+  - **遮罩缓存扩容**：将边缘遮罩命令列表缓存池扩充至 96 项，防止高频滚动时不同气泡尺寸导致缓存频繁抖动重建。
 
 ## 11.6 更新
 
@@ -183,13 +191,13 @@ TCPChat10.Tests/           控制台回归测试(直接引用上面的源码, �
 ```powershell
 cd TCPChat10
 dotnet build -c Release                    # 调试构建产物(文件夹形式, 便于反复启动)
-dotnet publish -c Release -o ..\dist116    # 发布: 只产出一个 TCP-Chat-11.6.exe
+dotnet publish -c Release -o ..\dist117    # 发布: 只产出一个 TCP-Chat-11.6.exe
 ```
 
 关键工程设置：
 
 - `WindowsPackageType=None`（免打包运行，双击 exe 即用）、`WindowsAppSDKSelfContained=true`（把 Windows App Runtime 打进去，目标机不需要预装运行时）
-- `PublishSingleFile` + `IncludeAllContentForSelfExtract` + `EnableCompressionInSingleFile`（发布成**单个 exe**；代价是首次启动会把自己解压到 `%TEMP%\.net\TCP-Chat-11.6\` 下，之后复用）
+- `PublishSingleFile` + `IncludeAllContentForSelfExtract` + `EnableCompressionInSingleFile`（发布成**单个 exe**；代价是首次启动会把自己解压到 `%TEMP%\.net\TCP-Chat-11.7\` 下，之后复用）
 - `ApplicationIcon` 指向 `Assets\app.ico`，控件与顶栏图标从**嵌入资源**里解出来（单文件发布时 exe 旁边没有 Assets 目录）
 - 设置文件位置用 `Environment.ProcessPath` 定位 exe 目录 —— 单文件发布时 `AppContext.BaseDirectory` 指向的是 `%TEMP%` 里的解压目录，不能用
 - `Markdig` 1.4.0（MIT）负责 markdown 解析，纯托管代码，单文件发布没问题
@@ -246,7 +254,7 @@ dotnet run -c Release -- ls     "nw集训/学生资料临存"                   
 $env:TCPCHAT10_TEST_SETTINGS = "test_settings.json"   # 指向测试目录，避免污染真实聊天
 $env:TCPCHAT10_TEST_LOG      = "ui_test.log"
 $env:TCPCHAT10_AUTOTEST      = "theme:1;zoom:1.5;mdpreview:C:\md.md;waitmsg:1;mscroll:0;shot:C:\shot.png;settings;dshot:C:\dlg.png;closedlg;quit"
-.\TCP-Chat-11.6.exe
+.\TCP-Chat-11.7.exe
 ```
 
 支持的动作：`wait:N` / `waitmsg:N` / `send:文本` / `sendmd:文件路径`（把整份 markdown 当成一条消息发出去） / `sendq:引用|正文` /
@@ -262,7 +270,7 @@ $env:TCPCHAT10_AUTOTEST      = "theme:1;zoom:1.5;mdpreview:C:\md.md;waitmsg:1;ms
 - **同一目录 + 同一密码 = 同一把钥匙**：密码是双方共享的口令，谁拿到密码谁就能解密；没有每用户密钥对 / 前向保密
 - **消息目录是公开的**：知道 WebDAV 地址和目录名就能读到消息文件（加密后读到的是密文）。**不要在共享目录里发隐私内容**，除非开了加密
 - **程序不会自动新建目录**：目录填错或还没建会直接提示，消息不会写到别的地方去
-- **单文件 exe 首次启动稍慢**：会把自己解压到 `%TEMP%\.net\TCP-Chat-11.6\`（约 240 MB，之后复用；换新版本会再解一份），程序每次启动会自动清理自己以前留下的旧解压目录
+- **单文件 exe 首次启动稍慢**：会把自己解压到 `%TEMP%\.net\TCP-Chat-11.7\`（约 240 MB，之后复用；换新版本会再解一份），程序每次启动会自动清理自己以前留下的旧解压目录
 - **消息不是实时推送**：靠轮询，默认 3 秒（1~120 秒可调，**改完立刻生效**），对方最多慢一个周期看到；服务器偶发把某个请求挂住几十秒时，客户端会自动跳过并在下一轮重试
 - **历史只按文件名时间戳排**：客户端时钟不准会导致消息顺序错乱
 - **附件与语音**：整份文件先读进内存再上传（几十 MB 没问题，超大文件请直接用资源管理器拷）；设了密码时附件也是密文上传
@@ -277,7 +285,8 @@ $env:TCPCHAT10_AUTOTEST      = "theme:1;zoom:1.5;mdpreview:C:\md.md;waitmsg:1;ms
 
 | 版本 | 主要变化 |
 |---|---|
-| **11.6** | 消息搜索（Ctrl+F、Enter/Shift+Enter 前后跳转、Esc 退出、高亮匹配） |
+| **11.7** | 解决液态玻璃模式下滚动跟不上的问题（Composition 渲染帧同步、ListHost 边界裁切、镀铬置顶、遮罩缓存扩容） |
+| 11.6 | 消息搜索（Ctrl+F、Enter/Shift+Enter 前后跳转、Esc 退出、高亮匹配） |
 | 11.5.2 | 修「别人的消息没有玻璃效果」（回收的气泡重新注册）；别人的气泡色调更透，壁纸看得出层次 |
 | 11.5.1 | 底栏不再显示「N 条无法解密」的提醒（消息气泡上仍写明原因） |
 | 11.5 | 本地消息缓存（启动直接显示 + 对方撤回清理）；修深色下语音条的播放三角不显示；修关掉液态玻璃后设置里的开关/滑块看不清 |

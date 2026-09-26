@@ -56,6 +56,9 @@ public sealed class GlassHost
 
     public void Register(GlassEntry entry) => Guard("注册玻璃面", () =>
     {
+        // 11.5.2: 幂等 —— 列表回收气泡时会重新绑定 DataContext, 同一个 Border 可能被注册多次,
+        // 重复注册只会让它在每次 Refresh 里被量好几遍(还会互相盖掉)。
+        if (_entries.Any(e => ReferenceEquals(e.Element, entry.Element))) { Invalidate(); return; }
         _entries.Add(entry);
         Invalidate();
     });
@@ -159,6 +162,46 @@ public sealed class GlassHost
         var list = new List<string>();
         foreach (var s in _current)
             list.Add($"({s.Rect.X:F0},{s.Rect.Y:F0},{s.Rect.Width:F0}x{s.Rect.Height:F0}) #{s.Tint.R:X2}{s.Tint.G:X2}{s.Tint.B:X2}@{s.Opacity:F2}");
+        return list;
+    }
+
+    /// <summary>
+    /// 自检用: 每个注册过的玻璃面现在什么状态(画了 / 为什么没画)。
+    /// 排查"某些消息没有玻璃"这类问题时, 一眼就能看出是被裁掉了还是压根没注册。
+    /// </summary>
+    public IReadOnlyList<string> DescribeEntries()
+    {
+        var list = new List<string>();
+        foreach (var entry in _entries)
+        {
+            var el = entry.Element;
+            double w = 0, h = 0;
+            try { w = el.ActualWidth; h = el.ActualHeight; } catch { }
+
+            string state;
+            if (el.Visibility != Visibility.Visible) state = "没画:隐藏";
+            else if (w < 8 || h < 8) state = $"没画:太小({w:F0}x{h:F0})";
+            else
+            {
+                try
+                {
+                    var rect = el.TransformToVisual(_canvas).TransformBounds(new Rect(0, 0, w, h));
+                    if (rect.Width < 8 || rect.Height < 8) state = "没画:矩形太小";
+                    else if (rect.Bottom <= 0 || rect.Right <= 0 || rect.X >= _canvas.ActualWidth || rect.Y >= _canvas.ActualHeight)
+                        state = $"没画:视口外({rect.X:F0},{rect.Y:F0},{rect.Width:F0}x{rect.Height:F0})";
+                    else
+                    {
+                        var (tint, opacity) = entry.Style();
+                        state = $"画 ({rect.X:F0},{rect.Y:F0},{rect.Width:F0}x{rect.Height:F0}) #{tint.R:X2}{tint.G:X2}{tint.B:X2}@{opacity:F2}";
+                    }
+                }
+                catch (Exception ex) { state = "没画:定位失败 " + ex.GetType().Name; }
+            }
+
+            var vm = (el as FrameworkElement)?.DataContext as ViewModels.MessageVm;
+            var who = vm == null ? "(无DataContext)" : (vm.IsSelf ? "自己" : "别人");
+            list.Add($"{who} {state}  [{el.GetType().Name}]");
+        }
         return list;
     }
 

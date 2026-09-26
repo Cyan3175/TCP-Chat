@@ -48,6 +48,11 @@ public sealed partial class MainWindow : Window
 
     public ObservableCollection<MessageVm> Messages { get; } = new();
 
+    // ---------- 搜索 ----------
+    private string _searchQuery = "";
+    private int _searchMatchIndex = -1;
+    private readonly List<MessageVm> _searchMatches = new();
+
     private SettingsDialog? _dlg;
     private MenuFlyout? _menu;
 
@@ -111,7 +116,7 @@ public sealed partial class MainWindow : Window
         ApplyFont();
         UpdateLockText();
         MeText.Text = string.IsNullOrWhiteSpace(_settings.Nickname) ? "(未设置昵称)" : "我：" + _settings.Nickname;
-        Title = "TCP Chat 11.5.1 — " + _settings.ChatFolder;
+        Title = "TCP Chat 11.6 — " + _settings.ChatFolder;
 
         RootLoaded();
 
@@ -271,7 +276,18 @@ public sealed partial class MainWindow : Window
                         var ok = _glass != null && await _glass.RenderToFileAsync(path);
                         AutoLog("AUTO glassshot -> " + (ok ? "ok " + path + " (" + _glass!.LastDrawMs.ToString("F1") + " ms)" : "画布还没准备好"));
                         if (_glass != null)
+                        {
                             foreach (var s in _glass.DescribeSurfaces()) AutoLog("   玻璃面 " + s);
+                            var byState = new Dictionary<string, int>();
+                            foreach (var line in _glass.DescribeEntries())
+                            {
+                                AutoLog("   注册面 " + line);
+                                var key = line.Contains("画 (") ? "画" : line.Contains("视口外") ? "视口外" : "其它没画";
+                                key += line.StartsWith("自己") ? "/自己" : "/别人";
+                                byState[key] = byState.GetValueOrDefault(key) + 1;
+                            }
+                            AutoLog("   注册面统计: " + string.Join(", ", byState.Select(kv => kv.Key + "=" + kv.Value)));
+                        }
                     }
                     catch (Exception ex) { AutoLog("AUTO glassshot -> 失败: " + ex.Message); }
                 }
@@ -482,6 +498,13 @@ public sealed partial class MainWindow : Window
                     await Task.Delay(1200);
                     AutoLog("AUTO voice -> 录音中=" + _recording + " 按钮=" + BtnVoice.Content);
                 }
+                else if (a.StartsWith("search:"))
+                {
+                    var sq = a[7..].Trim();
+                    SearchBox.Text = sq;
+                    await Task.Delay(300);
+                    AutoLog("AUTO search -> 关键字=[" + sq + "] 命中=" + _searchMatches.Count + " 当前=" + (_searchMatchIndex + 1));
+                }
                 else if (a == "quit")
                 {
                     AutoLog("AUTO quit  [最终消息数=" + Messages.Count + "]");
@@ -645,6 +668,11 @@ public sealed partial class MainWindow : Window
                 UiZoom.Reset();
                 e.Handled = true;
                 break;
+            case (int)VirtualKey.F:                       // Ctrl+F: 搜索
+                SearchBox.Focus(FocusState.Programmatic);
+                SearchBox.SelectAll();
+                e.Handled = true;
+                break;
         }
     }
 
@@ -772,6 +800,110 @@ public sealed partial class MainWindow : Window
             if (FindScrollViewer(child) is ScrollViewer deep) return deep;
         }
         return null;
+    }
+
+    // ---------- 搜索 ----------
+
+    private void OnSearchTextChanged(object sender, TextChangedEventArgs e)
+    {
+        var query = SearchBox.Text?.Trim() ?? "";
+        BtnClearSearch.Visibility = query.Length > 0
+            ? Visibility.Visible : Visibility.Collapsed;
+
+        if (query == _searchQuery) return;
+        _searchQuery = query;
+        RunSearch();
+    }
+
+    private void OnSearchKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key == VirtualKey.Enter && _searchMatches.Count > 0)
+        {
+            e.Handled = true;
+            // Shift+Enter = 上一个, Enter = 下一个
+            if (IsKeyDown(VirtualKey.Shift))
+                _searchMatchIndex = (_searchMatchIndex - 1 + _searchMatches.Count) % _searchMatches.Count;
+            else
+                _searchMatchIndex = (_searchMatchIndex + 1) % _searchMatches.Count;
+            ScrollToMatch();
+        }
+        else if (e.Key == VirtualKey.Escape)
+        {
+            e.Handled = true;
+            SearchBox.Text = "";
+            InputBox.Focus(FocusState.Programmatic);
+        }
+    }
+
+    private void OnClearSearchClick(object sender, RoutedEventArgs e)
+    {
+        SearchBox.Text = "";
+        ClearSearchHighlight();
+        InputBox.Focus(FocusState.Programmatic);
+    }
+
+    private void RunSearch()
+    {
+        ClearSearchHighlight();
+        _searchMatches.Clear();
+        _searchMatchIndex = -1;
+
+        if (string.IsNullOrWhiteSpace(_searchQuery))
+        {
+            UpdateSearchFooter();
+            return;
+        }
+
+        foreach (var vm in Messages)
+        {
+            if (MessageMatchesSearch(vm, _searchQuery))
+                _searchMatches.Add(vm);
+        }
+
+        if (_searchMatches.Count > 0)
+        {
+            _searchMatchIndex = _searchMatches.Count - 1; // 从最新的开始
+            ScrollToMatch();
+        }
+        UpdateSearchFooter();
+    }
+
+    private void ScrollToMatch()
+    {
+        if (_searchMatchIndex < 0 || _searchMatchIndex >= _searchMatches.Count) return;
+        var target = _searchMatches[_searchMatchIndex];
+        // 高亮当前匹配项
+        foreach (var vm in _searchMatches) vm.IsSearchHit = true;
+        target.IsSearchCurrent = true;
+        MessageList.ScrollIntoView(target, ScrollIntoViewAlignment.Leading);
+        UpdateSearchFooter();
+    }
+
+    private void ClearSearchHighlight()
+    {
+        foreach (var vm in Messages) { vm.IsSearchHit = false; vm.IsSearchCurrent = false; }
+    }
+
+    private void UpdateSearchFooter()
+    {
+        if (string.IsNullOrWhiteSpace(_searchQuery))
+        {
+            UpdateFooter();
+            return;
+        }
+        if (_searchMatches.Count == 0)
+            SetFooter("搜索「" + _searchQuery + "」— 没有匹配");
+        else
+            SetFooter("搜索「" + _searchQuery + "」— " + (_searchMatchIndex + 1) + " / " + _searchMatches.Count + " 条匹配  (Enter 下一个 · Shift+Enter 上一个 · Esc 退出)");
+    }
+
+    private static bool MessageMatchesSearch(MessageVm vm, string query)
+    {
+        var m = vm.Model;
+        return (m.Text?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false)
+            || (m.Quote?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false)
+            || (m.From?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false)
+            || vm.TimeText.Contains(query, StringComparison.OrdinalIgnoreCase);
     }
 
     private void OnMessageAdded(ChatMessage m)
@@ -1481,23 +1613,36 @@ public sealed partial class MainWindow : Window
                 : (Color.FromArgb(255, 0x18, 0x40, 0x74), 0.88);
         }
 
-        // 别人的气泡: 浅色主题用白玻璃(深色字), 深色主题用近黑玻璃(浅色字), 都留足对比度
+        // 别人的气泡: 浅色主题用白玻璃(深色字), 深色主题用近黑玻璃(浅色字)。
+        //
+        // 11.5.2: 这里原来是 0.80 / 0.74 —— 太实了, 壁纸几乎透不过来, 别人的普通消息看着就是一块
+        // 纯白(或纯黑)的方块, 完全没有玻璃感。现在降到 0.58 / 0.65(壁纸能透出四成左右):
+        //   * 浅色: 白玻璃压在最暗的壁纸上 -> 底 ≈ #949494(L 0.30), 深色字 #1B1B1B(L 0.012) 对比度 ≈ 5.7:1
+        //   * 深色: 近黑玻璃压在最亮的壁纸上 -> 底 ≈ #676767(L 0.14), 浅色字 #EDEDF2(L 0.85) 对比度 ≈ 4.7:1
+        // 都还在 WCAG AA(4.5:1) 之上, 但壁纸的层次、模糊和折射都能看出来了。
         return ThemeLookup.IsDark
-            ? (Color.FromArgb(255, 20, 22, 28), 0.74)
-            : (Color.FromArgb(255, 255, 255, 255), 0.80);
+            ? (Color.FromArgb(255, 20, 22, 28), 0.65)
+            : (Color.FromArgb(255, 255, 255, 255), 0.58);
     }
 
     /// <summary>气泡出现在列表里: 注册成一个玻璃面(位置由 LayoutUpdated 统一量)。</summary>
-    private void OnBubbleLoaded(object sender, RoutedEventArgs e)
+    private void OnBubbleLoaded(object sender, RoutedEventArgs e) => RegisterBubble(sender);
+
+    /// <summary>
+    /// 11.5.2: 列表回收气泡容器时, 有的气泡只是换了 DataContext(没有重新 Loaded),
+    /// 于是它早就被 Unloaded 注销过、再也没注册回来 —— 表现就是"别人的消息没有玻璃效果"。
+    /// DataContext 一变就重新注册一次, 保证屏幕上的每个气泡都在玻璃层里。
+    /// </summary>
+    private void OnBubbleDataContextChanged(FrameworkElement sender, DataContextChangedEventArgs args) => RegisterBubble(sender);
+
+    private void RegisterBubble(object sender)
     {
         // 气泡的加载/卸载是 XAML 回调, 这里抛异常 = 程序直接退出, 所以全部包起来
         try
         {
             if (_glass == null || sender is not Border border) return;
-            // 11.4 修: 色调要"画的时候"再问当前的 DataContext, 不能在这里把 vm 抓死 ——
-            // ListView 会回收气泡容器, 复用以后 DataContext 已经换成别的消息(或者还没赋上),
-            // 抓死的那个 vm 会把"自己/别人"判错: 自己的消息用上白玻璃 + 白字 = 一片白,
-            // 深色切浅色时尤其明显(深色下白玻璃本来就偏暗, 看不出来)。
+            // 色调要"画的时候"再问当前的 DataContext, 不能在这里把 vm 抓死 ——
+            // 列表复用气泡以后 DataContext 会换成别的消息, 抓死的 vm 会把"自己/别人"判错。
             _glass.Register(new GlassEntry
             {
                 Element = border,

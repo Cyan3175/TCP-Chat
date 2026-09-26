@@ -307,4 +307,32 @@ public sealed class MessageVm : INotifyPropertyChanged
         : ThemeLookup.Brush("QuoteBrush");
 
     public string Key => Model.RemoteName.Length > 0 ? Model.RemoteName : Model.Id;
+
+    // ---------- 搜索高亮 ----------
+    private bool _isSearchHit;
+    public bool IsSearchHit
+    {
+        get => _isSearchHit;
+        set { if (_isSearchHit == value) return; _isSearchHit = value; Raise(); Raise(nameof(SearchHighlightBrush)); }
+    }
+
+    private bool _isSearchCurrent;
+    public bool IsSearchCurrent
+    {
+        get => _isSearchCurrent;
+        set
+        {
+            if (_isSearchCurrent == value) return;
+            _isSearchCurrent = value;
+            Raise();
+            Raise(nameof(SearchHighlightBrush));
+        }
+    }
+
+    /// <summary>搜索命中时气泡外面套一圈高亮边框。当前项用强调色, 其它命中项用淡色。</summary>
+    public Brush SearchHighlightBrush => _isSearchCurrent
+        ? ThemeLookup.Brush("AccentBrush")
+        : _isSearchHit
+            ? new SolidColorBrush(Color.FromArgb(80, 0x00, 0x78, 0xD4))
+            : Transparent;
 }

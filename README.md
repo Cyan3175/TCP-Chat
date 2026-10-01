@@ -1,6 +1,7 @@
-# TCP Chat 11.7
+# TCP Chat 12.0
 
-用 **WinUI 3（Windows App SDK）** 重写的桌面聊天客户端。
+用 **Electron**（44.5.1 / Chromium 152，C++ 原生液态玻璃）重写的桌面聊天客户端。
+11.7 及以前的 **WinUI 3** 版本仍然保留在仓库里，见 [两个客户端](#两个客户端)。
 
 和 9.4 的 raylib 版最大的不同：**没有服务端**。程序把学校里已有的 **WebDAV 服务器**当成一块公共留言板 —— 每发一条消息就在远端目录里写一个 JSON 文件，每隔几秒列一次目录把新文件拉下来。不用开端口、不用装服务、不用内网穿透。
 
@@ -11,7 +12,7 @@
 
 ## 快速开始
 
-1. 下载 `TCP-Chat-11.7.exe`，**放在哪个目录都行**，双击即可（自包含，不需要装 .NET，也不需要 Windows App Runtime）
+1. 下载 `TCP-Chat-12.0.0-setup.exe`（安装版）或 `TCP-Chat-12.0.0-portable.exe`（免安装），双击即可
    > ⚠️ **文件名里不要有空格或括号**（浏览器下载常加 " (1)"）：Windows App SDK 在含空格的路径下定位不到程序自己的界面资源，会启动失败；遇到这种名字程序会弹框提示改名。
 2. 首次启动会让你填昵称（顶栏「改昵称」随时可改）
 3. 默认连到 `https://dev.zhaohans.cn`，消息目录 `nw集训/学生资料临存/tcp_chat`（**消息文件就放在这一层**，目录要事先存在）
@@ -20,6 +21,39 @@
 > - 设置与崩溃日志都在 **`%LOCALAPPDATA%\TCPChat\`**，exe 目录里不会生成任何文件；附件缓存在同目录的 `cache\` 下
 > - 从 10.6 及更早升级：老的 `%LOCALAPPDATA%\TCPChat10\` 会**自动搬过来**（设置 + 附件缓存），老目录清掉
 > - 从 10.2~10.5 升级：exe 旁边那份老 `settings.json` 会自动搬进系统目录并删掉
+> - **设置文件与 C# 版共用**（同一个 `%LOCALAPPDATA%\TCPChat\settings.json`），两个客户端可以换着用
+
+## 两个客户端
+
+| | 12.0（Electron） | 11.7（WinUI 3） |
+|---|---|---|
+| 目录 | `TCPChat-Electron/` | `TCPChat10/` |
+| 运行时 | Electron 44 / Chromium 152 | Windows App SDK |
+| 液态玻璃 | **C++ 原生插件**（DXGI Desktop Duplication + D3D11 + DirectComposition） | WinUI 合成层（托管） |
+| 通信协议 | 与 11.7 **完全一致** | — |
+
+协议一致是硬性要求：两个版本的消息文件可以互相读写，有 **32 项互通性检查**专门盯这件事（见[测试](#测试)）。
+
+## 12.0 更新
+
+**在 Electron 上重写，液态玻璃改成 C++ 原生实现。**
+
+- **每个消息气泡一块独立的玻璃**：窗口一块面板，每个气泡一块，全部从**同一份桌面镜像**渲染 —— N 块面板，一次抓屏。日期分割线（胶囊芯片）也纳入玻璃，面板圆角按形状匹配
+- **消息气泡有模糊、色散和边缘折射**，与窗口本体同一套参数
+- **主题移植了 DSH Desktop 的 `--dsw-*` 设计令牌**；玻璃面是原生层之上的半透明色调，配合亮度带自适应对比度
+- **背景模糊可调**（设置 → 液态玻璃 → 背景模糊）。它不是装饰：模糊是让背后窗口不变成"第二层界面"的机制，拖到 0 背景完全清晰，背后窗口里的文字会以全对比度透出来
+
+编译和时序上有四个坑，都踩过并修好了，细节见 `TCPChat-Electron/README.md`：
+
+1. **原生插件必须针对 Electron 的 headers 构建，不能用 Node 的** —— 用 Node 的编出来能加载能跑，但 N-API 返回值是坏的：面板 id 变成非规格化数（`6.2e-317`），`Int32Value()` 取出来是 0，于是所有按 id 的调用静默失效
+2. **镜像纹理格式钉死 BGRA8** —— duplication 会话的第一帧可能是 FP16，之前格式跟着帧走，之后每一帧 BGRA8 往 FP16 镜像里拷都被 D3D **静默丢弃**，面板永远全黑
+3. **显示亲和性必须在窗口 `show` 之后重新施加** —— 创建期间施加，`GetWindowDisplayAffinity` 回读是 `all`，但实际不生效（回读返回的是"请求值"）。表现为 app 把自己的 UI 拍进背景，整个窗口重影
+4. **`SetWindowPos` 的重断言和重绘时序** —— 见下
+
+对上游插件的两处功能性修改（**都只在多面板时才暴露**，单面板看不出来）：
+
+- `AnchorBelow` 原本每 500ms 无条件重断言 z-order，逼 DWM 重新合成每个面板 —— 屏幕上没有任何东西在动，却持续闪烁
+- `SetBounds` 先搬窗口、把重绘留给下一 tick，中间隔着一次 `AcquireFrame`（最坏 8ms）。结果面板站在新位置、显示旧位置的内容 —— 大幅滚动时闪一帧别的消息的玻璃内容
 
 ## 它是怎么工作的
 
@@ -143,48 +177,69 @@
 ## 目录结构
 
 ```
-TCPChat10/
-  App.xaml(.cs)            应用入口、主题资源、崩溃日志
-  Assets/
-    app.ico                程序图标(多尺寸, exe/窗口/任务栏)
-    app-icon.png           顶栏小图标
-  Models/ChatMessage.cs    消息数据模型(JSON 结构, 含加密字段 enc)
+TCPChat-Electron/            12.0：Electron 客户端
+  electron-builder.yml       打包配置（nsis + portable）
+  scripts/
+    build-native.cjs         针对 Electron 重建原生玻璃插件
+    build-renderer.mjs       渲染层打包（esbuild；target 跟随 Electron 的 Chromium）
+    run-electron.cjs         净化环境后启动 Electron（见下）
+    glass-check.js           原生玻璃自检（npm run test:glass）
+    native-probe.js          最小复现：单面板 + 持续重绘的桌面驱动
+    wda-dda-test.js          对照实验：WDA 到底挡不挡得住 DDA
+  src/
+    main/
+      index.js               主进程：窗口、IPC、协议编排
+      glass.js               原生玻璃面板生命周期（窗口面板 + 每气泡面板池）
+      chat-service.js        发送、轮询同步、撤回
+      crypto.js              AES-256-GCM 信封 + PBKDF2 密钥派生（多密码）
+      message-cache.js       本地消息缓存
+      settings.js            设置读写（与 C# 版共用同一个文件）
+      selftest.js            界面自检
+    preload/index.js         contextBridge 暴露面
+    renderer/
+      index.html
+      js/                    main, messages, composer, markdown, search,
+                             attachments, recorder, settings-ui, overlays
+      styles/                tokens（DSH 令牌）, base, app, glass, markdown
+  tests/
+    interop.test.mjs         与 C# 版的互通性（32 项）
+    protocol.test.mjs        对真实 WebDAV 服务器的端到端（60 项）
+  vendor/electron-liquid-glass/   原生插件源码（本地编译）
+TCPChat10/                   11.7：WinUI 3 客户端
+  App.xaml(.cs)              应用入口、主题资源、崩溃日志
+  Models/ChatMessage.cs      消息数据模型(JSON 结构, 含加密字段 enc)
   Services/
-    WebDavClient.cs        PROPFIND/GET/PUT/DELETE 极简客户端(匿名)
-    ChatService.cs         发送、轮询同步、撤回、加解密
-    MessageCrypto.cs       AES-256-GCM 信封 + PBKDF2 密钥派生(多密码)
-    FontList.cs            EnumFontFamiliesEx 枚举系统字体(进程内缓存)
-    MicPermission.cs       麦克风权限检查 + 打开系统麦克风设置页
-    UiFont.cs              把选定字体刷到所有界面与弹出层
-    UiZoom.cs              界面缩放(Ctrl +/-/0)
-    AppIcon.cs             程序图标(从嵌入资源解出来给窗口/顶栏)
-    MessageNotifier.cs     系统通知 + 任务栏闪烁
-    MessageCache.cs        本地消息缓存(11.5, 启动直接显示 + 撤回清理)
-    AppSettings.cs         设置读写(%LOCALAPPDATA%\TCPChat)与老目录迁移
-  Glass/
-    GlassParams.cs         质量 0~100 -> 效果参数(纯数据, 可离线测)
-    GlassWallpaper.cs      背景图: 系统桌面壁纸 / 程序生成渐变
-    LiquidGlassRenderer.cs 效果链: 模糊->湍流->遮罩->位移->叠色->饱和对比
-    GlassHost.cs           整窗画布 + 玻璃面注册/位置计算/重画时机
-  Rendering/
-    MarkdownModel.cs       markdown 中间模型(纯数据, 可离线测)
-    MarkdownParser.cs      Markdig 解析 -> 中间模型(CommonMark + GFM + 洛谷扩展)
-    MarkdownPreprocess.cs  进 Markdig 前的预处理(LaTeX 定界符、::cute-table 标记行)
-    MarkdownView.cs        中间模型 -> WinUI 元素(表格/代码块/提示块/图片)
-    MarkdownStyles.cs      按气泡底色给出 markdown 配色(含缩放基准字号)
-    MathModel.cs           公式中间模型(纯数据)
-    MathParser.cs          LaTeX 子集 -> 公式树(可离线测)
-    MathLayout.cs          公式排版几何: 分数/根号/上下标/环境(可离线测)
-    MathView.cs            排好的公式 -> WinUI(分数线/根号/方框都是画的)
-    MathPlain.cs           公式的纯文本形式(通知/引用用)
-  ViewModels/MessageVm.cs  消息的显示模型(气泡/加密锁标记/配色/markdown 正文)
-  Views/
-    MainWindow.xaml(.cs)   主窗口 + 自测钩子
-    SettingsDialog.xaml(.cs) 设置对话框(字体下拉、密码列表、玻璃开关)
-TCPChat10.Tests/           控制台回归测试(直接引用上面的源码, 可离线跑)
+    WebDavClient.cs          PROPFIND/GET/PUT/DELETE 极简客户端(匿名)
+    ChatService.cs           发送、轮询同步、撤回、加解密
+    MessageCrypto.cs         AES-256-GCM 信封 + PBKDF2 密钥派生(多密码)
+    MessageCache.cs          本地消息缓存(11.5, 启动直接显示 + 撤回清理)
+    AppSettings.cs           设置读写(%LOCALAPPDATA%\TCPChat)与老目录迁移
+  Glass/                     WinUI 侧的玻璃效果链（模糊/湍流/遮罩/位移/叠色）
+  Rendering/                 markdown 与 LaTeX 的解析、排版、渲染
+  Views/                     MainWindow, SettingsDialog
+TCPChat10.Tests/             控制台回归测试(直接引用上面的源码, 可离线跑)
 ```
 
 ## 编译与发布
+
+### 12.0（Electron）
+
+需要 **Node.js 20+**，以及编译原生插件用的 **MSVC + ClangCL + Windows SDK** 和 **Python 3**（详见 `TCPChat-Electron/README.md`）。
+
+```powershell
+cd TCPChat-Electron
+npm install
+npm start              # 构建渲染层并启动
+npm test               # 互通性(32) + 协议(60)
+npm run selftest       # 界面自检
+npm run test:glass     # 原生玻璃自检
+npm run build:native   # 针对当前 Electron 重建原生插件
+npm run dist           # 打包 -> release\TCP-Chat-<版本>-setup.exe / -portable.exe
+```
+
+几个不好踩的坑都在 `TCPChat-Electron/README.md` 里：原生插件必须带 `--target=<electron 版本> --dist-url=https://electronjs.org/headers` 构建；`electron-builder.yml` 的 `npmRebuild: false` 不能打开（它会拿 Node 的 headers 重编一遍，正好编出坏的那个）；打包要带 `NODE_OPTIONS=--use-system-ca`。
+
+### 11.7（WinUI 3）
 
 需要 **.NET 10 SDK** + **Windows 11 SDK 10.0.26100**（或 VS 2022 Build Tools 带 UWP/WinUI 工作负载）。
 
@@ -246,7 +301,7 @@ dotnet run -c Release -- mkdir  "nw集训/学生资料临存/_tcpchat_selftest" 
 dotnet run -c Release -- ls     "nw集训/学生资料临存"                      # 看看服务器上现在有什么
 ```
 
-### 界面自动化
+### 界面自动化（11.7 / WinUI）
 
 主窗口内置自测钩子，通过环境变量驱动，可以无人值守地把界面截图出来核对：
 
@@ -271,6 +326,16 @@ $env:TCPCHAT10_AUTOTEST      = "theme:1;zoom:1.5;mdpreview:C:\md.md;waitmsg:1;ms
 - **消息目录是公开的**：知道 WebDAV 地址和目录名就能读到消息文件（加密后读到的是密文）。**不要在共享目录里发隐私内容**，除非开了加密
 - **程序不会自动新建目录**：目录填错或还没建会直接提示，消息不会写到别的地方去
 - **单文件 exe 首次启动稍慢**：会把自己解压到 `%TEMP%\.net\TCP-Chat-11.7\`（约 240 MB，之后复用；换新版本会再解一份），程序每次启动会自动清理自己以前留下的旧解压目录
+
+### 仅 12.0（Electron）
+
+- **程序窗口拍不进截图和录屏**。这是显示亲和性排除（`WDA_EXCLUDEFROMCAPTURE`）的语义，也是防止玻璃把自身拍进背景的前提。更精细的做法是 `SetWindowCaptureAffinity`（只排除 DXGI 抓屏、保留截图能力），但本机 user32.dll **没有导出这个函数**（已核对全部 1048 个导出），所以只能在「自捕获重影」和「能截图」之间二选一
+- **窗口圆角处会多出一块直角**，未解决
+- **背景模糊默认 0**（关）。它不是装饰：模糊是让背后窗口不变成「第二层界面」的机制，拖到 0 背后窗口的文字会以全对比度透出来
+- **每个气泡一块独立窗口**，滚动时由主进程逐帧跟随。长历史滚动时的帧率没有实测过；卡的话把窗口调小或关掉玻璃
+
+### 两版共有
+
 - **消息不是实时推送**：靠轮询，默认 3 秒（1~120 秒可调，**改完立刻生效**），对方最多慢一个周期看到；服务器偶发把某个请求挂住几十秒时，客户端会自动跳过并在下一轮重试
 - **历史只按文件名时间戳排**：客户端时钟不准会导致消息顺序错乱
 - **附件与语音**：整份文件先读进内存再上传（几十 MB 没问题，超大文件请直接用资源管理器拷）；设了密码时附件也是密文上传
@@ -285,6 +350,7 @@ $env:TCPCHAT10_AUTOTEST      = "theme:1;zoom:1.5;mdpreview:C:\md.md;waitmsg:1;ms
 
 | 版本 | 主要变化 |
 |---|---|
+| **12.0** | **Electron 重写**：C++ 原生液态玻璃（每气泡一块面板）、DSH 设计令牌、背景模糊可调。与 11.7 协议完全互通 |
 | **11.7** | 解决液态玻璃模式下滚动跟不上的问题（Composition 渲染帧同步、ListHost 边界裁切、镀铬置顶、遮罩缓存扩容） |
 | 11.6 | 消息搜索（Ctrl+F、Enter/Shift+Enter 前后跳转、Esc 退出、高亮匹配） |
 | 11.5.2 | 修「别人的消息没有玻璃效果」（回收的气泡重新注册）；别人的气泡色调更透，壁纸看得出层次 |

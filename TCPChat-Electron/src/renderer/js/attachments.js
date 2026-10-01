@@ -137,6 +137,10 @@ export function renderAttachment(attach, remoteName, openMenu) {
         onclick: () => $('.lightbox') ?? openLightbox(url, name),
         oncontextmenu: (event) => {
           event.preventDefault()
+          // The bubble underneath listens for contextmenu too. Without stopping
+          // propagation this menu opens and is instantly replaced by the message
+          // menu, so "打开附件" is never reachable from the card.
+          event.stopPropagation()
           openMenu(attachMenuItems(remoteName, attach), event)
         },
         onerror: () => {
@@ -162,6 +166,10 @@ export function renderAttachment(attach, remoteName, openMenu) {
         playsinline: true,
         oncontextmenu: (event) => {
           event.preventDefault()
+          // The bubble underneath listens for contextmenu too. Without stopping
+          // propagation this menu opens and is instantly replaced by the message
+          // menu, so "打开附件" is never reachable from the card.
+          event.stopPropagation()
           openMenu(attachMenuItems(remoteName, attach), event)
         },
       })
@@ -208,6 +216,9 @@ export function renderAttachment(attach, remoteName, openMenu) {
           preload: 'metadata',
           oncontextmenu: (event) => {
             event.preventDefault()
+          // The bubble underneath listens for contextmenu too: without this the
+          // attachment menu opens and is instantly replaced by the message menu.
+          event.stopPropagation()
             openMenu(attachMenuItems(remoteName, attach), event)
           },
         }),
@@ -225,6 +236,9 @@ export function renderAttachment(attach, remoteName, openMenu) {
       onclick: () => openAttachment(remoteName),
       oncontextmenu: (event) => {
         event.preventDefault()
+          // The bubble underneath listens for contextmenu too: without this the
+          // attachment menu opens and is instantly replaced by the message menu.
+          event.stopPropagation()
         openMenu(attachMenuItems(remoteName, attach), event)
       },
     },
@@ -292,6 +306,9 @@ function renderVoice(attach, remoteName, openMenu) {
       class: 'voice',
       oncontextmenu: (event) => {
         event.preventDefault()
+          // The bubble underneath listens for contextmenu too: without this the
+          // attachment menu opens and is instantly replaced by the message menu.
+          event.stopPropagation()
         openMenu(attachMenuItems(remoteName, attach), event)
       },
     },

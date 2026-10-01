@@ -378,21 +378,52 @@ function nickname() {
   return state.settings?.nickname ?? ''
 }
 
+/*
+ * Identity of everything that building a bubble element depends on.
+ *
+ * upsertMessage tears the element down and rebuilds it, which is correct when
+ * the message genuinely changed (decryption finished, send status moved) and
+ * wrong when the *same* message arrives twice. It does arrive twice on every
+ * send: the main process both emits `message-added` and returns the message, and
+ * the renderer handles both. Without this the element is appended, removed and
+ * appended again — the message visibly appears, vanishes, and reappears.
+ */
+function messageRenderKey(msg) {
+  return [
+    msg.remoteName ?? '',
+    msg.text ?? '',
+    msg.status ?? '',
+    msg.decryptFailed ? 1 : 0,
+    msg.quote?.text ?? '',
+    msg.attach?.name ?? '',
+    msg.attach?.size ?? '',
+    msg.time ?? '',
+  ].join('\u0000')
+}
+
 /** Insert a message, keeping the list ordered and the view sensibly scrolled. */
 function upsertMessage(msg, { scroll = true } = {}) {
   syncBubblePanels()
   const index = state.messages.findIndex((m) => m.remoteName === msg.remoteName)
   const existing = index >= 0
+  const key = messageRenderKey(msg)
+  const unchanged = existing && state.messages[index].renderKey === key
+
   if (existing) {
-    state.messages[index] = { ...state.messages[index], ...msg }
+    state.messages[index] = { ...state.messages[index], ...msg, renderKey: key }
   } else {
+    msg.renderKey = key
     state.messages.push(msg)
     state.messages.sort((a, b) => (a.remoteName < b.remoteName ? -1 : a.remoteName > b.remoteName ? 1 : 0))
   }
 
   const stick = isAtBottom()
-  if (existing) removeMessage(msg.remoteName)
-  appendMessage(msg, nickname())
+  // A second delivery of an identical message must not touch the DOM: removing
+  // and re-appending is what the user sees as a blink.
+  if (!unchanged) {
+    if (existing) removeMessage(msg.remoteName)
+    appendMessage(msg, nickname())
+  }
   if (scroll && (stick || msg.isSelf || (nickname() && msg.from === nickname()))) {
     scrollToBottom(!existing)
   }

@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Build output
+release/
+out/
+selftest-output/
+
+# Renderer bundle (regenerate with `npm run build:renderer`)
+src/renderer/dist/
+
+# The vendored addon's build tree (regenerate with `npm run build:native`).
+#
+# MSVC leaves ~20 MB of intermediates here — .iobj, .ipdb, .tlog, .vcxproj — to
+# produce a 267 KB binary.
+vendor/electron-liquid-glass/build/
+
+# Local tool caches
+.cache/
+
+# .NET harness build output (regenerate with
+# `dotnet build -c Release tests/interop-csharp`)
+tests/interop-csharp/bin/
+tests/interop-csharp/obj/
+
+# Editor / OS noise
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+*.log

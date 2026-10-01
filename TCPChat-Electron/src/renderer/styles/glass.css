@@ -1,0 +1,264 @@
+/*
+ * Liquid-glass mode.
+ *
+
+ * The native panel pinned below the window supplies refraction, blur, chromatic
+ * dispersion and saturation. This file is the *surface* layer on top of it:
+ * translucent tints, hairline light borders, an inset top highlight, and text
+ * that stays legible over whatever the desktop happens to be.
+ *
+ * `data-luma` comes from the addon's luminance bands — the mean colour of the
+ * blurred backdrop under the message area. A bright desktop pushes the tints
+ * opaque and keeps text dark; a dark desktop does the opposite. That is the same
+ * adaptive-contrast behaviour the C# build implements with its luma bands.
+ */
+
+body[data-glass='on'] {
+  /* The native panel is the background: draw nothing opaque. */
+  --surface-body: transparent;
+  --surface-chrome: rgb(255 255 255 / 26%);
+  --surface-raised: rgb(255 255 255 / 40%);
+  --hairline: rgb(255 255 255 / 34%);
+  --hairline-strong: rgb(255 255 255 / 44%);
+
+  /*
+   * A bubble is a thicker pane of the *same* glass, not a card sitting on top of
+   * it. That means a low fill, so the panel's blurred backdrop reads through,
+   * and the shape carried by the rim instead: a bright hairline edge plus an
+   * inset catch-light along the top, the way a real glass edge behaves.
+   *
+   * Fill opacity is the number to reach for when tuning this. Raising it makes
+   * bubbles more legible and less glassy; lowering it does the reverse.
+   */
+  --bubble-other-bg: rgb(255 255 255 / 14%);
+  --bubble-other-border: rgb(255 255 255 / 58%);
+  --bubble-quote-bg: rgb(255 255 255 / 18%);
+  --shadow-bubble: inset 0 1px 0 rgb(255 255 255 / 72%), inset 0 0 0 1px rgb(255 255 255 / 10%), 0 1px 2px rgb(0 0 0 / 8%);
+}
+
+/* The native panel *is* the surface, so the DOM must not paint over it.
+   `#app` carries DSH's opaque page background in base.css, and leaving that in
+   place hides the glass behind a flat sheet — which is exactly what a white
+   window in glass mode means. This is the rule that consumes `--surface-body`. */
+body[data-glass='on'] #app {
+  background: var(--surface-body);
+  border-color: transparent;
+  box-shadow: inset 0 0 0 1px var(--hairline);
+}
+
+body[data-glass='on'][data-ds-dark-theme] {
+  --surface-chrome: rgb(24 24 26 / 42%);
+  --surface-raised: rgb(36 36 39 / 56%);
+  --hairline: rgb(255 255 255 / 12%);
+  --hairline-strong: rgb(255 255 255 / 18%);
+
+  --bubble-other-bg: rgb(20 20 24 / 16%);
+  --bubble-other-border: rgb(255 255 255 / 16%);
+  --bubble-quote-bg: rgb(255 255 255 / 9%);
+  --shadow-bubble: inset 0 1px 0 rgb(255 255 255 / 18%), inset 0 0 0 1px rgb(255 255 255 / 5%), 0 1px 3px rgb(0 0 0 / 24%);
+}
+
+/* Frosted chrome: a touch of blur behind the fixed bars keeps text crisp over
+   busy wallpapers without competing with the native layer. */
+body[data-glass='on'] .titlebar,
+body[data-glass='on'] .composer,
+body[data-glass='on'] .statusbar {
+  backdrop-filter: blur(6px) saturate(1.15);
+}
+
+/*
+ * The message list is where the refraction and chromatic dispersion should be
+ * most visible, so it stays fully transparent.
+ *
+ * Keeping the backdrop from reading as a second UI is the *blur's* job — see
+ * the 背景模糊 setting. A scrim was tried here and cannot substitute for it:
+ * no amount of tint hides text that is still pixel-sharp underneath.
+ */
+body[data-glass='on'] .msg-list {
+  background: transparent;
+}
+
+/* ------------------------------------------------------------------ */
+/* Bubble optics: dispersion and a lensed edge                         */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The bubbles cannot have their own blur: `backdrop-filter` samples Chromium's
+ * own compositing surface, and the panel that supplies the real backdrop is a
+ * separate OS window underneath ours, so a filter here would only ever see
+ * transparency. (The same reason the `backdrop-filter` on the fixed bars does
+ * nothing.) The blur the user sees through a bubble is the window panel's.
+ *
+ * What CSS *can* do honestly is the two remaining optical cues, and they are
+ * cheap because they are pure edge effects:
+ *
+ *   dispersion   A real glass edge separates wavelengths, so the rim carries a
+ *                warm fringe on one side and a cool one on the other. Two
+ *                single-pixel inset shadows in opposite hues reproduce exactly
+ *                that read, and they sit on the edge where the eye looks for it.
+ *
+ *   edge bend    A lens thickens toward its boundary, which shows up as light
+ *                gathering along the inside of the rim and falling off toward
+ *                the centre. An inset glow plus a soft inner shade gives that
+ *                gradient without touching the middle of the bubble.
+ *
+ * Both scale with the luma bands below, so a dark backdrop gets a stronger
+ * catch-light instead of a washed-out one.
+ */
+body[data-glass='on'] .bubble {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 70%),
+    inset 0 0 14px rgb(255 255 255 / 9%),
+    0 1px 2px rgb(0 0 0 / 8%);
+}
+
+body[data-glass='on'][data-ds-dark-theme] .bubble {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 16%),
+    inset 0 0 16px rgb(255 255 255 / 5%),
+    0 1px 3px rgb(0 0 0 / 24%);
+}
+
+/* A bright backdrop needs a darker rim to keep the edge readable at all. */
+body[data-glass='on'][data-luma='bright'] .bubble {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 92%),
+    inset 0 0 14px rgb(255 255 255 / 26%),
+    0 1px 2px rgb(0 0 0 / 12%);
+}
+
+/* A dark backdrop gets a stronger catch-light so the glass still reads. */
+body[data-glass='on'][data-luma='dark'] .bubble {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 24%),
+    inset 0 0 18px rgb(255 255 255 / 7%),
+    0 1px 4px rgb(0 0 0 / 30%);
+}
+
+/* ------------------------------------------------------------------ */
+/* Adaptive contrast from the native luminance bands                  */
+/* ------------------------------------------------------------------ */
+
+/* Bright desktop underneath: lift tint opacity and pin text dark. */
+body[data-glass='on'][data-luma='bright'] {
+  --bubble-other-bg: rgb(255 255 255 / 30%);
+  --bubble-other-border: rgb(255 255 255 / 78%);
+  --surface-chrome: rgb(255 255 255 / 42%);
+  --surface-raised: rgb(255 255 255 / 56%);
+  --hairline: rgb(0 0 0 / 12%);
+  --hairline-strong: rgb(0 0 0 / 18%);
+  --bubble-quote-bg: rgb(255 255 255 / 32%);
+}
+
+body[data-glass='on'][data-luma='bright'] .titlebar,
+body[data-glass='on'][data-luma='bright'] .statusbar,
+body[data-glass='on'][data-luma='bright'] .msg-head,
+body[data-glass='on'][data-luma='bright'] .msg-head .who {
+  color: var(--dsw-static-neutral-bluish-1000, #0f1115);
+}
+
+/* Dark desktop underneath: deepen the tints so light text keeps its contrast. */
+body[data-glass='on'][data-luma='dark'] {
+  --bubble-other-bg: rgb(12 12 16 / 28%);
+  --bubble-other-border: rgb(255 255 255 / 20%);
+  --surface-chrome: rgb(16 16 18 / 52%);
+  --surface-raised: rgb(28 28 31 / 64%);
+  --hairline: rgb(255 255 255 / 14%);
+  --hairline-strong: rgb(255 255 255 / 20%);
+  --bubble-quote-bg: rgb(255 255 255 / 10%);
+}
+
+body[data-glass='on'][data-luma='dark'] .titlebar,
+body[data-glass='on'][data-luma='dark'] .statusbar,
+body[data-glass='on'][data-luma='dark'] .msg-head,
+body[data-glass='on'][data-luma='dark'] .msg-head .who,
+body[data-glass='on'][data-luma='dark'] .titlebar .status {
+  color: var(--dsw-static-neutral-bluish-50, #f9fafb);
+}
+
+/* Slightly stronger surface treatment for the search field and composer. */
+body[data-glass='on'] .searchbar,
+body[data-glass='on'] .composer-input {
+  background: rgb(255 255 255 / 40%);
+  border-color: var(--hairline-strong);
+}
+
+body[data-glass='on'][data-ds-dark-theme] .searchbar,
+body[data-glass='on'][data-ds-dark-theme] .composer-input {
+  background: rgb(20 20 22 / 46%);
+}
+
+body[data-glass='on'][data-luma='bright'] .searchbar,
+body[data-glass='on'][data-luma='bright'] .composer-input {
+  background: rgb(255 255 255 / 62%);
+}
+
+body[data-glass='on'][data-luma='dark'] .searchbar,
+body[data-glass='on'][data-luma='dark'] .composer-input {
+  background: rgb(16 16 18 / 58%);
+}
+
+/* Modals and menus sit above the glass: keep them readable but translucent. */
+body[data-glass='on'] .modal {
+  background: color-mix(in srgb, var(--dsw-alias-bg-layer-2) 88%, transparent);
+  backdrop-filter: blur(24px) saturate(1.3);
+}
+
+body[data-glass='on'] .menu {
+  background: color-mix(in srgb, var(--dsw-alias-bg-layer-3) 88%, transparent);
+  backdrop-filter: blur(24px) saturate(1.3);
+}
+
+/* The plain theme draws an opaque body; in glass mode it must stay clear. */
+body[data-glass='on'] {
+  background: transparent;
+}
+
+/* ------------------------------------------------------------------ */
+/* Adaptive text colour for the message surface                       */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The tint set is chosen from the *backdrop* brightness, which is independent of
+ * the UI theme: a dark desktop under the light theme would otherwise leave dark
+ * text on a dark translucent bubble. These rules move the text with the tint.
+ *
+ * Own messages are excluded — their bubble keeps the accent fill and its own
+ * white/ink pairing.
+ */
+body[data-glass='on'][data-luma='dark'] .msg:not(.self) .bubble {
+  color: var(--dsw-static-neutral-bluish-50, #f9fafb);
+}
+
+body[data-glass='on'][data-luma='dark'] .msg:not(.self) .bubble .quote {
+  color: var(--dsw-static-neutral-bluish-300, #cfd3d6);
+}
+
+body[data-glass='on'][data-luma='dark'] .msg:not(.self) .md code {
+  background: rgb(255 255 255 / 14%);
+}
+
+body[data-glass='on'][data-luma='dark'] .msg:not(.self) .md pre,
+body[data-glass='on'][data-luma='dark'] .msg:not(.self) .code-block,
+body[data-glass='on'][data-luma='dark'] .msg:not(.self) .md pre,
+body[data-glass='on'][data-luma='dark'] .msg:not(.self) .code-block {
+  background: rgb(0 0 0 / 34%);
+  border-color: rgb(255 255 255 / 12%);
+}
+
+body[data-glass='on'][data-luma='dark'] .msg:not(.self) .md blockquote {
+  color: var(--dsw-static-neutral-bluish-200, #dee1e5);
+  background: rgb(255 255 255 / 8%);
+}
+
+body[data-glass='on'][data-luma='bright'] .msg:not(.self) .bubble {
+  color: var(--dsw-static-neutral-bluish-1000, #0f1115);
+}
+
+body[data-glass='on'][data-luma='bright'] .msg:not(.self) .bubble .quote {
+  color: var(--dsw-static-neutral-bluish-700, #61666b);
+}
+
+body[data-glass='on'][data-luma='bright'] .msg:not(.self) .md code {
+  background: rgb(0 0 0 / 7%);
+}

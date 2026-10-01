@@ -1,0 +1,75 @@
+# electron-builder configuration.
+#
+# The only packaging subtlety is the liquid-glass addon: it is a native N-API
+# module (.node), which cannot be loaded from inside an asar archive, so it must
+# be unpacked. Everything else ships inside the archive.
+
+appId: cn.zhaohans.tcpchat
+productName: TCP Chat
+copyright: Copyright © Cyan3175
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - package.json
+  - src/**/*
+  - '!src/**/*.map'
+  - '!**/node_modules/**/{test,__tests__,tests,example,examples,doc,docs}/**'
+  - '!**/node_modules/**/*.{md,map,ts,tsx}'
+  - '!node_modules/highlight.js/**/*.min.js.map'
+  # The vendored addon is a C++ source tree. Only its JS wrapper and the compiled
+  # binary belong in a release; the rest is MSVC output (.iobj 2.5 MB, .ipdb,
+  # .tlog, .vcxproj, .lib) plus headers — about 4 MB of build junk. The negation
+  # has to come before the include that re-adds the binary.
+  - '!node_modules/@hicccc77/electron-liquid-glass/{src,scripts,build}/**'
+  - 'node_modules/@hicccc77/electron-liquid-glass/build/Release/*.node'
+
+extraMetadata:
+  main: src/main/index.js
+
+# The native addon must live outside the asar to be dlopen-able.
+#
+# `**/*.node` is the pattern that reliably matches; a scoped-package glob was
+# silently matching nothing here, leaving the addon inside the archive where
+# require() cannot load it.
+# The native addon is built explicitly by `npm run build:native`, which targets
+# Electron's headers. electron-builder's own rebuild would re-run node-gyp
+# against Node and without a Python it can find, and the result would be the
+# broken N-API binary described in scripts/build-native.mjs.
+npmRebuild: false
+
+asarUnpack:
+  # Only the addon itself. A glob over build/Release/* also drags in the MSVC
+  # intermediates (.iobj 2.5 MB, .ipdb, .tlog, .vcxproj, .lib) — about 4 MB of
+  # build junk that has no business in a release.
+  - '**/*.node'
+
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: TCP Chat
+  artifactName: TCP-Chat-${version}-setup.${ext}
+  # The C# build's settings live in %LOCALAPPDATA%\TCPChat and are shared with
+  # this app, so the uninstaller must not remove the user's profile.
+  deleteAppDataOnUninstall: false
+
+portable:
+  artifactName: TCP-Chat-${version}-portable.${ext}
+
+# No auto-update channel is configured; publishing is manual.
+publish: null

@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Wire-compatibility harness.
+
+    Compiles the *unmodified* crypto and model sources from the C# build
+    (MessageCrypto.cs, ChatMessage.cs — copied verbatim from TCPChat10/) into a
+    small console app, so the Electron implementation can be checked against the
+    real thing rather than against a re-reading of the algorithm.
+
+    Deliberately free of Windows/WinUI dependencies so it builds anywhere the
+    .NET SDK is present.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>interop</AssemblyName>
+    <RootNamespace>TCPChat10</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+    <NoWarn>$(NoWarn);CS8618</NoWarn>
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,52 @@
+{
+  "name": "tcpchat-electron",
+  "productName": "TCP Chat",
+  "version": "12.0.0",
+  "description": "TCP Chat rewritten on Electron — WebDAV message board chat with native liquid-glass chrome, plus a DSH-Desktop-styled plain theme",
+  "license": "MIT",
+  "author": "Cyan3175",
+  "main": "src/main/index.js",
+  "private": true,
+  "scripts": {
+    "build:renderer": "node scripts/build-renderer.mjs",
+    "start": "npm run build:renderer && electron .",
+    "dev": "npm run build:renderer && electron . --dev",
+    "watch": "node scripts/build-renderer.mjs --watch",
+    "test": "npm run test:interop && npm run test:protocol",
+    "test:interop": "node tests/interop.test.mjs",
+    "test:protocol": "node tests/protocol.test.mjs",
+    "test:live": "node scripts/live-check.cjs",
+    "selftest": "npm run build:renderer && node scripts/run-electron.cjs . --selftest",
+    "tokens": "node scripts/extract-dsh-tokens.mjs",
+    "pack": "npm run build:renderer && npm run build:native && set NODE_OPTIONS=--use-system-ca&& electron-builder --dir",
+    "dist": "npm run build:renderer && npm run build:native && set NODE_OPTIONS=--use-system-ca&& electron-builder",
+    "test:glass": "node scripts/run-electron.cjs scripts/glass-check.js",
+    "build:native": "node scripts/build-native.cjs"
+  },
+  "dependencies": {
+    "highlight.js": "^11.11.1",
+    "katex": "^0.16.22",
+    "markdown-it": "^14.1.0",
+    "markdown-it-container": "^4.0.0",
+    "markdown-it-deflist": "^3.0.0",
+    "markdown-it-emoji": "^3.0.0",
+    "markdown-it-footnote": "^4.0.0",
+    "markdown-it-ins": "^4.0.0",
+    "markdown-it-mark": "^4.0.0",
+    "markdown-it-sub": "^2.0.0",
+    "markdown-it-sup": "^2.0.0",
+    "markdown-it-task-lists": "^2.1.1",
+    "@hicccc77/electron-liquid-glass": "file:vendor/electron-liquid-glass"
+  },
+  "devDependencies": {
+    "electron": "^44.5.1",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.24.2"
+  },
+  "allowScripts": {
+    "esbuild@0.24.2": true,
+    "file:vendor/electron-liquid-glass": true,
+    "electron@44.5.1": true,
+    "electron-winstaller@5.4.0": true
+  }
+}

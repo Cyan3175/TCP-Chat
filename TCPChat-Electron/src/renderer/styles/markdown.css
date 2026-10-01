@@ -1,0 +1,579 @@
+/*
+ * Markdown presentation, including the Luogu-style extensions the C# build
+ * supports: ::: containers, code line numbers and line highlighting, merged
+ * table cells and cute-table. Code colouring is expressed with the DSH markdown
+ * tokens so both themes stay consistent with the rest of the UI.
+ */
+
+.md {
+  font-size: var(--dsh-content-font-size, 14px);
+  line-height: calc(1.62em + var(--dsh-content-font-delta, 0px) * 0.15);
+}
+
+.md > *:first-child {
+  margin-top: 0;
+}
+
+.md > *:last-child {
+  margin-bottom: 0;
+}
+
+.md p {
+  margin: 0.5em 0;
+  white-space: pre-wrap;
+}
+
+.md h1,
+.md h2,
+.md h3,
+.md h4,
+.md h5,
+.md h6 {
+  margin: 0.9em 0 0.45em;
+  line-height: 1.3;
+  font-weight: 600;
+}
+
+.md h1 {
+  font-size: 1.5em;
+  padding-bottom: 0.25em;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+}
+
+.md h2 {
+  font-size: 1.3em;
+  padding-bottom: 0.2em;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+}
+
+.md h3 {
+  font-size: 1.15em;
+}
+.md h4 {
+  font-size: 1.05em;
+}
+.md h5,
+.md h6 {
+  font-size: 1em;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.md ul,
+.md ol {
+  margin: 0.5em 0;
+  padding-left: 1.6em;
+}
+
+.md li {
+  margin: 0.22em 0;
+}
+
+.md li > ul,
+.md li > ol {
+  margin: 0.22em 0;
+}
+
+.md blockquote {
+  margin: 0.6em 0;
+  padding: 0.35em 0.9em;
+  border-left: 3px solid var(--dsw-alias-border-l4);
+  background: var(--dsw-alias-markdown-citation);
+  border-radius: 0 var(--dsw-radius-xs) var(--dsw-radius-xs) 0;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.md hr {
+  margin: 1em 0;
+  border: 0;
+  border-top: 1px solid var(--dsw-alias-border-l2);
+}
+
+.md img {
+  max-width: 100%;
+  border-radius: var(--dsw-radius-sm);
+}
+
+.md a {
+  color: var(--dsw-alias-link);
+}
+
+.msg.self .md a {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.md code {
+  font-family: var(--ds-font-family-code);
+  font-size: 0.92em;
+  padding: 0.12em 0.35em;
+  border-radius: var(--dsw-radius-xs);
+  background: var(--dsw-alias-markdown-inline-code);
+}
+
+.md kbd {
+  font-family: var(--ds-font-family-code);
+  font-size: 0.88em;
+  padding: 0.12em 0.4em;
+  border-radius: var(--dsw-radius-xs);
+  border: 1px solid var(--dsw-alias-border-l3);
+  border-bottom-width: 2px;
+  background: var(--dsw-alias-bg-module-platform);
+}
+
+.md mark {
+  background: color-mix(in srgb, var(--dsw-static-amber-400, #f7ad31) 40%, transparent);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 0.15em;
+}
+
+.md del {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.md ins {
+  text-decoration: none;
+  border-bottom: 1px solid var(--dsw-alias-state-success-primary);
+}
+
+/* ------------------------------------------------------------------ */
+/* Code blocks                                                        */
+/* ------------------------------------------------------------------ */
+
+.md pre {
+  margin: 0.6em 0;
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-markdown-code-block);
+  border: 1px solid var(--dsw-alias-border-l1);
+  overflow: hidden;
+}
+
+.md pre > code {
+  display: block;
+  padding: 10px 12px;
+  overflow-x: auto;
+  background: transparent;
+  font-size: 0.9em;
+  line-height: 1.55;
+  white-space: pre;
+  tab-size: 4;
+}
+
+/* Language banner + optional line numbers (Luogu `line-numbers`). */
+.md .code-block {
+  margin: 0.6em 0;
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-markdown-code-block);
+  border: 1px solid var(--dsw-alias-border-l1);
+  overflow: hidden;
+}
+
+.md .code-block .banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
+  background: var(--dsw-alias-markdown-code-block-banner);
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  font-family: var(--ds-font-family-code);
+}
+
+.md .code-block .banner .copy {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.md .code-block .banner .copy:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.md .code-block pre {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.md .code-block .scroller {
+  display: flex;
+  overflow-x: auto;
+}
+
+.md .code-block .gutter {
+  flex: none;
+  padding: 10px 8px 10px 12px;
+  text-align: right;
+  font-family: var(--ds-font-family-code);
+  font-size: 0.9em;
+  line-height: 1.55;
+  color: var(--dsw-alias-label-caption);
+  user-select: none;
+  border-right: 1px solid var(--dsw-alias-border-l1);
+  background: color-mix(in srgb, var(--dsw-alias-markdown-code-block-banner) 60%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+
+.md .code-block .scroller > code {
+  padding: 10px 12px;
+  font-size: 0.9em;
+  line-height: 1.55;
+  font-family: var(--ds-font-family-code);
+  display: block;
+  min-width: min-content;
+  /* Each line is its own block, so the container must not preserve newlines. */
+  white-space: normal;
+}
+
+/* One block per source line; keeps numbering and highlighting perfectly aligned. */
+.md .code-block .ln {
+  display: block;
+  white-space: pre;
+}
+
+/* `lines=6-9` highlights. */
+.md .code-block .ln.hl {
+  margin: 0 -12px;
+  padding: 0 12px;
+  background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 16%, transparent);
+  box-shadow: inset 2px 0 0 var(--dsw-alias-state-warn-primary);
+}
+
+.md .code-block .gutter .ln.hl {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--dsw-alias-state-warn-primary);
+  font-weight: 600;
+}
+
+/* highlight.js tokens mapped onto the DSH palette. */
+.hljs-comment,
+.hljs-quote {
+  color: var(--dsw-alias-label-caption);
+  font-style: italic;
+}
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-section,
+.hljs-doctag,
+.hljs-name,
+.hljs-strong {
+  color: var(--dsw-static-purple-500, #8b5cf6);
+  font-weight: 600;
+}
+.hljs-string,
+.hljs-regexp,
+.hljs-addition,
+.hljs-attribute,
+.hljs-meta .hljs-string {
+  color: var(--dsw-static-green-600, #16a34a);
+}
+.hljs-number,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-link,
+.hljs-selector-attr,
+.hljs-selector-pseudo {
+  color: var(--dsw-static-amber-600, #dd8629);
+}
+.hljs-title,
+.hljs-title.function_,
+.hljs-built_in,
+.hljs-class .hljs-title {
+  color: var(--dsw-static-blue-600, #2563eb);
+}
+.hljs-type,
+.hljs-params,
+.hljs-selector-class,
+.hljs-selector-id {
+  color: var(--dsw-static-deepseek-600, #4176e6);
+}
+.hljs-attr,
+.hljs-property {
+  color: var(--dsw-static-cyan-600, #0891b2);
+}
+.hljs-tag {
+  color: var(--dsw-alias-label-secondary);
+}
+.hljs-deletion {
+  color: var(--dsw-alias-state-error-primary);
+}
+.hljs-emphasis {
+  font-style: italic;
+}
+
+/* ------------------------------------------------------------------ */
+/* Tables                                                             */
+/* ------------------------------------------------------------------ */
+
+.md .table-wrap {
+  margin: 0.6em 0;
+  overflow-x: auto;
+}
+
+.md table {
+  border-collapse: collapse;
+  font-size: 0.95em;
+  min-width: 40%;
+}
+
+.md th,
+.md td {
+  border: 1px solid var(--dsw-alias-border-l2);
+  padding: 5px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.md thead th {
+  background: var(--dsw-alias-bg-module-platform);
+  font-weight: 600;
+}
+
+.md tbody tr:nth-child(even) td {
+  background: color-mix(in srgb, var(--dsw-alias-bg-module-platform) 45%, transparent);
+}
+
+.md table.align-center th,
+.md table.align-center td {
+  text-align: center;
+}
+.md table.align-right th,
+.md table.align-right td {
+  text-align: right;
+}
+
+/* `::cute-table{tuack}` — the competitive-programming layout: centred, compact,
+   no zebra striping, header emphasised by weight rather than fill. */
+.md table.tuack {
+  margin-inline: auto;
+  font-size: 0.92em;
+}
+.md table.tuack th,
+.md table.tuack td {
+  text-align: center;
+  padding: 3px 12px;
+  border-color: var(--dsw-alias-border-l3);
+}
+.md table.tuack thead th {
+  background: transparent;
+  border-bottom: 1.5px solid var(--dsw-alias-label-secondary);
+}
+.md table.tuack tbody tr:nth-child(even) td {
+  background: transparent;
+}
+
+/* ------------------------------------------------------------------ */
+/* Luogu-style ::: containers                                         */
+/* ------------------------------------------------------------------ */
+
+.md .box {
+  margin: 0.65em 0;
+  border-radius: var(--dsw-radius-sm);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-left-width: 3px;
+  overflow: hidden;
+  background: var(--dsw-alias-bg-module-platform);
+}
+
+.md .box > .box-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 10px;
+  font-weight: 600;
+  font-size: 0.95em;
+  cursor: pointer;
+  user-select: none;
+}
+
+.md .box > .box-title .caret {
+  font-size: 10px;
+  transition: transform var(--ds-transition-duration-fast) var(--ds-ease-in-out);
+  opacity: 0.7;
+}
+
+.md .box[data-open='true'] > .box-title .caret {
+  transform: rotate(90deg);
+}
+
+.md .box > .box-body {
+  padding: 2px 12px 8px;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+}
+
+.md .box[data-open='false'] > .box-body {
+  display: none;
+}
+
+.md .box.box-info {
+  border-left-color: var(--dsw-static-blue-450, #4d93f8);
+}
+.md .box.box-info > .box-title {
+  color: var(--dsw-static-blue-600, #2563eb);
+  background: color-mix(in srgb, var(--dsw-static-blue-450, #4d93f8) 10%, transparent);
+}
+
+.md .box.box-success {
+  border-left-color: var(--dsw-alias-state-success-primary);
+}
+.md .box.box-success > .box-title {
+  color: var(--dsw-alias-state-success-primary);
+  background: var(--dsw-alias-state-success-tertiary);
+}
+
+.md .box.box-warning {
+  border-left-color: var(--dsw-alias-state-warn-primary);
+}
+.md .box.box-warning > .box-title {
+  color: var(--dsw-alias-state-warn-label);
+  background: var(--dsw-alias-state-warn-tertiary);
+}
+
+.md .box.box-error {
+  border-left-color: var(--dsw-alias-state-error-primary);
+}
+.md .box.box-error > .box-title {
+  color: var(--dsw-alias-state-error-primary);
+  background: var(--dsw-alias-state-error-secondary);
+}
+
+.md .box.box-plain {
+  border-left-color: var(--dsw-alias-border-l4);
+}
+
+.md .align-center {
+  text-align: center;
+}
+.md .align-right {
+  text-align: right;
+}
+.md .align-left {
+  text-align: left;
+}
+
+.md .epigraph {
+  margin: 0.7em 0;
+  padding: 0 0.4em;
+  color: var(--dsw-alias-label-secondary);
+  font-style: italic;
+}
+
+.md .epigraph .src {
+  display: block;
+  margin-top: 0.25em;
+  text-align: right;
+  font-style: normal;
+  font-size: 0.9em;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* GitHub-style alert blocks: `> [!NOTE]`. */
+.md .alert {
+  margin: 0.6em 0;
+  padding: 8px 12px;
+  border-radius: var(--dsw-radius-sm);
+  border-left: 3px solid var(--dsw-alias-border-l4);
+  background: var(--dsw-alias-markdown-citation);
+}
+
+.md .alert .alert-title {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.md .alert.alert-note {
+  border-left-color: var(--dsw-static-blue-450, #4d93f8);
+}
+.md .alert.alert-tip {
+  border-left-color: var(--dsw-alias-state-success-primary);
+}
+.md .alert.alert-important {
+  border-left-color: var(--dsw-static-purple-500, #8b5cf6);
+}
+.md .alert.alert-warning {
+  border-left-color: var(--dsw-alias-state-warn-primary);
+}
+.md .alert.alert-caution {
+  border-left-color: var(--dsw-alias-state-error-primary);
+}
+
+/* Task lists */
+.md .task-list-item {
+  list-style: none;
+  margin-left: -1.35em;
+}
+
+.md .task-list-item input {
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+/* Definition lists */
+.md dl {
+  margin: 0.6em 0;
+}
+.md dt {
+  font-weight: 600;
+  margin-top: 0.4em;
+}
+.md dd {
+  margin: 0.15em 0 0.15em 1.4em;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* Footnotes */
+.md .footnotes {
+  margin-top: 1em;
+  padding-top: 0.6em;
+  border-top: 1px solid var(--dsw-alias-border-l2);
+  font-size: 0.92em;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.md .footnotes ol {
+  padding-left: 1.3em;
+}
+
+/* ------------------------------------------------------------------ */
+/* Maths (KaTeX)                                                      */
+/* ------------------------------------------------------------------ */
+
+.md .katex {
+  font-size: 1.06em;
+}
+
+.md .math-block {
+  margin: 0.65em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 0;
+  text-align: center;
+}
+
+.md .math-block .katex-display {
+  margin: 0;
+}
+
+.md .math-error,
+.md .math-plain {
+  font-family: var(--ds-font-family-code);
+  font-size: 0.92em;
+  color: var(--dsw-alias-state-warn-label);
+  background: var(--dsw-alias-state-warn-tertiary);
+  border-radius: var(--dsw-radius-xs);
+  padding: 0 0.3em;
+}

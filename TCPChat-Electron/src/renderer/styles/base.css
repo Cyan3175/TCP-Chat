@@ -1,0 +1,555 @@
+/*
+ * Base layer: reset, typography and the DSH-flavoured primitives the chat UI is
+ * assembled from. Everything is expressed through the design tokens in
+ * tokens.css, so light/dark and the plain/glass split need no separate rules.
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  /* The window itself is transparent: with glass on, the native panel behind it
+     provides the backdrop; with glass off, the app shell paints an opaque fill. */
+  background: transparent;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--dsw-font-family);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-primary);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  /* Chrome would otherwise let a drag select the whole UI chrome. */
+  user-select: none;
+  cursor: default;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+a {
+  color: var(--dsw-alias-link);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+:focus-visible {
+  outline: var(--dsw-focus-ring-width, 2px) solid
+    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Scrollbars — DSH's own geometry                                    */
+/* ------------------------------------------------------------------ */
+
+::-webkit-scrollbar {
+  width: var(--dsh-scrollbar-width);
+  height: var(--dsh-scrollbar-width);
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+  margin-block: var(--dsh-scrollbar-track-margin);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--dsh-scrollbar-thumb);
+  background-clip: content-box;
+  border: var(--dsh-scrollbar-thumb-border) solid transparent;
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--dsh-scrollbar-thumb-hover);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ------------------------------------------------------------------ */
+/* App shell                                                          */
+/* ------------------------------------------------------------------ */
+
+#app {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--app-radius);
+  overflow: hidden;
+  /* Plain theme: an opaque DSH surface. Glass theme overrides this to a
+     translucent tint so the native panel reads through. */
+  background: var(--dsw-alias-bg-base);
+  border: 1px solid var(--dsw-alias-border-l2);
+  position: relative;
+}
+
+:root {
+  --app-radius: 12px;
+  /* Set by the renderer from the zoom setting; DSH's own type scale keys off it. */
+  --dsh-content-font-size: 14px;
+  /*
+   * The literal DSH stack, kept separately so a user-chosen family can be
+   * layered in front of it without the two tokens referring to each other.
+   */
+  --dsw-font-family-fallback: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+}
+
+/* ------------------------------------------------------------------ */
+/* Settings dialog                                                    */
+/* ------------------------------------------------------------------ */
+
+.settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-settings-card-fill);
+  border: 1px solid var(--dsw-alias-settings-card-stroke);
+}
+
+.settings-group-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-secondary);
+  letter-spacing: 0.02em;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.field-label {
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.font-preview {
+  padding: 8px 10px;
+  border-radius: var(--dsw-radius-sm);
+  border: 1px dashed var(--dsw-alias-border-l3);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ------------------------------------------------------------------ */
+/* Primitives                                                         */
+/* ------------------------------------------------------------------ */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--dsw-radius-sm);
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-button-elevated-fill);
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--ds-transition-duration-fast) var(--ds-ease-in-out);
+  -webkit-app-region: no-drag;
+}
+
+.btn:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.btn:active {
+  background: var(--dsw-alias-interactive-bg-active);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+  pointer-events: none;
+}
+
+.btn-primary {
+  background: var(--dsw-alias-button-primary-fill);
+  border-color: transparent;
+  color: var(--dsw-alias-label-primary-inverted);
+}
+
+.btn-primary:hover {
+  background: var(--dsw-alias-button-primary-hover);
+}
+
+.btn-ghost {
+  background: transparent;
+  border-color: transparent;
+}
+
+.btn-ghost:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.btn-danger {
+  color: var(--dsw-alias-state-error-primary);
+  border-color: transparent;
+  background: transparent;
+}
+
+.btn-danger:hover {
+  background: var(--dsw-alias-interactive-bg-hover-danger);
+}
+
+.btn-icon {
+  width: 32px;
+  padding: 0;
+  font-size: 14px;
+}
+
+.input,
+.textarea,
+.select {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: var(--dsw-radius-sm);
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-module-platform);
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  user-select: text;
+  transition: border-color var(--ds-transition-duration-fast) var(--ds-ease-in-out);
+}
+
+.textarea {
+  height: auto;
+  padding: 6px 10px;
+  resize: none;
+}
+
+.input::placeholder,
+.textarea::placeholder {
+  color: var(--dsw-alias-label-caption);
+}
+
+.input:focus-visible,
+.textarea:focus-visible,
+.select:focus-visible {
+  outline: none;
+  border-color: var(--dsw-alias-state-business-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--dsw-alias-state-business-primary) 22%, transparent);
+}
+
+.select {
+  appearance: none;
+  padding-right: 26px;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 14px) 14px, calc(100% - 9px) 14px;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
+
+/* Switch ----------------------------------------------------------- */
+
+.switch {
+  --switch-w: 36px;
+  --switch-h: 20px;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.switch input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.switch-track {
+  width: var(--switch-w);
+  height: var(--switch-h);
+  border-radius: 999px;
+  background: var(--dsw-alias-border-l3);
+  border: 1px solid var(--dsw-alias-border-l2);
+  transition: background var(--ds-transition-duration-fast) var(--ds-ease-in-out);
+  flex: none;
+  position: relative;
+}
+
+.switch-track::after {
+  content: '';
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: calc(var(--switch-h) - 4px);
+  height: calc(var(--switch-h) - 4px);
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 25%);
+  transition: transform var(--ds-transition-duration-fast) var(--ds-ease-in-out);
+}
+
+.switch input:checked + .switch-track {
+  background: var(--dsw-alias-state-business-primary);
+  border-color: transparent;
+}
+
+.switch input:checked + .switch-track::after {
+  transform: translateX(calc(var(--switch-w) - var(--switch-h)));
+}
+
+.switch input:focus-visible + .switch-track {
+  outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-alias-state-business-primary);
+  outline-offset: 2px;
+}
+
+/* Slider ----------------------------------------------------------- */
+
+.slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 20px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--dsw-alias-border-l3);
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border-radius: 50%;
+  background: var(--dsw-alias-state-business-primary);
+  border: 2px solid var(--dsw-alias-bg-layer-1);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 25%);
+}
+
+/* Card / panel ----------------------------------------------------- */
+
+.card {
+  background: var(--dsw-alias-settings-card-fill);
+  border: 1px solid var(--dsw-alias-settings-card-stroke);
+  border-radius: var(--dsw-radius-md);
+}
+
+/* Modal ------------------------------------------------------------ */
+
+.modal-mask {
+  position: fixed;
+  inset: 0;
+  background: var(--dsw-alias-bg-mask-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  -webkit-app-region: no-drag;
+}
+
+.modal {
+  width: min(720px, calc(100vw - 48px));
+  max-height: calc(100vh - 64px);
+  display: flex;
+  flex-direction: column;
+  background: var(--dsw-alias-bg-layer-2);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-lg);
+  box-shadow: var(--dsw-elevation-prominent);
+  overflow: hidden;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.modal-body {
+  padding: 18px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+}
+
+/* Menu ------------------------------------------------------------- */
+
+.menu {
+  position: fixed;
+  z-index: 300;
+  min-width: 172px;
+  padding: 4px;
+  background: var(--dsw-alias-bg-layer-3);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-md);
+  box-shadow: var(--dsw-elevation-prominent);
+  -webkit-app-region: no-drag;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu-item:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.menu-item.danger {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.menu-item.danger:hover {
+  background: var(--dsw-alias-interactive-bg-hover-danger);
+}
+
+.menu-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--dsw-alias-border-l1);
+}
+
+/* Misc ------------------------------------------------------------- */
+
+.muted {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.caption {
+  color: var(--dsw-alias-label-caption);
+  font-size: 12px;
+}
+
+.mono {
+  font-family: var(--ds-font-family-code);
+}
+
+.hidden {
+  display: none !important;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  background: var(--dsw-alias-bg-module-platform);
+  color: var(--dsw-alias-label-secondary);
+  border: 1px solid var(--dsw-alias-border-l1);
+}
+
+.tag.warn {
+  color: var(--dsw-alias-state-warn-label);
+  background: var(--dsw-alias-state-warn-tertiary);
+  border-color: transparent;
+}
+
+.tag.bad {
+  color: var(--dsw-alias-state-error-primary);
+  background: var(--dsw-alias-state-error-secondary);
+  border-color: transparent;
+}
+
+.tag.good {
+  color: var(--dsw-alias-state-success-primary);
+  background: var(--dsw-alias-state-success-tertiary);
+  border-color: transparent;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--dsw-alias-state-idle-primary);
+}
+
+.dot.ok {
+  background: var(--dsw-alias-state-success-primary);
+}
+
+.dot.bad {
+  background: var(--dsw-alias-state-error-primary);
+}
+
+.spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--dsw-alias-border-l3);
+  border-top-color: var(--dsw-alias-state-business-primary);
+  animation: spin 0.7s linear infinite;
+  flex: none;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

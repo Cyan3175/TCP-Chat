@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: tcpcache:; media-src 'self' blob: tcpcache:; font-src 'self'; connect-src 'self' tcpcache:; form-action 'none'; base-uri 'none'; object-src 'none'"
+    />
+    <title>TCP Chat</title>
+
+    <!-- DSH Desktop WebUI design tokens and the layers built on them. -->
+    <link rel="stylesheet" href="./styles/tokens.css" />
+    <link rel="stylesheet" href="./styles/base.css" />
+    <link rel="stylesheet" href="./dist/katex/katex.min.css" />
+    <link rel="stylesheet" href="./styles/markdown.css" />
+    <link rel="stylesheet" href="./styles/app.css" />
+    <link rel="stylesheet" href="./styles/glass.css" />
+  </head>
+  <body data-glass="off">
+    <!-- The backdrop is the native glass panel pinned below this window. -->
+
+    <div id="app">
+      <header class="titlebar">
+        <div class="brand">
+          <img src="./assets/icon.png" alt="" />
+          <span>TCP Chat</span>
+        </div>
+
+        <div class="searchbar hidden" id="searchbar">
+          <span aria-hidden="true">🔍</span>
+          <input
+            type="search"
+            id="search-input"
+            placeholder="搜索消息…"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <span class="count" id="search-count"></span>
+          <button class="nav" id="search-prev" type="button" title="上一个 (Shift+Enter)">▲</button>
+          <button class="nav" id="search-next" type="button" title="下一个 (Enter)">▼</button>
+          <button class="nav" id="search-close" type="button" title="关闭 (Esc)">✕</button>
+        </div>
+
+        <div class="spacer"></div>
+
+        <div class="status" id="conn-status" title="连接状态">
+          <span class="dot" id="conn-dot"></span>
+          <span id="conn-text">正在连接…</span>
+        </div>
+
+        <div class="titlebar-actions">
+          <button class="btn" id="btn-search" type="button" title="搜索 (Ctrl+F)">🔍</button>
+          <button class="btn" id="btn-glass" type="button" title="液态玻璃">◍</button>
+          <button class="btn" id="btn-theme" type="button" title="切换深浅色">◐</button>
+          <button class="btn" id="btn-settings" type="button" title="设置">⚙</button>
+          <button class="btn" id="btn-min" type="button" title="最小化">─</button>
+          <button class="btn" id="btn-max" type="button" title="最大化">▢</button>
+          <button class="btn close" id="btn-close" type="button" title="关闭">✕</button>
+        </div>
+      </header>
+
+      <main class="msg-list" id="msg-list" tabindex="-1">
+        <div class="empty-state" id="empty-state">
+          <div class="big">💬</div>
+          <div id="empty-text">正在连接…</div>
+        </div>
+      </main>
+
+      <footer class="composer" id="composer">
+        <div class="composer-reply hidden" id="composer-reply">
+          <div class="txt" id="reply-text"></div>
+          <button class="btn btn-ghost" id="reply-cancel" type="button" title="取消引用">✕</button>
+        </div>
+        <div class="composer-row">
+          <div class="composer-tools">
+            <button class="btn btn-ghost" id="btn-attach" type="button" title="发送文件">📎</button>
+            <button class="btn btn-ghost" id="btn-image" type="button" title="发送图片">🖼</button>
+            <button class="btn btn-ghost" id="btn-voice" type="button" title="语音消息">🎤</button>
+          </div>
+          <textarea
+            class="composer-input"
+            id="composer-input"
+            rows="1"
+            placeholder="输入消息，Enter 发送，Shift+Enter 换行"
+            spellcheck="false"
+          ></textarea>
+          <button class="btn btn-primary" id="btn-send" type="button" title="发送 (Enter)">发送</button>
+        </div>
+      </footer>
+
+      <footer class="statusbar">
+        <span id="status-text" class="grow"></span>
+        <span class="sep">|</span>
+        <span id="status-count">0 条</span>
+        <span class="sep">|</span>
+        <span id="status-poll">3 秒</span>
+        <span class="sep">|</span>
+        <span id="status-sync">尚未同步</span>
+        <span class="sep">|</span>
+        <span id="status-zoom" title="Ctrl +/- 缩放">100%</span>
+        <span class="sep">|</span>
+        <span id="status-folder" class="path" title=""></span>
+      </footer>
+    </div>
+
+    <!-- Frameless resize affordances; hidden while maximised. -->
+    <div class="rz rz-n" data-dir="n"></div>
+    <div class="rz rz-s" data-dir="s"></div>
+    <div class="rz rz-w" data-dir="w"></div>
+    <div class="rz rz-e" data-dir="e"></div>
+    <div class="rz rz-nw" data-dir="nw"></div>
+    <div class="rz rz-ne" data-dir="ne"></div>
+    <div class="rz rz-sw" data-dir="sw"></div>
+    <div class="rz rz-se" data-dir="se"></div>
+
+    <div class="toasts" id="toasts"></div>
+
+    <script src="./dist/app.js"></script>
+  </body>
+</html>

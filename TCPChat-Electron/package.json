@@ -1,7 +1,7 @@
 {
   "name": "tcpchat-electron",
   "productName": "TCP Chat",
-  "version": "12.1.0",
+  "version": "12.2.0",
   "description": "TCP Chat rewritten on Electron — WebDAV message board chat with native liquid-glass chrome, plus a DSH-Desktop-styled plain theme",
   "license": "MIT",
   "author": "Cyan3175",

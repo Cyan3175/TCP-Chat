@@ -24,24 +24,25 @@
     "build:native": "node scripts/build-native.cjs"
   },
   "dependencies": {
+    "@hicccc77/electron-liquid-glass": "file:vendor/electron-liquid-glass",
     "highlight.js": "^11.11.1",
-    "katex": "^0.16.22",
-    "markdown-it": "^14.1.0",
+    "katex": "^0.19.0",
+    "markdown-it": "^15.0.2",
     "markdown-it-container": "^4.0.0",
-    "markdown-it-deflist": "^3.0.0",
+    "markdown-it-deflist": "^4.0.0",
     "markdown-it-emoji": "^3.0.0",
     "markdown-it-footnote": "^4.0.0",
     "markdown-it-ins": "^4.0.0",
     "markdown-it-mark": "^4.0.0",
     "markdown-it-sub": "^2.0.0",
     "markdown-it-sup": "^2.0.0",
-    "markdown-it-task-lists": "^2.1.1",
-    "@hicccc77/electron-liquid-glass": "file:vendor/electron-liquid-glass"
+    "markdown-it-task-lists": "^2.1.1"
   },
   "devDependencies": {
     "electron": "^44.5.1",
     "electron-builder": "^26.15.3",
-    "esbuild": "^0.24.2"
+    "esbuild": "^0.28.2",
+    "node-gyp": "^13.0.2"
   },
   "allowScripts": {
     "esbuild@0.24.2": true,

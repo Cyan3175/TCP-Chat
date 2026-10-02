@@ -17,6 +17,14 @@ constexpr ULONGLONG kCaptureIdleReleaseMs = 3000;
 constexpr ULONGLONG kLumaMinGapMs = 15;
 constexpr ULONGLONG kAnchorReassertMs = 500;
 
+/*
+ * How far a visible panel may move and still be allowed to move before it
+ * repaints, in device pixels. Smooth scrolling advances a few pixels a frame;
+ * a wheel notch or a jump is far larger and takes the repaint-first path. At
+ * 2x DPI this is 48 CSS pixels.
+ */
+constexpr LONG kShortMovePx = 96;
+
 bool RectIntersects(const RECT& a, const RECT& b) {
     return a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
 }
@@ -124,22 +132,42 @@ void GlassSession::SetPanelBounds(int id, const RECT& bounds) {
     Post([this, id, bounds] {
         auto it = panels_.find(id);
         if (it == panels_.end()) return;
+        const RECT previous = it->second.config.bounds;
         it->second.config.bounds = bounds;
-        // A *visible* panel changes region first and moves only after the
-        // repaint: see GlassPanel::SetBoundsDeferred. Moving it first shows one
-        // frame of the previous region at the new position.
-        //
-        // A hidden panel is the opposite. Nothing is on screen to mis-place,
-        // and it is usually a pooled slot about to be shown at these very
-        // bounds. Deferring the move left it visible at wherever it was last
-        // used, which is a spot with no bubble under it - a frame of glass in
-        // a place that has no glass.
+
+        /*
+         * Whether a moved panel repaints before or after it moves depends on how
+         * far it moved.
+         *
+         * Repaint first and there is no wrong content, but the window move waits
+         * on a full glass render - copy, two blur passes, lens - for every panel,
+         * every frame. A scrolled list has many panels, they cannot all keep up,
+         * and the glass trails the messages until the scroll stops and it catches
+         * up. That is the "settles after the scroll ends".
+         *
+         * Move first and one frame shows the previous region at the new position.
+         * That is glaring across a large jump and invisible across a small one:
+         * smooth scrolling advances a few pixels per frame, and the blur hides
+         * even that. A large jump is rare and can afford the render.
+         *
+         * So: short moves go first and paint after, which keeps every panel on
+         * the message it belongs to. Long moves keep the old order. A size change
+         * always repaints first because it discards the back buffer.
+         */
+        const bool sameSize = (bounds.right - bounds.left) == (previous.right - previous.left) &&
+                              (bounds.bottom - bounds.top) == (previous.bottom - previous.top);
+        const LONG dx = bounds.left > previous.left ? bounds.left - previous.left : previous.left - bounds.left;
+        const LONG dy = bounds.top > previous.top ? bounds.top - previous.top : previous.top - bounds.top;
+        const bool shortMove = sameSize && dx <= kShortMovePx && dy <= kShortMovePx;
+
         it->second.panel->SetBoundsDeferred(bounds);
-        if (it->second.panel->visible()) {
-            it->second.pendingMove = true;
-        } else {
+        if (!it->second.panel->visible() || shortMove) {
+            // A hidden panel has nothing on screen to mis-place, and it is usually a
+            // pooled slot about to be shown at these very bounds.
             it->second.panel->ApplyWindowPosition();
             it->second.pendingMove = false;
+        } else {
+            it->second.pendingMove = true;
         }
         it->second.needsInitialPaint = true;
     });

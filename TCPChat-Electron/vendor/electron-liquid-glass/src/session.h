@@ -84,6 +84,11 @@ private:
         bool lumaStagingDirty = false;  // staging holds an unsampled blur result (set after each render)
         ULONGLONG lastLumaTick = 0;
         ULONGLONG lastAnchorTick = 0;
+            // When this panel last changed bounds. The anchor re-assert is
+            // skipped while a panel is moving: it defends against another
+            // topmost window cutting in, which does not happen mid-scroll, and
+            // re-inserting a panel in the z-order forces a DWM recomposite.
+            ULONGLONG lastMoveTick = 0;
     };
 
     void EnsureThread();

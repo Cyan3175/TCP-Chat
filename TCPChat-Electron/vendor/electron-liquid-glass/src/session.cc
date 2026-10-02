@@ -110,6 +110,7 @@ void GlassSession::ShowPanel(int id, UINT fadeMs) {
         it->second.panel->Show();
         it->second.panel->BeginFade(1.0f, fadeMs);
         it->second.fading = true;
+        it->second.lastMoveTick = GetTickCount64();
         it->second.needsInitialPaint = true;
     });
 }
@@ -169,6 +170,7 @@ void GlassSession::SetPanelBounds(int id, const RECT& bounds) {
         } else {
             it->second.pendingMove = true;
         }
+        it->second.lastMoveTick = GetTickCount64();
         it->second.needsInitialPaint = true;
     });
 }
@@ -179,6 +181,7 @@ void GlassSession::SetPanelParams(int id, const GlassParams& params) {
         if (it == panels_.end()) return;
         it->second.config.params = params;
         it->second.panel->SetParams(params);
+        it->second.lastMoveTick = GetTickCount64();
         it->second.needsInitialPaint = true;
     });
 }
@@ -487,7 +490,16 @@ void GlassSession::RenderTick() {
 
         // Periodically re-assert z-order anchoring (defends against other
         // topmost windows cutting in)
-        if (entry.config.anchor && now - entry.lastAnchorTick >= kAnchorReassertMs) {
+        /*
+         * Skip while the panel is moving.
+         *
+         * This guards against another topmost window cutting in, which does
+         * not happen mid-scroll. It is not free: re-inserting a panel in the
+         * z-order makes DWM recomposite it, and with one of these per panel on
+         * a fixed interval a steady scroll flashes on that beat.
+         */
+        const bool settled = now - entry.lastMoveTick >= kAnchorReassertMs;
+        if (entry.config.anchor && settled && now - entry.lastAnchorTick >= kAnchorReassertMs) {
             entry.lastAnchorTick = now;
             entry.panel->AnchorBelow(entry.config.anchor);
         }

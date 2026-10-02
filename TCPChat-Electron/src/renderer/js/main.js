@@ -154,14 +154,27 @@ function collectBubbleRects() {
     const r = el.getBoundingClientRect()
     if (r.width < 8 || r.height < 8) continue
     if (r.left < hb.left || r.top < hb.top || r.right > hb.right || r.bottom > hb.bottom) continue
+    /*
+     * Stable identity for the panel that draws this surface.
+     *
+     * Panels are matched to bubbles by this key, not by their position in the
+     * list. Bubbles that are not entirely inside the window are dropped above,
+     * so scrolling one past an edge renumbers everything after it — and an
+     * index-based match then moves *every* panel onto a different bubble. See
+     * GlassController.setBubbles.
+     */
+    const isDay = el.classList.contains('msg-day')
+    const key = isDay ? `day:${el.dataset.day ?? ''}` : `msg:${el.closest('.msg')?.dataset.name ?? ''}`
+    if (key.endsWith(':')) continue
     rects.push({
       x: Math.round(r.left - hb.left),
       y: Math.round(r.top - hb.top),
       width: Math.round(r.width),
       height: Math.round(r.height),
+      key,
       // A pill clamps its radius to half the height; the panel has to match or
       // the glass corner pokes out past the chip.
-      pill: el.classList.contains('msg-day'),
+      pill: isDay,
     })
     if (rects.length >= MAX_BUBBLE_PANELS) break
   }
@@ -185,7 +198,9 @@ function syncBubblePanels() {
     bubbleSyncHandle = 0
     if (state.glass.mode !== 'on' || !window.tcpchat.glass.setBubbles) return
     const rects = collectBubbleRects()
-    const signature = rects.map((r) => `${r.x},${r.y},${r.width},${r.height}`).join('|')
+    // The key is part of the signature: a repack that keeps every rectangle
+    // identical still changes which panel draws which bubble.
+    const signature = rects.map((r) => `${r.key}|${r.x},${r.y},${r.width},${r.height}`).join('|')
     if (signature === bubbleSignature) return
     bubbleSignature = signature
     window.tcpchat.glass.setBubbles(rects).catch((err) => {

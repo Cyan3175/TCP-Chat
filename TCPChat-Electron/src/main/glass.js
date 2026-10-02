@@ -346,10 +346,48 @@ class GlassController {
     // "params changed" flag would push the wrong radius onto half of them.
     const paramsKey = JSON.stringify(params)
 
-    for (let i = 0; i < this.bubblePanels.length; i++) {
-      const panel = this.bubblePanels[i]
-      const r = want[i]
-      if (!r) {
+    // Match panels to bubbles by identity, not by position in the list.
+    //
+    // The renderer only offers bubbles that are entirely inside the window, so a
+    // bubble scrolling past an edge renumbers everything after it. Assigning by
+    // index therefore moved *every* panel onto a different bubble's rectangle on
+    // a single scroll step — a full re-render of all of them — and while a bubble
+    // hovered at an edge the mapping flipped back and forth every frame. That is
+    // the twitching, and it is worst for tall bubbles because they straddle an
+    // edge most of the time.
+    //
+    // A panel that already draws a key keeps it, so only the bubbles actually
+    // entering and leaving the window change panels.
+    const pools = this.bubblePanels
+    for (const panel of pools) panel.__taken = false
+    const held = new Map()
+    for (const panel of pools) {
+      if (panel.__key && !held.has(panel.__key)) held.set(panel.__key, panel)
+    }
+
+    const assignments = new Array(want.length).fill(null)
+    for (let i = 0; i < want.length; i++) {
+      const panel = held.get(want[i].key)
+      if (panel && !panel.__taken) {
+        panel.__taken = true
+        assignments[i] = panel
+      }
+    }
+
+    const spare = pools.filter((panel) => !panel.__taken)
+    for (let i = 0; i < want.length; i++) {
+      if (assignments[i]) continue
+      const panel = spare.pop()
+      if (!panel) break
+      panel.__taken = true
+      panel.__key = want[i].key
+      assignments[i] = panel
+    }
+
+    for (const panel of pools) {
+      if (!panel.__taken) {
+        panel.__key = undefined
+        panel.__rect = undefined
         if (panel.__visible) {
           try {
             panel.hide(0)
@@ -358,8 +396,16 @@ class GlassController {
           }
           panel.__visible = false
         }
-        continue
       }
+    }
+
+    for (let i = 0; i < want.length; i++) {
+      const panel = assignments[i]
+      if (!panel) break
+      const r = want[i]
+      // Remembered so _repositionBubblePanels can re-place this panel after a
+      // window move without knowing its slot in the array.
+      panel.__rect = r
       try {
         // Geometry and parameters first, *then* show.
         //
@@ -493,12 +539,19 @@ class GlassController {
 
   /** Re-place the existing bubble panels from the last rectangles received. */
   _repositionBubblePanels() {
-    if (!this.bubblePanels.length || !this._lastBubbleRects?.length) return
+    if (!this.bubblePanels.length) return
     const content = this.window.getContentBounds()
-    for (let i = 0; i < this.bubblePanels.length; i++) {
-      const panel = this.bubblePanels[i]
-      const r = this._lastBubbleRects[i]
-      if (!panel || !r || !panel.__visible) continue
+    /*
+     * Each panel carries the rectangle it was last assigned.
+     *
+     * This cannot index `_lastBubbleRects` by panel position any more: setBubbles
+     * matches panels to bubbles by key, so a panel's slot in the array no longer
+     * says which rectangle is its. A window move (maximise included) re-places
+     * every panel from the rectangle it actually holds.
+     */
+    for (const panel of this.bubblePanels) {
+      const r = panel.__rect
+      if (!panel.__visible || !r) continue
       try {
         panel.setBounds(
           screen.dipToScreenRect(null, {

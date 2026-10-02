@@ -125,10 +125,22 @@ void GlassSession::SetPanelBounds(int id, const RECT& bounds) {
         auto it = panels_.find(id);
         if (it == panels_.end()) return;
         it->second.config.bounds = bounds;
-        // Change the region now, move the window after the repaint: see
-        // GlassPanel::SetBoundsDeferred for why the order matters.
+        // A *visible* panel changes region first and moves only after the
+        // repaint: see GlassPanel::SetBoundsDeferred. Moving it first shows one
+        // frame of the previous region at the new position.
+        //
+        // A hidden panel is the opposite. Nothing is on screen to mis-place,
+        // and it is usually a pooled slot about to be shown at these very
+        // bounds. Deferring the move left it visible at wherever it was last
+        // used, which is a spot with no bubble under it - a frame of glass in
+        // a place that has no glass.
         it->second.panel->SetBoundsDeferred(bounds);
-        it->second.pendingMove = true;
+        if (it->second.panel->visible()) {
+            it->second.pendingMove = true;
+        } else {
+            it->second.panel->ApplyWindowPosition();
+            it->second.pendingMove = false;
+        }
         it->second.needsInitialPaint = true;
     });
 }

@@ -108,6 +108,29 @@ void GlassSession::ShowPanel(int id, UINT fadeMs) {
             return;
         }
         it->second.panel->Show();
+        if (glassdbg::dumpEnabled()) {
+            /*
+             * What this panel is about to put on screen, captured after Show()
+             * and before anything repaints it. A pooled panel is re-shown still
+             * holding the buffer of whichever bubble it drew last, so if this
+             * image is not empty then the previous occupant is on screen.
+             */
+            static unsigned showDumps = 0;
+            if (showDumps < 6) {
+                ID3D11RenderTargetView* rtv = it->second.panel->AcquireBackBuffer();
+                if (rtv) {
+                    ComPtr<ID3D11Resource> res;
+                    rtv->GetResource(res.GetAddressOf());
+                    ComPtr<ID3D11Texture2D> tex;
+                    if (res && SUCCEEDED(res.As(&tex))) {
+                        char nm[64];
+                        std::snprintf(nm, sizeof(nm), "onshow-%u-id%d", showDumps, id);
+                        glassdbg::DumpBmp(device_.Get(), context_.Get(), tex.Get(), nm);
+                        showDumps++;
+                    }
+                }
+            }
+        }
         it->second.panel->BeginFade(1.0f, fadeMs);
         it->second.fading = true;
         it->second.lastMoveTick = GetTickCount64();

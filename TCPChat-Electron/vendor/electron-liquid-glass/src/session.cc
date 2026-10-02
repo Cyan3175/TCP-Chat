@@ -364,7 +364,26 @@ void GlassSession::RenderTick() {
     RECT dirtyVirtual{};
     {
         ComPtr<ID3D11Texture2D> desktopTex;
-        const HRESULT hr = capturer_.AcquireFrame(8, selfRects, &frameInfo, &desktopTex);
+        /*
+         * Do not block on a new desktop frame while a panel is waiting to move.
+         *
+         * A visible panel changes region first and moves after its repaint,
+         * so the move waits out this call. AcquireFrame only returns early
+         * when the desktop actually changed, and while the user scrolls a
+         * static window it always burns the full timeout - one frame at
+         * 120 Hz. The panel then trails the scrolled bubble by exactly that
+         * frame: the message has moved, the glass is still where it was.
+         *
+         * Nothing is lost by not waiting: the repaint reads the mirror we
+         * already have, and a panel that moved needs that repaint more than
+         * it needs the newest desktop pixels.
+         */
+        bool repositioning = false;
+        for (const auto& kv : panels_) {
+            if (kv.second.pendingMove) { repositioning = true; break; }
+        }
+        const DWORD waitMs = repositioning ? 0 : 8;
+        const HRESULT hr = capturer_.AcquireFrame(waitMs, selfRects, &frameInfo, &desktopTex);
         if (hr == S_OK) {
             if (frameInfo.desktopUpdated &&
                 UpdateDesktopCache(desktopTex.Get(), frameInfo.dirtyBounds)) {

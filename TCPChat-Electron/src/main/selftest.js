@@ -543,6 +543,9 @@ async function runSelfTest({ win, outDir, settings, send, glassControls, glassSt
         buttons: modal ? modal.querySelectorAll('button').length : 0,
       }
     })()`)
+    // The About line sits at the bottom of a scrolling dialog and never fits in a
+    // screenshot, so read the value the renderer actually holds instead.
+    settingsReport.version = await win.webContents.executeJavaScript('window.tcpchat.versions.app')
     record('settings', JSON.stringify(settingsReport))
     record('shot 06-settings', `${await shoot(win, path.join(outDir, '06-settings.png'))} bytes`)
 

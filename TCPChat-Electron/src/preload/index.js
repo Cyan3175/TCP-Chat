@@ -45,7 +45,9 @@ function subscribe(channel, handler) {
 const api = {
   /** Renderer/host versions, for the About line in settings. */
   versions: {
-    app: process.env.TCPCHAT_VERSION || '12.0.0',
+    // The main process always sets this; the fallback is derived so it cannot
+    // drift from package.json when the app runs without it.
+    app: process.env.TCPCHAT_VERSION || require('../../package.json').version,
     electron: process.versions.electron,
     chrome: process.versions.chrome,
     node: process.versions.node,

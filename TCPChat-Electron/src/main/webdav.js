@@ -13,7 +13,9 @@
 const { log } = require('./logger')
 
 const DAV_NS = 'DAV:'
-const USER_AGENT = 'TCPChat/12.0.0 (Electron)'
+// Derived, not written down: a literal here goes stale silently, and this
+// one had been advertising 12.0.0 while the app was on 12.2.
+const USER_AGENT = `TCPChat/${require('../../package.json').version} (Electron)`
 
 // ---------------------------------------------------------------------------
 // XML

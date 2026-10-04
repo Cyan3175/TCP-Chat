@@ -18,8 +18,8 @@
     "test:live": "node scripts/live-check.cjs",
     "selftest": "npm run build:renderer && node scripts/run-electron.cjs . --selftest",
     "tokens": "node scripts/extract-dsh-tokens.mjs",
-    "pack": "npm run build:renderer && npm run build:native && set NODE_OPTIONS=--use-system-ca&& electron-builder --dir",
-    "dist": "npm run build:renderer && npm run build:native && set NODE_OPTIONS=--use-system-ca&& electron-builder",
+    "pack": "npm run build:renderer && npm run build:native && node scripts/dist.cjs",
+    "dist": "npm run build:renderer && npm run build:native && node scripts/dist.cjs",
     "test:glass": "node scripts/run-electron.cjs scripts/glass-check.js",
     "build:native": "node scripts/build-native.cjs"
   },

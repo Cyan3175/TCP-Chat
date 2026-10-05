@@ -519,6 +519,11 @@ mark.find {
   background: var(--dsw-alias-bg-module-platform);
   color: var(--dsw-alias-label-primary);
   font-family: inherit;
+  /*
+   * --dsh-content-font-size holds the base size and no longer tracks the zoom;
+   * zoom is a page-wide scale factor now, so every px in the app grows together
+   * and the composer's inline height keeps pace with its own text.
+   */
   font-size: var(--dsh-content-font-size, 14px);
   line-height: 1.5;
   outline: none;

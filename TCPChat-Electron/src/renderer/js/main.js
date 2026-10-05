@@ -26,7 +26,13 @@ import {
   isAtBottom,
   scrollToBottom,
 } from './messages.js'
-import { configureComposer, setReply, initComposer, sendDraft, focusComposer } from './composer.js'
+import {
+  configureComposer,
+  setReply,
+  initComposer,
+  sendDraft,
+  focusComposer,
+} from './composer.js'
 import {
   configureSearch,
   searchQuery,
@@ -49,7 +55,6 @@ const ZOOM_MAX = 2.4
 const ZOOM_STEP = 0.1
 
 /** Base font size for message content, in CSS pixels at zoom 1. */
-const BASE_FONT_SIZE = 14
 
 /**
  * Everything the views read. Kept in one object so a view can be handed the
@@ -243,7 +248,19 @@ function applyFont() {
 
 function applyZoom() {
   const zoom = clamp(state.settings?.zoom ?? 1, ZOOM_MIN, ZOOM_MAX)
-  document.documentElement.style.setProperty('--dsh-content-font-size', `${BASE_FONT_SIZE * zoom}px`)
+  /*
+   * Zoom scales the whole UI, not just message text.
+   *
+   * This used to set --dsh-content-font-size, which only reached the rules that
+   * happened to read it: the message body and the composer. The title bar, the
+   * status bar and the buttons stayed put, so "zoom" meant two different things
+   * on the same screen — and the composer, scaling its type while its height
+   * stayed an inline pixel value, pushed its own placeholder out of the box.
+   *
+   * A zoom factor moves the CSS pixel underneath everything instead, so every
+   * dimension in the app scales by the same amount and none of it can drift.
+   */
+  window.tcpchat.window.setZoomFactor(zoom)
   const label = document.getElementById('status-zoom')
   if (label) label.textContent = `${Math.round(zoom * 100)}%`
 }

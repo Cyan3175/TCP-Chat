@@ -9,7 +9,7 @@
  * or crypto primitives.
  */
 
-const { contextBridge, ipcRenderer } = require('electron')
+const { contextBridge, ipcRenderer, webFrame } = require('electron')
 
 /** Main -> renderer pushes. */
 const EVENTS = [
@@ -102,6 +102,16 @@ const api = {
     /** Absolute bounds in DIP — used by the custom resize handles. */
     setBounds: (bounds) => ipcRenderer.invoke('window:set-bounds', bounds),
     getBounds: () => ipcRenderer.invoke('window:get-bounds'),
+    /*
+     * Scales the whole page, chrome included.
+     *
+     * The alternative — driving a --dsh-content-font-size variable from the
+     * renderer — only reached the elements that happened to reference it, so the
+     * message text grew while the composer did not and the placeholder spilled
+     * out of its box. A zoom factor scales the CSS pixel itself, so every
+     * dimension in the app moves together and nothing can come apart.
+     */
+    setZoomFactor: (factor) => webFrame.setZoomFactor(factor),
   },
 
   app: {

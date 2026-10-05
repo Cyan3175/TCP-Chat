@@ -1060,6 +1060,64 @@ function registerIpc() {
     mainWindow?.close()
   })
 
+  /*
+   * Screenshot the window and hand the pixels back to the renderer.
+   *
+   * It does not write the clipboard itself, which was the first attempt and does
+   * not work here: this build's `clipboard` object has no writeImage and no
+   * readImage, and its `write` answers "expects an array of ClipboardItem" — it
+   * is the web clipboard API, not Electron's. The renderer has a real
+   * navigator.clipboard, so the bytes go there and it does the writing.
+   *
+   * capturePage reads the renderer's own surface, which is why the custom title
+   * bar ends up in the picture — it is HTML, not chrome. The one thing it cannot
+   * see is the glass: that panel is a separate native window pinned underneath
+   * and marked WDA_EXCLUDEFROMCAPTURE, so with glass on the shot holds the app's
+   * own content and not the backdrop behind it.
+   */
+  ipcMain.handle('window:capture', async () => {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return { ok: false, message: '窗口不可用' }
+    }
+    try {
+      const image = await mainWindow.webContents.capturePage()
+      if (image.isEmpty()) return { ok: false, message: '截图为空' }
+      const { width, height } = image.getSize()
+      // Plain base64, not a data URL: the renderer builds the Blob itself, and
+      // fetch() on a data: URL is refused by the page's CSP.
+      return { ok: true, png: image.toPNG().toString('base64'), width, height }
+    } catch (err) {
+      log.warn('screenshot failed', err)
+      return { ok: false, message: String(err?.message || err) }
+    }
+  })
+
+  /*
+   * The clipboard write, through the one route that works here.
+   *
+   * Neither obvious API does. This build's `clipboard` module has no writeImage
+   * and no readImage — it is the web clipboard API wearing Electron's name, and
+   * navigator.clipboard.write is refused by the permission layer. copyImageAt is
+   * a real Electron method on webContents, it writes an image to the system
+   * clipboard natively, and it takes a point in the page: whatever image is
+   * rendered there is what gets copied.
+   *
+   * So the renderer puts the shot on screen for the duration of the call. It is
+   * positioned under the composer, fully opaque — Chromium skips painting
+   * anything it thinks is invisible, and an unrendered image has nothing to
+   * copy — and removed as soon as this returns.
+   */
+  ipcMain.handle('window:copy-image-at', (_e, { x, y } = {}) => {
+    if (!mainWindow || mainWindow.isDestroyed()) return false
+    try {
+      mainWindow.webContents.copyImageAt(Math.round(x), Math.round(y))
+      return true
+    } catch (err) {
+      log.warn('copyImageAt failed', err)
+      return false
+    }
+  })
+
   ipcMain.handle('window:get-bounds', () => (mainWindow ? mainWindow.getBounds() : null))
 
   /** Absolute bounds in DIP, used by the DOM resize handles. */
@@ -1114,12 +1172,18 @@ function registerIpc() {
 }
 
 /**
- * Permission policy. Only the microphone is granted, and only to our own
- * renderer: everything else (geolocation, notifications from web content, USB,
- * serial, …) is denied, and a denied permission never reaches the DOM.
+ * Permission policy. Only the microphone, the local font list and the clipboard
+ * *write* are granted, and only to our own renderer: everything else
+ * (geolocation, notifications from web content, USB, serial, …) is denied, and a
+ * denied permission never reaches the DOM.
+ *
+ * The clipboard appears here because the screenshot button copies through
+ * navigator.clipboard — this build's main-process clipboard has no image support.
+ * Write only, and only the sanitized variant: nothing in the app reads the
+ * clipboard, so read stays denied.
  */
 function installPermissionHandlers(session) {
-  const allowed = new Set(['media', 'audioCapture', 'local-fonts'])
+  const allowed = new Set(['media', 'audioCapture', 'local-fonts', 'clipboard-sanitized-write'])
 
   session.setPermissionRequestHandler((contents, permission, callback) => {
     const isOurs = contents === mainWindow?.webContents

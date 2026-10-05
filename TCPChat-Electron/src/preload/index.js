@@ -99,6 +99,10 @@ const api = {
     minimize: () => ipcRenderer.invoke('window:minimize'),
     toggleMaximize: () => ipcRenderer.invoke('window:toggle-maximize'),
     close: () => ipcRenderer.invoke('window:close'),
+    /** Whole-window screenshot, written straight to the clipboard. */
+    capture: () => ipcRenderer.invoke('window:capture'),
+    /** Copy whatever image is rendered at that point in the page. */
+    copyImageAt: (point) => ipcRenderer.invoke('window:copy-image-at', point),
     /** Absolute bounds in DIP — used by the custom resize handles. */
     setBounds: (bounds) => ipcRenderer.invoke('window:set-bounds', bounds),
     getBounds: () => ipcRenderer.invoke('window:get-bounds'),

@@ -947,3 +947,21 @@ body[data-plain-bg='on'][data-bg-fit='repeat'] #plain-bg img {
   min-height: 100%;
   background-repeat: repeat;
 }
+/*
+ * Where the screenshot sits while copyImageAt reads it.
+ *
+ * It has to be actually painted — Chromium will not rasterise what it believes
+ * is invisible, and an unrendered image has nothing to copy — so this cannot be
+ * display:none or opacity:0. Instead it is put at the very bottom of the stack,
+ * behind the composer, where it is covered by the message list for the few
+ * milliseconds the copy takes.
+ */
+.shot-copy-source {
+  position: fixed;
+  left: 0;
+  bottom: 0;
+  width: 1px;
+  height: 1px;
+  z-index: -1;
+  pointer-events: none;
+}

@@ -541,6 +541,73 @@ function initTitlebar() {
   document.getElementById('btn-settings').addEventListener('click', () =>
     openSettings(state.settings ?? {}),
   )
+  document.getElementById('btn-shot').addEventListener('click', () => void captureWindow())
+}
+
+/**
+ * Copy a picture of the window to the clipboard.
+ *
+ * Neither obvious route works in this build. The main process's `clipboard` has
+ * no writeImage — it is the web clipboard API under Electron's name, and it
+ * wants ClipboardItem objects — and navigator.clipboard.write from here is
+ * refused by the permission layer.
+ *
+ * What does work is webContents.copyImageAt: it writes an image to the system
+ * clipboard natively and takes a point in the page. So the shot is put on screen
+ * for the duration of that call and taken away again. It has to be genuinely
+ * painted — Chromium skips anything it believes is invisible, and an unrendered
+ * image has nothing to copy — so it sits behind the composer at full opacity
+ * rather than at opacity 0.
+ *
+ * Guarded while a capture is in flight: capturePage takes a frame from the
+ * compositor, so a second click before the first returns would queue another
+ * shot of an unchanged window and a second toast claiming success.
+ */
+let capturing = false
+
+async function captureWindow() {
+  if (capturing) return
+  capturing = true
+  let holder = null
+  try {
+    const result = await window.tcpchat.window.capture()
+    if (!result?.ok) {
+      showToast(result?.message || '截图失败', true)
+      return
+    }
+
+    // A blob URL, not a data URL: the page's CSP refuses data: images.
+    const binary = atob(result.png)
+    const bytes = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i)
+    const url = URL.createObjectURL(new Blob([bytes], { type: 'image/png' }))
+
+    holder = h('img', { src: url, class: 'shot-copy-source' })
+    document.body.append(holder)
+    await new Promise((resolve, reject) => {
+      holder.addEventListener('load', resolve, { once: true })
+      holder.addEventListener('error', () => reject(new Error('图片装入页面失败')), { once: true })
+    })
+
+    const rect = holder.getBoundingClientRect()
+    const ok = await window.tcpchat.window.copyImageAt({
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
+    })
+    if (!ok) {
+      showToast('复制到剪贴板失败', true)
+      return
+    }
+    showToast(`已复制到剪贴板（${result.width} × ${result.height}）`)
+  } catch (err) {
+    showToast(`复制到剪贴板失败：${err.message || err}`, true)
+  } finally {
+    if (holder) {
+      URL.revokeObjectURL(holder.src)
+      holder.remove()
+    }
+    capturing = false
+  }
 }
 
 /** Frameless windows need their own resize affordances. */

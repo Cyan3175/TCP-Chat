@@ -14,7 +14,7 @@
 
 const fs = require('fs')
 const path = require('path')
-const { app } = require('electron')
+const { app, clipboard, nativeImage } = require('electron')
 
 const { log } = require('./logger')
 
@@ -661,6 +661,44 @@ async function runSelfTest({ win, outDir, settings, send, glassControls, glassSt
       record('shot 09-math', `${size.width}x${size.height}`)
     } else {
       record('shot 09-math', 'no display maths in the fixtures')
+    }
+
+    /*
+     * The screenshot button, end to end.
+     *
+     * Clicked rather than called, so the button, the preload bridge, the IPC
+     * handler and the renderer's clipboard write are all on the path. The result
+     * is read from the toast the app itself raises, which is what the user sees:
+     * it says 已复制 on success and the failure text otherwise.
+     *
+     * Reading the clipboard back is not possible here. The main-process
+     * clipboard has no image support in this build, and navigator.clipboard.read
+     * is refused by the app's own permission handler — correctly, since nothing
+     * in the app has a reason to read the clipboard. So this proves the write
+     * resolved without error, not that a paste would find the picture.
+     */
+    try {
+      await win.webContents.executeJavaScript(
+        "document.querySelectorAll('.toast').forEach(n => n.remove()), true",
+      )
+      /*
+       * Focused first. navigator.clipboard.write is refused unless the document
+       * has focus, and a headless self-test window does not have it — the real
+       * button is only ever clicked in a window that does.
+       */
+      win.show()
+      win.focus()
+      win.webContents.focus()
+      await new Promise((resolve) => setTimeout(resolve, 400))
+      await win.webContents.executeJavaScript("document.getElementById('btn-shot').click(), true")
+      // capturePage takes a frame from the compositor; it is not instant.
+      await new Promise((resolve) => setTimeout(resolve, 1500))
+      const toast = await win.webContents.executeJavaScript(
+        "(() => { const t = document.querySelector('.toast'); return t ? t.textContent.trim() : '(no toast)' })()",
+      )
+      record('screenshot button', toast)
+    } catch (err) {
+      record('screenshot button', `threw: ${err.message}`)
     }
 
     fs.writeFileSync(

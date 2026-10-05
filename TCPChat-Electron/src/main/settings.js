@@ -90,16 +90,6 @@ function defaults() {
     cryptoPassword: '',
     glassEnabled: true,
     glassQuality: 60,
-    /*
-     * Backdrop blur strength, in CSS pixels of Gaussian sigma. 0 selects the
-     * renderer's sharp path (the lens samples the full-resolution desktop crop).
-     *
-     * This is not decoration: blur is what stops a window *behind* the app from
-     * reading as a second UI stacked on ours. At 0 the backdrop is pixel-sharp
-     * and text behind the window shows through at full contrast, which looks
-     * exactly like a doubled image.
-     */
-    glassBlurSigma: 0,
 
     /*
      * Plain-theme background: null, or the absolute path of an image the user
@@ -197,7 +187,6 @@ class Settings {
     this.glassEnabled = this.glassEnabled !== false
 
     this.glassQuality = Math.round(clamp(this.glassQuality, 0, 100, 60))
-    this.glassBlurSigma = clamp(this.glassBlurSigma, 0, 20, 0)
     // Anything that is not a usable path reads as "no background chosen".
     if (typeof this.plainBackgroundPath !== 'string' || this.plainBackgroundPath === '') {
       this.plainBackgroundPath = null
@@ -316,7 +305,6 @@ class Settings {
       encryptionEnabled: this.encryptionEnabled,
       glassEnabled: this.glassEnabled,
       glassQuality: this.glassQuality,
-      glassBlurSigma: this.glassBlurSigma,
       zoom: this.zoom,
     }
   }

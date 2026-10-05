@@ -278,24 +278,6 @@ function buildDialog(state) {
     qualityLabel.textContent = qualityRange.value
   })
 
-  const blurRange = h('input', {
-    class: 'slider',
-    id: 'set-glass-blur',
-    type: 'range',
-    min: '0',
-    max: '12',
-    step: '0.5',
-    value: String(state.glassBlurSigma ?? 0),
-  })
-  const blurLabel = h('span', {
-    class: 'caption',
-    id: 'set-glass-blur-label',
-    text: String(state.glassBlurSigma ?? 0),
-  })
-  blurRange.addEventListener('input', () => {
-    blurLabel.textContent = blurRange.value
-  })
-
   const glassStatus = h('span', { class: 'caption', id: 'set-glass-status', text: '' })
 
   body.append(
@@ -310,14 +292,6 @@ function buildDialog(state) {
         class: 'caption',
         text: '开关在「外观 → 界面风格」里选「液态玻璃」。下面几项只在开启后起作用。',
       }),
-      h('div', { class: 'field' }, [
-        h('div', { class: 'field-label', text: '背景模糊' }),
-        h('div', { class: 'settings-row' }, [blurRange, blurLabel]),
-        h('div', {
-          class: 'caption',
-          text: '不是装饰：模糊是让背后的窗口不变成"第二层界面"的机制。拖到 0 背景完全清晰，背后窗口里的文字会以全对比度透出来，看起来就是重影。',
-        }),
-      ]),
       h('div', { class: 'field' }, [
         h('div', { class: 'field-label', text: '玻璃质量' }),
         h('div', { class: 'settings-row' }, [qualityRange, qualityLabel]),
@@ -413,7 +387,6 @@ function buildDialog(state) {
      */
     glass: () => uiSelect.value === 'glass',
     glassQuality: () => clamp(Number(qualityRange.value) || 0, 0, 100),
-    glassBlurSigma: () => clamp(Number(blurRange.value) || 0, 0, 12),
   }
 
   refreshSendSelect()
@@ -457,7 +430,6 @@ function collect() {
     zoom: pickers.zoom(),
     glassEnabled: pickers.glass(),
     glassQuality: pickers.glassQuality(),
-    glassBlurSigma: pickers.glassBlurSigma(),
   }
 
   return patch

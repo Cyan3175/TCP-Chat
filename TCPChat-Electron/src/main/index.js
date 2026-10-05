@@ -551,9 +551,7 @@ function registerIpc() {
     }
 
     if (glass) {
-      const lookChanged =
-        settings.glassQuality !== before.glassQuality ||
-        settings.glassBlurSigma !== before.glassBlurSigma
+      const lookChanged = settings.glassQuality !== before.glassQuality
       if (settings.glassEnabled !== before.glassEnabled) applyGlass()
       else if (lookChanged) glass.setQuality(settings.glassQuality)
     }
@@ -1267,8 +1265,7 @@ function glassStatusWithMode() {
 
 function applyGlass() {
   if (!glass) return
-  // The controller reads these when it builds or re-tunes the panel.
-  glass.blurSigma = settings.glassBlurSigma
+  // The controller reads this when it builds or re-tunes the panel.
   glass.quality = settings.glassQuality
   const status = glass.apply(settings.glassEnabled)
   if (settings.glassEnabled && !status.supported) {

@@ -39,22 +39,15 @@ const BUBBLE_FADE_MS = 90
  *
  * Everything here is in physical pixels, hence the dpr scaling: the addon's
  * geometry constants are display-independent, so a 2x display needs twice the
- * blur radius and edge displacement to look the same.
+ * edge displacement to look the same.
+ *
+ * There is no blur term. The backdrop is sampled at full resolution and shown
+ * through the lens as it is.
  */
-function paramsForQuality(quality, dpr, blurSigmaCss = 0) {
+function paramsForQuality(quality, dpr) {
   const q = Math.min(100, Math.max(0, quality)) / 100
   return {
     cornerRadius: Math.round(CORNER_RADIUS_CSS * dpr),
-    /*
-     * Blur is in physical pixels, so it scales with dpr like every other length
-     * here. A sigma at or below half a pixel is not a blur, and the renderer
-     * treats it as 0: the lens then samples the full-resolution desktop crop
-     * directly instead of the half-resolution intermediate.
-     *
-     * The quality slider scales it rather than setting it, so the user's chosen
-     * strength survives moving that slider.
-     */
-    blurSigma: Math.max(0, blurSigmaCss) * (0.6 + q * 0.8) * dpr,
     displacementScale: (40 + q * 70) * dpr,
     aberrationIntensity: 0.5 + q * 3,
     saturation: 1.15 + q * 0.5,
@@ -101,8 +94,6 @@ class GlassController {
      */
     this.capturePolicy = 'none'
     this.quality = 60
-    /** Backdrop blur strength in CSS px of sigma. Set from settings before enable(). */
-    this.blurSigma = 0
 
     /** @type {import('@hicccc77/electron-liquid-glass').GlassPanel|null} */
     this.panel = null
@@ -282,7 +273,7 @@ class GlassController {
       this.panel = this.glass.createPanel({
         ...bounds,
         dpr,
-        ...paramsForQuality(this.quality, dpr, this.blurSigma),
+        ...paramsForQuality(this.quality, dpr),
         // Must stay true: without it the panel captures itself and the image
         // converges on black.
         capturePolicy: this.capturePolicy,
@@ -304,10 +295,9 @@ class GlassController {
       this._lastBounds = bounds
       this.panel.show(160)
       this.reason = 'ok'
-      const created = paramsForQuality(this.quality, dpr, this.blurSigma)
       log.info(
         `liquid glass panel created ${JSON.stringify(bounds)} dpr=${dpr} ` +
-          `q=${this.quality} blur=${created.blurSigma.toFixed(1)} capture=${this.capturePolicy}`,
+          `q=${this.quality} capture=${this.capturePolicy}`,
       )
       return true
     } catch (err) {
@@ -488,7 +478,7 @@ class GlassController {
     // height and clamps there, so the pill case asks the panel for a radius it
     // will clamp identically rather than a fixed 8px.
     return {
-      ...paramsForQuality(this.quality, dpr, this.blurSigma),
+      ...paramsForQuality(this.quality, dpr),
       cornerRadius: pill ? 999 : Math.round(BUBBLE_RADIUS_CSS * dpr),
     }
   }
@@ -615,7 +605,7 @@ class GlassController {
     this.quality = Math.min(100, Math.max(0, Number(quality) || 0))
     if (!this.panel) return
     try {
-      this.panel.setParams(paramsForQuality(this.quality, this._dpr(), this.blurSigma))
+      this.panel.setParams(paramsForQuality(this.quality, this._dpr()))
     } catch (err) {
       log.warn('glass setParams failed —', err.message)
     }

@@ -17,7 +17,19 @@ using Microsoft::WRL::ComPtr;
 
 struct GlassParams {
     float cornerRadius = 20.0f;       // physical pixels
-    float blurSigma = 5.0f;           // physical pixels
+    /*
+     * Always zero, and kept only so the renderer's blur passes still compile.
+     *
+     * The blur was removed from the application — the setting, the slider and the
+     * value passed down are all gone — so nothing sets this any more, the renderer
+     * takes its sharp path, and the lens samples the full-resolution desktop crop
+     * directly. The two passes survive as straight copies.
+     *
+     * Deleting them properly is a separate change: the lens pass would bind the
+     * region texture instead of the blur result, and the luma staging copy would
+     * follow it. Recorded here rather than half-done.
+     */
+    float blurSigma = 0.0f;
     float displacementScale = 70.0f;
     float aberrationIntensity = 2.0f;
     float saturation = 1.4f;

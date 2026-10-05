@@ -434,6 +434,25 @@ async function runSelfTest({ win, outDir, settings, send, glassControls, glassSt
       */
      appBg: bg(document.getElementById('app')),
      plainBg: document.body.dataset.plainBg || '',
+     /*
+      * Which markdown elements actually follow the font setting.
+      *
+      * Read from computed style rather than from the stylesheet, because the
+      * question is what the browser resolved, not what the rules appear to say:
+      * a markdown token can name --dsw-font-family and still come out in
+      * something else if a later shorthand overwrites it.
+      */
+     mdFonts: (() => {
+       const wanted = ['.md p', '.md h1', '.md h2', '.md h3', '.md strong', '.md em', '.md li', '.md blockquote', '.md code', '.md .code-block .scroller > code', '.md table th', '.md .katex']
+       const first = (v) => String(v || '').split(',')[0].replace(/["']/g, '').trim()
+       const found = {}
+       for (const s of wanted) {
+         const el = document.querySelector(s)
+         found[s] = el ? first(getComputedStyle(el).fontFamily) : '-'
+       }
+       found.setting = first(getComputedStyle(document.documentElement).getPropertyValue('--dsw-font-family'))
+       return found
+     })(),
      // naturalWidth stays 0 when a backdrop never loads, which is exactly
      // how the first attempt at this feature failed.
      plainBgProbe: (() => {
@@ -611,6 +630,37 @@ async function runSelfTest({ win, outDir, settings, send, glassControls, glassSt
       record('shot 08-background-card', `${size.width}x${size.height}`)
     } else {
       record('shot 08-background-card', 'card not found')
+    }
+
+    /*
+     * Display maths, on its own.
+     *
+     * This is the case a font change is most likely to break and least likely to
+     * be caught by a probe: KaTeX draws big delimiters, radicals and large
+     * operators from KaTeX_Size1..4, so a family substituted in front of them can
+     * resolve perfectly in computed style and still leave the symbols missing.
+     * Only a picture answers that, and the scroll shots never happen to include
+     * this block.
+     */
+    await win.webContents.executeJavaScript(
+      "(() => { const m = document.querySelector('.md .math-block, .md .katex-display'); if (m) m.scrollIntoView({ block: 'center', behavior: 'instant' }); return true })()",
+    )
+    await new Promise((resolve) => setTimeout(resolve, 250))
+    const mathRect = await win.webContents.executeJavaScript(
+      "(() => { const m = document.querySelector('.md .math-block, .md .katex-display'); if (!m) return null; const r = m.getBoundingClientRect(); return { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) } })()",
+    )
+    if (mathRect && mathRect.width > 0 && mathRect.height > 0) {
+      const image = await win.webContents.capturePage({
+        x: Math.max(0, mathRect.x - 12),
+        y: Math.max(0, mathRect.y - 12),
+        width: mathRect.width + 24,
+        height: mathRect.height + 24,
+      })
+      fs.writeFileSync(path.join(outDir, '09-math.png'), image.toPNG())
+      const size = image.getSize()
+      record('shot 09-math', `${size.width}x${size.height}`)
+    } else {
+      record('shot 09-math', 'no display maths in the fixtures')
     }
 
     fs.writeFileSync(

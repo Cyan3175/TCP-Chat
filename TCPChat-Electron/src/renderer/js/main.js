@@ -244,6 +244,18 @@ function applyFont() {
   } else {
     document.documentElement.style.removeProperty('--dsw-font-family')
   }
+  /*
+   * A flag, not another variable.
+   *
+   * The chosen family has to reach two places that deliberately pin a font —
+   * code, which wants a monospace, and maths, which is drawn from KaTeX's own
+   * faces. Both are written in the stylesheets as a first choice followed by
+   * those specialist fonts, and they can only be switched on when a family has
+   * actually been chosen. An attribute is enough to key that on, and it leaves
+   * the default look untouched for anyone who has not picked one.
+   */
+  if (family) document.documentElement.dataset.customFont = 'on'
+  else delete document.documentElement.dataset.customFont
 }
 
 /*

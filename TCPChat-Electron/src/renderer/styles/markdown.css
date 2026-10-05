@@ -556,6 +556,32 @@
   font-size: 1.06em;
 }
 
+/*
+ * A chosen interface font reaches code and maths.
+ *
+ * Both of these deliberately pin a font, and both keep it: the chosen family
+ * goes in front, and the specialists stay behind it. For code that means the
+ * text is set in the chosen face while the monospace stack still catches any
+ * glyph it lacks. For maths it matters more — KaTeX draws big delimiters,
+ * radicals and large operators from KaTeX_Size1..4, which are glyph sets rather
+ * than text faces. Naming them after the chosen family lets the letters come
+ * from the setting and the symbols from the fonts that actually have them,
+ * instead of a substitution that would simply leave the symbols missing.
+ *
+ * Only applied when a family has been chosen, so the default look is untouched.
+ */
+html[data-custom-font] {
+  --ds-font-family-code: var(--dsw-font-family), "SF Mono", "JetBrains Mono", "Fira Code",
+    Consolas, "Liberation Mono", Menlo, Courier, "PingFang SC", "Microsoft YaHei", monospace;
+}
+
+html[data-custom-font] .md .katex,
+html[data-custom-font] .md .katex * {
+  font-family: var(--dsw-font-family), KaTeX_Main, KaTeX_Math, KaTeX_AMS, KaTeX_Typewriter,
+    KaTeX_SansSerif, KaTeX_Caligraphic, KaTeX_Script, KaTeX_Fraktur, KaTeX_Size1, KaTeX_Size2,
+    KaTeX_Size3, KaTeX_Size4, "Times New Roman", serif;
+}
+
 .md .math-block {
   margin: 0.65em 0;
   overflow-x: auto;

@@ -122,9 +122,13 @@ const api = {
     copyText: (text) => ipcRenderer.invoke('app:copy-text', { text }),
     /** Opens the OS microphone privacy page (Windows). */
     openMicSettings: () => ipcRenderer.invoke('app:open-mic-settings'),
-    /** The plain theme's backdrop: { url, path }, url null when none is set. */
+    /** The plain theme's backdrop: { url, path, fit }, url null when none is set. */
     background: () => ipcRenderer.invoke('app:background'),
+    /** Preview plus the recently used pictures, both as small data URLs. */
+    backgroundRecents: () => ipcRenderer.invoke('app:background-recents'),
     pickBackground: () => ipcRenderer.invoke('app:pick-background'),
+    useBackground: (file) => ipcRenderer.invoke('app:use-background', { file }),
+    setBackgroundFit: (fit) => ipcRenderer.invoke('app:set-background-fit', { fit }),
     clearBackground: () => ipcRenderer.invoke('app:clear-background'),
     platform: process.platform,
   },

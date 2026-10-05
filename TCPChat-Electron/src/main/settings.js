@@ -32,6 +32,16 @@ const POLL_MAX = 120
 const HISTORY_MIN = 1
 const HISTORY_MAX = 365
 
+/*
+ * Fit modes for the chosen background, as the CSS object-fit keyword. These
+ * mirror what Windows offers for the desktop picture, which is the mental
+ * model anyone picking a backdrop already has.
+ */
+const FITS = ['cover', 'contain', 'fill', 'none', 'repeat']
+
+/** How many recently used pictures to remember. */
+const RECENT_MAX = 8
+
 function clamp(value, min, max, fallback) {
   const n = typeof value === 'number' ? value : Number(value)
   if (!Number.isFinite(n)) return fallback
@@ -84,6 +94,15 @@ function defaults() {
      * the desktop.
      */
     plainBackgroundPath: null,
+
+    /*
+     * How the picture meets the window, mirroring the desktop's own fit modes.
+     * Stored as the CSS object-fit keyword so nothing has to translate it.
+     */
+    plainBackgroundFit: 'cover',
+
+    /** Recently chosen pictures, newest first. Paths only; thumbnails are built on demand. */
+    plainBackgroundRecent: [],
 
     zoom: 1,
     // Electron-only additions (ignored by the C# build).
@@ -139,6 +158,10 @@ class Settings {
     if (typeof this.plainBackgroundPath !== 'string' || this.plainBackgroundPath === '') {
       this.plainBackgroundPath = null
     }
+    this.plainBackgroundFit = FITS.includes(this.plainBackgroundFit) ? this.plainBackgroundFit : 'cover'
+    this.plainBackgroundRecent = Array.isArray(this.plainBackgroundRecent)
+      ? this.plainBackgroundRecent.filter((p) => typeof p === 'string' && p !== '').slice(0, RECENT_MAX)
+      : []
     this.zoom = clampZoom(typeof this.zoom === 'number' ? this.zoom : 1)
 
     // 11.2 moved from a single password to an ordered list. Blank entries are

@@ -259,6 +259,7 @@ function applyFont() {
  * desktop mirror.
  */
 let plainBackgroundUrl = null
+let plainBackgroundFit = 'cover'
 
 async function applyPlainBackground() {
   const layer = document.getElementById('plain-bg')
@@ -269,6 +270,7 @@ async function applyPlainBackground() {
     try {
       const info = await window.tcpchat.app.background()
       plainBackgroundUrl = info?.url ?? ''
+      plainBackgroundFit = info?.fit ?? 'cover'
     } catch {
       plainBackgroundUrl = ''
     }
@@ -277,6 +279,9 @@ async function applyPlainBackground() {
   const want = Boolean(plainBackgroundUrl) && document.body.dataset.glass !== 'on'
   if (want) {
     if (img.getAttribute('src') !== plainBackgroundUrl) img.src = plainBackgroundUrl
+    // The fit mode is an object-fit keyword, so it goes straight through.
+    img.style.objectFit = plainBackgroundFit
+    img.style.objectPosition = 'center'
     layer.hidden = false
     document.body.dataset.plainBg = 'on'
   } else {
@@ -728,6 +733,12 @@ function subscribe() {
     // Picking or clearing a backdrop comes through here; drop the cached data
     // URL so the next apply reads the new one instead of reusing the old.
     if (previous?.plainBackgroundPath !== settings.plainBackgroundPath) {
+      invalidatePlainBackground()
+      applyPlainBackground()
+    }
+    // The fit mode is not in the settings snapshot the renderer keeps, so it is
+    // read back with the image rather than compared here.
+    if (previous?.plainBackgroundFit !== settings.plainBackgroundFit) {
       invalidatePlainBackground()
       applyPlainBackground()
     }

@@ -77,17 +77,8 @@ function numberInput(id, value, min, max, step = 1) {
   })
 }
 
-/** Just the file name — a full path is noise in a settings row. */
-function nameFromPath(filePath) {
-  if (typeof filePath !== 'string' || filePath === '') return '未选择'
-  return filePath.split(/[\\/]/).pop() || filePath
-}
-
-function backgroundName(state) {
-  return nameFromPath(state?.plainBackgroundPath)
-}
-
-function switchRow(id, checked, label) {  return h('label', { class: 'switch' }, [
+function switchRow(id, checked, label) {
+  return h('label', { class: 'switch' }, [
     h('input', { type: 'checkbox', id, checked: checked === true }),
     h('span', { class: 'switch-track' }),
     h('span', { text: label }),
@@ -283,10 +274,35 @@ function buildDialog(state) {
       ]),
       h('div', { class: 'field' }, [
         h('div', { class: 'field-label', text: '普通主题背景' }),
+        /*
+         * Laid out like the desktop's own background page: a preview of what is
+         * set, the pictures used recently, a way to reach a new one, and the fit
+         * mode. That is the shape anyone who has changed a wallpaper already
+         * knows, so none of it needs explaining.
+         */
+        h('div', { class: 'bg-preview-frame' }, [
+          h('img', { class: 'bg-preview', id: 'set-bg-preview', alt: '' }),
+          h('div', { class: 'bg-preview-empty', id: 'set-bg-empty', text: '未选择背景' }),
+        ]),
+        h('div', { class: 'bg-recent-head', text: '最近使用的图像' }),
+        h('div', { class: 'bg-recent', id: 'set-bg-recent' }),
         h('div', { class: 'settings-row' }, [
           h('button', { class: 'btn', id: 'set-bg-pick', type: 'button', text: '选择图片…' }),
           h('button', { class: 'btn', id: 'set-bg-clear', type: 'button', text: '清除' }),
-          h('span', { class: 'caption', id: 'set-bg-name', text: backgroundName(state) }),
+        ]),
+        h('div', { class: 'field' }, [
+          h('div', { class: 'field-label', text: '适应模式' }),
+          h(
+            'select',
+            { class: 'input bg-fit', id: 'set-bg-fit' },
+            [
+              ['cover', '填充'],
+              ['contain', '适应'],
+              ['fill', '拉伸'],
+              ['none', '居中'],
+              ['repeat', '平铺'],
+            ].map(([value, label]) => h('option', { value, text: label })),
+          ),
         ]),
         h('div', {
           class: 'caption',
@@ -452,10 +468,52 @@ export async function openSettings(state) {
   /*
    * The backdrop is applied the moment it is chosen rather than on Save, because
    * the point of picking a picture is seeing whether you like it behind your
-   * messages. It also means Cancel cannot un-choose it, so the row says which
-   * file is in use and offers Clear.
+   * messages. It also means Cancel cannot un-choose it, so the card shows what is
+   * in use and offers Clear.
    */
-  const bgName = dialog.querySelector('#set-bg-name')
+  const bgPreview = dialog.querySelector('#set-bg-preview')
+  const bgEmpty = dialog.querySelector('#set-bg-empty')
+  const bgRecents = dialog.querySelector('#set-bg-recent')
+  const bgFit = dialog.querySelector('#set-bg-fit')
+
+  function paintBackground({ preview, recents, fit }) {
+    if (bgPreview) {
+      bgPreview.src = preview || ''
+      bgPreview.hidden = !preview
+    }
+    if (bgEmpty) bgEmpty.hidden = Boolean(preview)
+    if (bgFit && fit) bgFit.value = fit
+    if (!bgRecents) return
+    clear(bgRecents)
+    if (!recents?.length) {
+      bgRecents.append(h('div', { class: 'caption', text: '还没有用过图片' }))
+      return
+    }
+    for (const item of recents) {
+      bgRecents.append(
+        h('button', {
+          class: 'bg-recent-item',
+          type: 'button',
+          title: item.name,
+          onclick: async () => {
+            const result = await window.tcpchat.app.useBackground(item.path)
+            if (!result?.ok) {
+              showToast(result?.error || '这张图片用不了', true)
+              return
+            }
+            paintBackground(await window.tcpchat.app.backgroundRecents())
+          },
+        }, [h('img', { src: item.thumb, alt: item.name })]),
+      )
+    }
+  }
+
+  async function refreshBackground() {
+    paintBackground(await window.tcpchat.app.backgroundRecents())
+  }
+
+  void refreshBackground()
+
   dialog.querySelector('#set-bg-pick').addEventListener('click', async () => {
     const result = await window.tcpchat.app.pickBackground()
     if (result?.canceled) return
@@ -463,11 +521,16 @@ export async function openSettings(state) {
       showToast(result?.error || '这张图片用不了', true)
       return
     }
-    if (bgName) bgName.textContent = nameFromPath(result.path)
+    await refreshBackground()
   })
+
   dialog.querySelector('#set-bg-clear').addEventListener('click', async () => {
     await window.tcpchat.app.clearBackground()
-    if (bgName) bgName.textContent = '未选择'
+    await refreshBackground()
+  })
+
+  bgFit?.addEventListener('change', async () => {
+    await window.tcpchat.app.setBackgroundFit(bgFit.value)
   })
 
 

@@ -21,6 +21,7 @@ const {
   clipboard,
   dialog,
   ipcMain,
+  nativeImage,
   nativeTheme,
   protocol,
   screen,
@@ -688,8 +689,49 @@ function registerIpc() {
 
   ipcMain.handle('app:background', async () => {
     const url = await readBackground()
-    return { url, path: url ? settings.plainBackgroundPath : null }
+    return { url, path: url ? settings.plainBackgroundPath : null, fit: settings.plainBackgroundFit }
   })
+
+  /*
+   * A small data URL for a picture, for the preview and the recent row.
+   *
+   * Through nativeImage rather than CSS scaling: the settings panel would
+   * otherwise hold a dozen full-size photos decoded at once, and it only needs
+   * enough pixels to recognise which picture is which.
+   */
+  function thumbnail(file, width) {
+    try {
+      const image = nativeImage.createFromPath(file)
+      if (image.isEmpty()) return null
+      return image.resize({ width, quality: 'good' }).toDataURL()
+    } catch {
+      return null
+    }
+  }
+
+  /** The recent list with thumbnails attached, skipping anything since deleted. */
+  function recentWithThumbs() {
+    const out = []
+    for (const file of settings.plainBackgroundRecent) {
+      const thumb = thumbnail(file, 160)
+      if (thumb) out.push({ path: file, name: path.basename(file), thumb })
+    }
+    return out
+  }
+
+  ipcMain.handle('app:background-recents', async () => ({
+    recents: recentWithThumbs(),
+    preview: settings.plainBackgroundPath ? thumbnail(settings.plainBackgroundPath, 320) : null,
+    fit: settings.plainBackgroundFit,
+  }))
+
+  /** Remember a picture, newest first and without duplicates. */
+  function rememberBackground(file) {
+    settings.plainBackgroundRecent = [
+      file,
+      ...settings.plainBackgroundRecent.filter((p) => p !== file),
+    ].slice(0, 8)
+  }
 
   ipcMain.handle('app:pick-background', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
@@ -698,18 +740,34 @@ function registerIpc() {
       filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] }],
     })
     if (result.canceled || !result.filePaths?.length) return { ok: false, canceled: true }
-    const file = result.filePaths[0]
-    const url = await (async () => {
-      const previous = settings.plainBackgroundPath
-      settings.plainBackgroundPath = file
-      const read = await readBackground()
-      if (!read) settings.plainBackgroundPath = previous
-      return read
-    })()
-    if (!url) return { ok: false, error: '这个文件读不出来，或者超过了 24 MB' }
+    return useBackground(result.filePaths[0])
+  })
+
+  /** Choose one of the recent pictures without going through the file dialog. */
+  ipcMain.handle('app:use-background', async (_e, { file } = {}) => {
+    if (typeof file !== 'string' || file === '') return { ok: false, error: '没有选中图片' }
+    return useBackground(file)
+  })
+
+  async function useBackground(file) {
+    const previous = settings.plainBackgroundPath
+    settings.plainBackgroundPath = file
+    const url = await readBackground()
+    if (!url) {
+      settings.plainBackgroundPath = previous
+      return { ok: false, error: '这个文件读不出来，或者超过了 24 MB' }
+    }
+    rememberBackground(file)
     settings.save()
     send('settings-changed', settings.toRenderer())
     return { ok: true, url, path: file }
+  }
+
+  ipcMain.handle('app:set-background-fit', async (_e, { fit } = {}) => {
+    settings.plainBackgroundFit = fit
+    settings.save()
+    send('settings-changed', settings.toRenderer())
+    return { ok: true, fit: settings.plainBackgroundFit }
   })
 
   ipcMain.handle('app:clear-background', async () => {

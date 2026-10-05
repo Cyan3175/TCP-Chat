@@ -559,6 +559,10 @@ async function runSelfTest({ win, outDir, settings, send, glassControls, glassSt
     // The About line sits at the bottom of a scrolling dialog and never fits in a
     // screenshot, so read the value the renderer actually holds instead.
     settingsReport.version = await win.webContents.executeJavaScript('window.tcpchat.versions.app')
+  // The background card: preview, recent strip and fit mode.
+  settingsReport.background = await win.webContents.executeJavaScript(
+    "(() => { const p = document.getElementById('set-bg-preview'); const r = document.getElementById('set-bg-recent'); const f = document.getElementById('set-bg-fit'); return [p ? (p.hidden ? 'preview-hidden' : 'preview-shown') : 'no-preview', r ? r.querySelectorAll('img').length + ' recents' : 'no-strip', f ? f.value + '/' + f.options.length : 'no-fit'].join(' | ') })()",
+  )
     record('settings', JSON.stringify(settingsReport))
     record('shot 06-settings', `${await shoot(win, path.join(outDir, '06-settings.png'))} bytes`)
 

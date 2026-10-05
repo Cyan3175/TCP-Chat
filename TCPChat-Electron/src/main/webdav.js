@@ -428,7 +428,23 @@ class WebDavClient {
     if (resp.status === 207) {
       return this.parseMultiStatus(await resp.text())
     }
-    if (resp.ok) return []
+    /*
+     * A WebDAV server answers PROPFIND with 207, never 200.
+     *
+     * This used to `return []` for any ok status, which meant a host that is not
+     * a WebDAV server at all — a plain file-browsing page, say, which answers
+     * every method and every path with the same HTML — was reported as an empty
+     * collection. The chat came up blank and everything looked connected, which
+     * is the one outcome that hides the problem completely. nw.zhaohans.cn does
+     * exactly this.
+     */
+    if (resp.ok) {
+      const type = resp.headers.get('content-type') || '未知类型'
+      throw new WebDavError(
+        `PROPFIND ${path}: 服务器返回 ${resp.status}（${type}）而不是 207，这个地址不是 WebDAV 服务`,
+        resp.status,
+      )
+    }
     throw new WebDavError(`PROPFIND ${path} -> ${resp.status} ${resp.statusText}`, resp.status)
   }
 

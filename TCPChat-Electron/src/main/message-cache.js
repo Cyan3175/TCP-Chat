@@ -53,6 +53,15 @@ class MessageCache {
     this._folder = folder ?? ''
     this._path = file
     this._items = new Map()
+    /*
+     * name -> the server's size and mtime for that file, as a compact string.
+     *
+     * Kept beside the message rather than inside it so the stored JSON stays the
+     * bytes the server sent. This is what makes a file that changed
+     * distinguishable from one that is merely already known: a withdraw rewrites
+     * the record in place, so its name never changes and only this moves.
+     */
+    this._prints = new Map()
     this._dirty = false
   }
 
@@ -71,6 +80,9 @@ class MessageCache {
       }
       for (const entry of Array.isArray(parsed.items) ? parsed.items : []) {
         if (entry && entry.name && entry.json) cache._items.set(entry.name, entry.json)
+      }
+      for (const entry of Array.isArray(parsed.prints) ? parsed.prints : []) {
+        if (entry && entry.name && entry.print) cache._prints.set(entry.name, entry.print)
       }
     } catch (err) {
       log.warn('message cache unreadable, starting empty', err)
@@ -101,14 +113,37 @@ class MessageCache {
     this._dirty = true
   }
 
+  /** The recorded fingerprint for a name, or null when none was stored. */
+  fingerprint(name) {
+    return this._prints.has(name) ? this._prints.get(name) : null
+  }
+
+  /** Record what the server said about a file. */
+  setFingerprint(name, print) {
+    if (!name || !print) return
+    if (this._prints.get(name) === print) return
+    this._prints.set(name, print)
+    this._dirty = true
+  }
+
+  /** `size:mtimeMs`, the comparable form of a listing entry. */
+  static fingerprintOf(entry) {
+    if (!entry) return ''
+    const size = Number(entry.length) || 0
+    const mtime = entry.lastModified instanceof Date ? entry.lastModified.getTime() : 0
+    return `${size}:${mtime}`
+  }
+
   remove(name) {
     if (!name) return
+    this._prints.delete(name)
     if (this._items.delete(name)) this._dirty = true
   }
 
   clear() {
     if (this._items.size === 0) return
     this._items.clear()
+    this._prints.clear()
     this._dirty = true
   }
 
@@ -131,6 +166,7 @@ class MessageCache {
       const time = timeOf(name)
       if (!time || time < cutoff) continue
       this._items.delete(name)
+      this._prints.delete(name)
       gone.push(name)
     }
     if (gone.length > 0) this._dirty = true
@@ -145,6 +181,7 @@ class MessageCache {
         folder: this._folder,
         savedAt: new Date().toISOString(),
         items: [...this._items.entries()].map(([name, json]) => ({ name, json })),
+        prints: [...this._prints.entries()].map(([name, print]) => ({ name, print })),
       }
       this._dirty = false
       fs.mkdirSync(path.dirname(this._path), { recursive: true })

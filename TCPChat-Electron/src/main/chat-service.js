@@ -628,9 +628,50 @@ class ChatService extends EventEmitter {
       this._diag(`对方撤回, 本地移除 ${name}`)
     }
 
-    const fresh = files.filter((e) => !this._seen.has(e.name) && !this._deleted.has(e.name))
+    /*
+     * What to fetch: everything not already known, plus anything known whose
+     * fingerprint has moved.
+     *
+     * The second half is the point. A withdraw cannot delete the file — the
+     * service has no delete — so it rewrites the record in place. The name stays
+     * the same, which means a plain "have I seen this name" test answers yes
+     * forever and the cached copy is replayed on every launch: the other side
+     * withdraws a message and it never goes away here. The size and mtime from
+     * the listing are what tell the two apart.
+     */
+    const changed = new Set()
+    for (const e of files) {
+      if (!this._seen.has(e.name) && !this.cache.get(e.name)) continue
+      const recorded = this.cache.fingerprint(e.name)
+      const remote = MessageCache.fingerprintOf(e)
+      // A name with no recorded fingerprint is not evidence of a change; it is
+      // a cache written before fingerprints existed, and re-reading all of those
+      // once is fine but calling them all changed is not.
+      if (recorded && remote && recorded !== remote) changed.add(e.name)
+    }
+
+    const fresh = files.filter(
+      (e) => (!this._seen.has(e.name) && !this._deleted.has(e.name)) || changed.has(e.name),
+    )
+    if (changed.size > 0) {
+      this._diag(`比对: ${changed.size} 个文件在服务器上变了，重新读取`)
+    }
+    /*
+     * Also to the log, not only to the status bar.
+     *
+     * The comparison is the one part of a sync whose correctness is invisible
+     * when it works and silent when it does not: a fingerprint that never
+     * differs looks exactly like a service where nothing ever changes. Having
+     * the counts in the log is what makes "it fetched 196 the second time too"
+     * something you can see.
+     */
+    log.info(
+      `sync: listed=${entries.length} messages=${files.length} fetch=${fresh.length}` +
+        ` changed=${changed.size} withdrawn=${gone.length} cached=${this.cache.count}`,
+    )
     this._diag(
       `同步: 目录 ${entries.length} 项 / 消息 ${files.length} 个 / 待取 ${fresh.length} 个` +
+        (changed.size > 0 ? ` (其中变化 ${changed.size} 个)` : '') +
         (gone.length > 0 ? ` / 撤回 ${gone.length} 个` : '') +
         ` / ${this.cache.describe()}`,
     )
@@ -684,6 +725,9 @@ class ChatService extends EventEmitter {
 
         this._seen.add(entry.name)
         this.cache.put(entry.name, text)
+        // Record what the server said, so the next round can tell a file that
+        // changed from one that is merely already known.
+        this.cache.setFingerprint(entry.name, MessageCache.fingerprintOf(entry))
         msg.remoteName = entry.name
         msg.isSelf = this.nickname !== '' && msg.from === this.nickname
         this.emit('message-added', msg)

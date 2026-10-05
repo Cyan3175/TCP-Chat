@@ -161,12 +161,31 @@ class NwClient {
       throw new NwError('返回的不是 nw 的目录页面，这个地址可能已经变了')
     }
 
+    /*
+     * Each file row, whole.
+     *
+     * Split per row rather than scanned twice for paths and then for metadata:
+     * the date and the size belong to the file named in the same row, and two
+     * independent passes would pair them by position, which is exactly the kind
+     * of assumption that survives until a row renders slightly differently.
+     *
+     * A row looks like:
+     *   <div class="file-row" onclick="showAuthModal('...encoded path...')">
+     *     <div class="file-name">msg_1791.json</div>
+     *     <div class="file-meta">
+     *       <span>📅 2026/10/05 11:00</span> <span>📦 98 B</span>
+     *     </div>
+     */
     const entries = []
     const seen = new Set()
 
-    // Files: showAuthModal('<full backslash path>')
-    for (const m of html.matchAll(/showAuthModal\('([^']+)'\)/g)) {
-      let full = m[1]
+    const rowPattern = /<div class="file-row"[\s\S]*?(?=<div class="file-row"|<\/body>|$)/g
+    for (const match of html.matchAll(rowPattern)) {
+      const chunk = match[0]
+
+      const pathMatch = /showAuthModal\('([^']+)'\)/.exec(chunk)
+      if (!pathMatch) continue
+      let full = pathMatch[1]
       try {
         full = decodeURIComponent(full)
       } catch {
@@ -175,13 +194,42 @@ class NwClient {
       const name = full.split('\\').pop()
       if (!name || seen.has(name)) continue
       seen.add(name)
+
+      /*
+       * The fingerprint. This is what makes it possible to notice a file that
+       * changed rather than one that appeared: a withdraw rewrites the record in
+       * place, so the name stays the same and only these move.
+       *
+       * Both are as coarse as the page renders them - minutes, and a size
+       * rounded to one decimal in KB and up - so a change inside the same minute
+       * that lands in the same size bucket is missed. That is the price of the
+       * only fingerprint this service offers, and it is enough for a withdrawal,
+       * which takes a message of some hundreds of bytes down to a short record.
+       */
+      const dateMatch = /📅\s*(\d{4})\/(\d{2})\/(\d{2})\s+(\d{2}):(\d{2})/.exec(chunk)
+      const lastModified = dateMatch
+        ? new Date(
+            Number(dateMatch[1]),
+            Number(dateMatch[2]) - 1,
+            Number(dateMatch[3]),
+            Number(dateMatch[4]),
+            Number(dateMatch[5]),
+          )
+        : null
+
+      const sizeMatch = /📦\s*([\d.]+)\s*(B|KB|MB|GB)/.exec(chunk)
+      const scale = { B: 1, KB: 1024, MB: 1024 ** 2, GB: 1024 ** 3 }
+      const length = sizeMatch
+        ? Math.round(Number(sizeMatch[1]) * (scale[sizeMatch[2]] ?? 1))
+        : 0
+
       entries.push({
         href: full,
         path: full.replace(/\\/g, '/'),
         name,
         isCollection: false,
-        length: 0,
-        lastModified: null,
+        length,
+        lastModified,
         etag: '',
       })
     }

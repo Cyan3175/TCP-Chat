@@ -247,7 +247,8 @@ function applyTheme() {
  * them independent and still lets a rule name both together.
  */
 function applyUiStyle() {
-  const style = state.settings?.uiStyle === 'deepseek' ? 'deepseek' : 'default'
+  const chosen = state.settings?.uiStyle
+  const style = ['deepseek', 'edge'].includes(chosen) ? chosen : 'default'
   if (style === 'default') delete document.documentElement.dataset.ui
   else document.documentElement.dataset.ui = style
 }

@@ -187,7 +187,7 @@ class Settings {
 
     if (typeof this.nickname !== 'string') this.nickname = ''
     this.launchAtLogin = this.launchAtLogin === true
-    this.uiStyle = this.uiStyle === 'deepseek' ? 'deepseek' : 'default'
+    this.uiStyle = ['deepseek', 'edge'].includes(this.uiStyle) ? this.uiStyle : 'default'
     this.notifyOnMessage = this.notifyOnMessage !== false
     this.pollSeconds = Math.round(clamp(this.pollSeconds, POLL_MIN, POLL_MAX, POLL_MIN))
     this.historyDays = Math.round(clamp(this.historyDays, HISTORY_MIN, HISTORY_MAX, 7))

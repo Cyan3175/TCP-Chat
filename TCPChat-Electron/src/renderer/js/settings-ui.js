@@ -215,8 +215,9 @@ function buildDialog(state) {
   const uiSelect = h('select', { class: 'select', id: 'set-ui' }, [
     h('option', { value: 'default', text: '默认' }),
     h('option', { value: 'deepseek', text: 'DeepSeek' }),
+    h('option', { value: 'edge', text: 'Edge（Fluent 2）' }),
   ])
-  uiSelect.value = state.uiStyle === 'deepseek' ? 'deepseek' : 'default'
+  uiSelect.value = ['deepseek', 'edge'].includes(state.uiStyle) ? state.uiStyle : 'default'
 
   const zoomRange = h('input', {
     class: 'slider',
@@ -238,7 +239,7 @@ function buildDialog(state) {
       field('界面字体', h('div', {}, [fontInput, fontList]), '下拉选择本机字体，也可以直接输入字体名；留空使用系统默认'),
       fontPreview,
       field('主题', themeSelect),
-      field('界面风格', uiSelect, '默认是产品外观；DeepSeek 用胶囊按钮和 Atom One 的代码配色'),
+      field('界面风格', uiSelect, '默认是产品外观；DeepSeek 用胶囊按钮和 Atom One 代码配色；Edge 用 Fluent 2 的中性灰、更紧的圆角和微软蓝'),
       h('div', { class: 'field' }, [
         h('div', { class: 'field-label', text: '缩放' }),
         h('div', { class: 'settings-row' }, [zoomRange, zoomLabel]),
@@ -383,7 +384,7 @@ function buildDialog(state) {
     sendIndex: () => Number(sendSelect.value) || 0,
     font: () => fontInput.value.trim(),
     theme: () => Number(themeSelect.value) || 0,
-    uiStyle: () => (uiSelect.value === 'deepseek' ? 'deepseek' : 'default'),
+    uiStyle: () => (['deepseek', 'edge'].includes(uiSelect.value) ? uiSelect.value : 'default'),
     zoom: () => clamp(Number(zoomRange.value) / 100, 0.6, 2.4),
     glass: () => document.getElementById('set-glass').checked,
     glassQuality: () => clamp(Number(qualityRange.value) || 0, 0, 100),

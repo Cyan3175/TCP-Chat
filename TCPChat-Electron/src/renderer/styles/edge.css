@@ -1,0 +1,110 @@
+/*
+ * Edge UI set.
+ *
+ * Sourced differently from the DeepSeek one, and worth being precise about
+ * because the two are not the same kind of thing.
+ *
+ * Edge ships no stylesheet to read. Its install is 174 .pak files, 430 .data
+ * files and a .pri resource index - compiled, not authored CSS - so there was
+ * nothing to extract from the browser itself the way there was from the saved
+ * DeepSeek pages.
+ *
+ * What Edge's interface is built on, though, is Fluent 2, and Microsoft publish
+ * that system's tokens. The values below are read from @fluentui/tokens
+ * (1.0.0-alpha.24) on the CDN:
+ *
+ *   global/colors.js     the grey ramp, verbatim - 50 stops from #050505 to #fcfcfc
+ *   global/borderRadius  2 / 4 / 6 / 8 / 12 / 16, against DSH's 4 / 8 / 12 / 16 / 20 / 28
+ *   global/fonts.js      the base UI size is 14px, the same as here
+ *
+ * One thing could not come from there. The alias files take the brand ramp as a
+ * parameter rather than defining it — `generateColorTokens(brand)` — because
+ * Fluent deliberately ships no brand colour, and Teams, Office and Edge each pass
+ * their own. So the accent below is Edge's documented blue rather than a value I
+ * read out of the package, and it is the one line here that is not extracted.
+ *
+ * The result is the opposite of the DeepSeek set in character: corners tighten
+ * rather than round off, the neutrals go neutral instead of blue-tinted, and the
+ * accent is Microsoft blue rather than the product's.
+ */
+
+/* ------------------------------------------------------------------ */
+/* Neutrals — Fluent's grey ramp, not the product's blue-tinted one   */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The product's greys carry a blue cast (#0f1115, #e9ebef). Fluent's are
+ * neutral — #242424, #e0e0e0 — which is most of why an Edge window reads as
+ * greyer than an Office one, and it is the single biggest change here.
+ */
+html[data-ui='edge'] {
+  --dsw-alias-label-primary: #242424;
+  --dsw-alias-label-secondary: #424242;
+  --dsw-alias-label-caption: #616161;
+  --dsw-alias-border-l1: #e0e0e0;
+  --dsw-alias-border-l2: #d1d1d1;
+  --dsw-alias-bg-base: #fafafa;
+  --dsw-alias-bg-module-platform: #ffffff;
+  --dsw-alias-bg-layer-2: #ffffff;
+  --dsw-alias-bg-layer-3: #ffffff;
+  --dsw-alias-bg-document-selection: #0078d433;
+
+  /* Edge's accent. The one value not read from the package - see the header. */
+  --dsw-alias-state-business-primary: #0078d4;
+}
+
+html[data-ui='edge'][data-ds-dark-theme] {
+  --dsw-alias-label-primary: #ffffff;
+  --dsw-alias-label-secondary: #d6d6d6;
+  --dsw-alias-label-caption: #adadad;
+  --dsw-alias-border-l1: #3d3d3d;
+  --dsw-alias-border-l2: #525252;
+  --dsw-alias-bg-base: #1f1f1f;
+  --dsw-alias-bg-module-platform: #292929;
+  --dsw-alias-bg-layer-2: #292929;
+  --dsw-alias-bg-layer-3: #333333;
+  --dsw-alias-bg-document-selection: #0078d466;
+  --dsw-alias-state-business-primary: #479ef5;
+}
+
+/* ------------------------------------------------------------------ */
+/* Shape — Fluent is tighter than the product                         */
+/* ------------------------------------------------------------------ */
+
+html[data-ui='edge'] {
+  --dsw-radius-xs: 2px;
+  --dsw-radius-sm: 4px;
+  --dsw-radius-md: 4px;
+  --dsw-radius-lg: 6px;
+  --dsw-radius-xl: 8px;
+  --dsw-radius-panel: 8px;
+}
+
+/*
+ * Fluent caps its own corners rather than scaling them with the element. A
+ * message bubble at the product's 12px looks like a different product next to
+ * 4px controls, so the bubbles come down with everything else.
+ */
+html[data-ui='edge'] .msg .bubble,
+html[data-ui='edge'] .menu,
+html[data-ui='edge'] .modal,
+html[data-ui='edge'] .file-card,
+html[data-ui='edge'] .code-block {
+  border-radius: 6px;
+}
+
+/* Segoe UI Variable is the Fluent text face and ships with Windows 11. It sits
+   in front of whatever the font setting resolved to, so choosing a family still
+   wins — this only matters for the default. */
+html[data-ui='edge'] body {
+  --dsw-font-family-fallback: "Segoe UI Variable Text", "Segoe UI", var(--dsw-font-family-fallback);
+}
+
+/* Fluent's focus ring is a solid 2px stroke rather than a colour change, and it
+   is the one place where the accent is meant to be loud. */
+html[data-ui='edge'] .btn:focus-visible,
+html[data-ui='edge'] .composer-input:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 1px;
+  border-color: transparent;
+}

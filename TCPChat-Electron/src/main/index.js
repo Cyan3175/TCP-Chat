@@ -709,10 +709,60 @@ function registerIpc() {
     }
   }
 
-  /** The recent list with thumbnails attached, skipping anything since deleted. */
+  /*
+   * The two places Windows 11 itself keeps pictures for this.
+   *
+   * Asking someone to go and find a wallpaper when the machine already has a
+   * folder full of them is a worse first run than opening on that folder, and
+   * the recent strip can start out holding what Windows' own recent strip holds.
+   */
+  const WINDOWS_WALLPAPER_ROOT = path.join(
+    process.env.windir || 'C:\\Windows',
+    'Web',
+    'Wallpaper',
+  )
+  const WINDOWS_RECENT_WALLPAPERS = path.join(
+    app.getPath('appData'),
+    'Microsoft',
+    'Windows',
+    'Themes',
+    'TranscodedWallpaperCache',
+  )
+
+  /**
+   * Windows' cached wallpapers, newest first.
+   *
+   * They carry no extension — TranscodedWallpaper_<hash> — but they are JPEG
+   * underneath, which is why the thumbnail goes through nativeImage rather than
+   * anything that trusts a file name.
+   */
+  function windowsRecentWallpapers(limit) {
+    try {
+      return fs
+        .readdirSync(WINDOWS_RECENT_WALLPAPERS)
+        .filter((n) => n.startsWith('TranscodedWallpaper_') && !n.endsWith('.meta'))
+        .map((n) => path.join(WINDOWS_RECENT_WALLPAPERS, n))
+        .map((p) => ({ path: p, time: fs.statSync(p).mtimeMs }))
+        .sort((a, b) => b.time - a.time)
+        .slice(0, limit)
+        .map((e) => e.path)
+    } catch {
+      return []
+    }
+  }
+
+  /**
+   * The recent list with thumbnails attached, skipping anything since deleted.
+   *
+   * Falls back to Windows' own recent wallpapers so the strip is not empty on a
+   * fresh install; once a picture is chosen in the app, it takes over.
+   */
   function recentWithThumbs() {
+    const files = settings.plainBackgroundRecent.length
+      ? settings.plainBackgroundRecent
+      : windowsRecentWallpapers(6)
     const out = []
-    for (const file of settings.plainBackgroundRecent) {
+    for (const file of files) {
       const thumb = thumbnail(file, 160)
       if (thumb) out.push({ path: file, name: path.basename(file), thumb })
     }
@@ -734,8 +784,18 @@ function registerIpc() {
   }
 
   ipcMain.handle('app:pick-background', async () => {
+    /*
+     * Open where Windows keeps its wallpapers, so the first thing on screen is
+     * the same set the desktop's own picker offers. Falls back to the folder of
+     * whatever is in use, then to Pictures.
+     */
+    const startDir =
+      (settings.plainBackgroundPath && path.dirname(settings.plainBackgroundPath)) ||
+      (fs.existsSync(WINDOWS_WALLPAPER_ROOT) ? WINDOWS_WALLPAPER_ROOT : null) ||
+      app.getPath('pictures')
     const result = await dialog.showOpenDialog(mainWindow, {
       title: '选择背景图片',
+      defaultPath: startDir,
       properties: ['openFile'],
       filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] }],
     })

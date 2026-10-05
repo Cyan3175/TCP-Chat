@@ -428,7 +428,8 @@ function registerIpc() {
 
   ipcMain.handle('settings:update', async (_e, patch) => {
     const before = {
-      serverUrl: settings.serverUrl,
+      nwUrl: settings.nwUrl,
+      nwPassword: settings.nwPassword,
       chatFolder: settings.chatFolder,
       nickname: settings.nickname,
       cryptoPasswords: settings.cryptoPasswords.join('\u0000'),
@@ -440,7 +441,9 @@ function registerIpc() {
     settings.save()
 
     const connectionChanged =
-      before.serverUrl !== settings.serverUrl || before.chatFolder !== settings.chatFolder
+      before.nwUrl !== settings.nwUrl ||
+      before.nwPassword !== settings.nwPassword ||
+      before.chatFolder !== settings.chatFolder
     const cryptoChanged =
       before.cryptoPasswords !== settings.cryptoPasswords.join('\u0000') ||
       before.sendPasswordIndex !== settings.sendPasswordIndex
@@ -477,17 +480,14 @@ function registerIpc() {
 
   ipcMain.handle('settings:test', async (_e, candidate) => {
     const probe = new settingsModule.Settings({ ...settings.toJSON(), ...(candidate ?? {}) })
-    const { WebDavClient } = require('./webdav')
+    const { NwClient } = require('./nw')
     try {
-      const dav = new WebDavClient(probe.serverUrl)
-      const ok = (await dav.propFind(probe.chatFolder, 0)).length > 0
-      if (ok) return { ok: true, message: '已连接，聊天目录可用' }
-      const serverOk = await dav.test()
+      const nw = new NwClient({ baseUrl: probe.nwUrl, password: probe.nwPassword })
+      const entries = await nw.propFind(probe.chatFolder, 0)
+      if (entries.length > 0) return { ok: true, message: '已连接，聊天目录可用' }
       return {
         ok: false,
-        message: serverOk
-          ? `聊天目录不存在：${probe.chatFolder}`
-          : '无法访问服务器(请检查网络与服务器地址)',
+        message: `连上了，但目录里什么都没有：${probe.chatFolder}`,
       }
     } catch (err) {
       return { ok: false, message: `连接失败: ${err.message}` }

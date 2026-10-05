@@ -63,7 +63,7 @@ const ZOOM_STEP = 0.1
 const state = {
   /** Settings as the main process last reported them. */
   settings: {
-    serverUrl: '',
+    nwUrl: '',
     chatFolder: '',
     nickname: '',
     pollSeconds: 3,

@@ -21,25 +21,22 @@ const fsp = require('fs/promises')
 const path = require('path')
 const { EventEmitter } = require('events')
 
-const { WebDavClient, combine } = require('./webdav')
+const { combine } = require('./webdav')
+const { NwClient } = require('./nw')
 const { MessageCache, timeOf } = require('./message-cache')
 const { MessageCipher } = require('./crypto')
 const { cacheDir } = require('./paths')
 const { log } = require('./logger')
 
 /**
- * The spare address, or null when there is not one to use.
+ * The transport.
  *
- * Null rather than an empty string so the WebDAV client can treat "no fallback"
- * as a plain absence and keep its original single-host behaviour.
+ * One address, one protocol. There were two for a while — a WebDAV host with the
+ * nw service as a spare — but the WebDAV host is abandoned and answers 502, so
+ * the choice is gone and NwClient is what the messages are read and written with.
  */
-function fallbackFor(settings) {
-  if (!settings || settings.autoFallback !== true) return null
-  const url = String(settings.fallbackUrl ?? '').trim()
-  if (!url) return null
-  // Falling back to the address already in use is not a fallback.
-  const primary = String(settings.serverUrl ?? '').trim().replace(/\/+$/, '')
-  return url.replace(/\/+$/, '') === primary ? null : url
+function makeClient(settings) {
+  return new NwClient({ baseUrl: settings.nwUrl, password: settings.nwPassword })
 }
 
 /** How many message files are fetched concurrently during a sync round. */
@@ -165,6 +162,16 @@ function parseMessage(json) {
     quote: typeof raw.quote === 'string' ? raw.quote : null,
     attach,
     enc: typeof raw.enc === 'string' && raw.enc ? raw.enc : null,
+    /*
+     * A withdrawn message.
+     *
+     * The service the messages live on cannot delete a file, so a withdraw
+     * overwrites the record in place with {"tombstone":true} and leaves it there.
+     * Reading it back therefore yields a well-formed message with no text, which
+     * would render as an empty bubble; the flag is what distinguishes "withdrawn"
+     * from "arrived blank". Callers must drop it rather than show it.
+     */
+    tombstone: raw.tombstone === true,
   }
 }
 
@@ -176,7 +183,7 @@ class ChatService extends EventEmitter {
     super()
     this.settings = settings
     this.nickname = settings.nickname
-    this.dav = new WebDavClient(settings.serverUrl, fallbackFor(settings))
+    this.dav = makeClient(settings)
     /** @type {MessageCipher} */
     this.cipher = new MessageCipher([], 0, false)
     this._cache = null
@@ -251,7 +258,7 @@ class ChatService extends EventEmitter {
 
   /** Rebuild the cipher from the current settings (server URL / folder changes included). */
   async reload() {
-    this.dav = new WebDavClient(this.settings.serverUrl, fallbackFor(this.settings))
+    this.dav = makeClient(this.settings)
     this.nickname = this.settings.nickname
     this._cache = null
     await this.applyCryptoPasswords(
@@ -567,6 +574,8 @@ class ChatService extends EventEmitter {
         try {
           const msg = parseMessage(json)
           if (!msg) continue
+          // Withdrawn while we were away: drop it rather than replay a blank.
+          if (msg.tombstone) continue
           if (!msg.enc && !msg.attach && !msg.text?.trim() && !msg.quote?.trim()) continue
 
           if (msg.enc) this._decrypt(msg, name)
@@ -646,6 +655,21 @@ class ChatService extends EventEmitter {
         const msg = parseMessage(text)
         if (!msg) {
           this._seen.add(entry.name)
+          return
+        }
+        /*
+         * Withdrawn by the other side.
+         *
+         * The record is still there — the transport cannot delete — so it keeps
+         * coming back in every listing. Mark it seen and withdrawn so it is not
+         * fetched or shown again, and tell the UI to drop it if it is already up.
+         */
+        if (msg.tombstone) {
+          this._seen.add(entry.name)
+          this._deleted.add(entry.name)
+          this.cache.remove(entry.name)
+          this.emit('message-removed', entry.name)
+          this._diag(`对方撤回(墓碑), 本地移除 ${entry.name}`)
           return
         }
         // Drop messages with neither content nor attachment, so the list never

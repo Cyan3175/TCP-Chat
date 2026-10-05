@@ -92,22 +92,14 @@ function buildDialog(state) {
   body.append(
     h('div', { class: 'settings-group' }, [
       h('div', { class: 'settings-group-title', text: '连接' }),
-      field('WebDAV 地址', textInput('set-server', state.serverUrl), '例如 https://dev.zhaohans.cn（匿名访问，无需账号）'),
-      /*
-       * Two addresses, one of which is regularly the one that is down: they
-       * resolve to the same machine and only one vhost serves at a time. This is
-       * for the case where the address above answers with a gateway error rather
-       * than working.
-       */
-      switchRow(
-        'set-fallback-on',
-        state.autoFallback === true,
-        '直接连接不可用时，改用备用地址',
-      ),
+      field('服务地址', textInput('set-nw-url', state.nwUrl), '默认 https://nw.zhaohans.cn（文件浏览服务，消息就存在它后面）'),
       field(
-        '备用地址',
-        textInput('set-fallback-url', state.fallbackUrl),
-        '只在上面打开、并且主地址连不上（网络错误或 502/503/504）时使用。密码错误、目录不存在这类问题不会切换——另一个地址会有一模一样的毛病。',
+        '密码',
+        textInput('set-nw-password', '', {
+          type: 'password',
+          placeholder: state.hasNwPassword ? '已设置，留空则不修改' : '请输入密码',
+        }),
+        '下载和上传都用这个密码。留空表示沿用已保存的那个。',
       ),
       field('消息目录', textInput('set-folder', state.chatFolder), '服务器上的相对路径，目录必须事先存在，程序不会自动创建'),
       field('昵称', textInput('set-nickname', state.nickname), '显示在消息上，仅作为身份标识'),
@@ -353,9 +345,15 @@ function buildDialog(state) {
   )
 
   pickers = {
-    server: () => document.getElementById('set-server').value.trim(),
-    autoFallback: () => document.getElementById('set-fallback-on').checked,
-    fallbackUrl: () => document.getElementById('set-fallback-url').value.trim(),
+    nwUrl: () => document.getElementById('set-nw-url').value.trim(),
+    /*
+     * Blank means "leave the saved one alone", not "clear it".
+     *
+     * The dialog is never given the password — only whether one is set — so an
+     * empty box cannot be told apart from an untouched one, and wiping the saved
+     * password on every save would be much the worse of the two guesses.
+     */
+    nwPassword: () => document.getElementById('set-nw-password').value,
     folder: () => document.getElementById('set-folder').value.trim(),
     nickname: () => document.getElementById('set-nickname').value,
     poll: () => clamp(Number(document.getElementById('set-poll').value) || 3, 1, 120),
@@ -397,10 +395,8 @@ function collect() {
   // A trailing blank line is an editing artefact, not an intended "clear" entry.
   while (passwords.length > 1 && passwords[passwords.length - 1] === '') passwords.pop()
 
-  return {
-    serverUrl: pickers.server(),
-    autoFallback: pickers.autoFallback(),
-    fallbackUrl: pickers.fallbackUrl(),
+  const patch = {
+    nwUrl: pickers.nwUrl(),
     chatFolder: pickers.folder(),
     nickname: pickers.nickname(),
     pollSeconds: pickers.poll(),
@@ -415,6 +411,15 @@ function collect() {
     glassQuality: pickers.glassQuality(),
     glassBlurSigma: pickers.glassBlurSigma(),
   }
+
+  /*
+   * Only send the password when one was actually typed. An untouched box is
+   * empty, and sending that would clear the saved one on every save.
+   */
+  const typed = pickers.nwPassword()
+  if (typed !== '') patch.nwPassword = typed
+
+  return patch
 }
 
 export async function openSettings(state) {
@@ -457,7 +462,11 @@ export async function openSettings(state) {
   dialog.querySelector('#set-test').addEventListener('click', async () => {
     testResult.textContent = '正在测试…'
     testResult.style.color = ''
-    const candidate = { serverUrl: pickers.server(), chatFolder: pickers.folder() }
+    const candidate = {
+      nwUrl: pickers.nwUrl(),
+      nwPassword: pickers.nwPassword(),
+      chatFolder: pickers.folder(),
+    }
     const result = await window.tcpchat.settings.test(candidate)
     testResult.textContent = result.message
     testResult.style.color = result.ok ? 'var(--dsw-alias-state-success-primary)' : 'var(--dsw-alias-state-error-primary)'
@@ -571,7 +580,7 @@ export async function openSettings(state) {
 
     // Changing the folder or server abandons the current board: warn first.
     const boardChanged =
-      patch.serverUrl !== current.serverUrl || patch.chatFolder !== current.chatFolder
+      patch.nwUrl !== current.nwUrl || patch.chatFolder !== current.chatFolder
     if (boardChanged) {
       const proceed = await confirmDialog({
         title: '切换聊天目录',

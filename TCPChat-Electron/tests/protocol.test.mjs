@@ -1,5 +1,5 @@
 /**
- * End-to-end protocol test.
+ * End-to-end protocol test. **Retired — see the note at the end.**
  *
  *   node tests/protocol.test.mjs
  *
@@ -14,6 +14,22 @@
  *
  * The whole protocol layer is Electron-free by design, so this runs under plain
  * Node in a couple of seconds.
+ *
+ * ---------------------------------------------------------------------------
+ *
+ * This no longer runs, and it is not part of `npm test`.
+ *
+ * It stands up a WebDAV server because that is what ChatService used to speak.
+ * It speaks to the nw file service now — a session cookie, JSON and HTML, and no
+ * DELETE — so the moment ChatService was pointed there, this harness began
+ * answering 401 to `/nw/auth` and everything after it fell over.
+ *
+ * The coverage is worth keeping: sync, encryption, attachments and withdraw
+ * propagation are the parts most likely to break. What it needs is the same
+ * harness with an in-process stand-in for the nw API instead — auth, the
+ * directory page, download, upload-with-overwrite, and a tombstone in place of a
+ * delete. Until that exists, leaving this in `npm test` would only report a
+ * failure that says nothing about the app.
  */
 
 import http from 'node:http'

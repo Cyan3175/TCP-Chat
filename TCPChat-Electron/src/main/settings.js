@@ -19,7 +19,11 @@ const DEFAULT_CHAT_FOLDER = 'nw集训/学生资料临存/tcp_chat'
 const LEGACY_SHARED_CHAT_FOLDER = 'nw集训/学生资料临存'
 /** 10.0/10.1 defaulted to a `聊天` subfolder; migrated once. */
 const LEGACY_DEFAULT_CHAT_FOLDER = 'nw集训/学生资料临存/聊天'
-const DEFAULT_SERVER_URL = 'https://dev.zhaohans.cn'
+/*
+ * The only address the messages live on. dev.zhaohans.cn was the WebDAV host;
+ * it is abandoned and answers 502, so there is nothing left to choose between.
+ */
+const DEFAULT_NW_URL = 'https://nw.zhaohans.cn'
 
 const ZOOM_MIN = 0.6
 const ZOOM_MAX = 2.4
@@ -58,7 +62,8 @@ function clampZoom(level) {
 function defaults() {
   return {
     folderMigratedV113: false,
-    serverUrl: DEFAULT_SERVER_URL,
+    nwUrl: DEFAULT_NW_URL,
+    nwPassword: '',
     chatFolder: DEFAULT_CHAT_FOLDER,
     nickname: '',
     pollSeconds: 3,
@@ -104,17 +109,6 @@ function defaults() {
     /** Recently chosen pictures, newest first. Paths only; thumbnails are built on demand. */
     plainBackgroundRecent: [],
 
-    /*
-     * Use a second address when the configured one is not usable.
-     *
-     * The two hosts resolve to the same machine and only one vhost serves at a
-     * time, so the configured one is regularly the one returning 502. Off by
-     * default: an address quietly becoming a different address is a surprise, and
-     * the field below is where you say which one to fall back to.
-     */
-    autoFallback: false,
-    fallbackUrl: 'https://nw.zhaohans.cn',
-
     zoom: 1,
     // Electron-only additions (ignored by the C# build).
     windowBounds: null,
@@ -135,16 +129,11 @@ class Settings {
 
   /** Missing/invalid values fall back, and old default folders migrate once. */
   normalize() {
-    if (typeof this.serverUrl !== 'string' || this.serverUrl.trim() === '') {
-      this.serverUrl = DEFAULT_SERVER_URL
+    if (typeof this.nwUrl !== 'string' || !/^https?:\/\//i.test(this.nwUrl.trim())) {
+      this.nwUrl = DEFAULT_NW_URL
     }
-    this.serverUrl = this.serverUrl.trim()
-
-    this.autoFallback = this.autoFallback === true
-    if (typeof this.fallbackUrl !== 'string' || !/^https?:\/\//i.test(this.fallbackUrl.trim())) {
-      this.fallbackUrl = 'https://nw.zhaohans.cn'
-    }
-    this.fallbackUrl = this.fallbackUrl.trim()
+    this.nwUrl = this.nwUrl.trim().replace(/\/+$/g, '')
+    if (typeof this.nwPassword !== 'string') this.nwPassword = ''
 
     if (typeof this.chatFolder !== 'string' || this.chatFolder.trim() === '') {
       this.chatFolder = DEFAULT_CHAT_FOLDER
@@ -270,10 +259,11 @@ class Settings {
   /** The subset shipped to the renderer (never exposes more than it needs). */
   toRenderer() {
     return {
-      serverUrl: this.serverUrl,
+      nwUrl: this.nwUrl,
       chatFolder: this.chatFolder,
-      autoFallback: this.autoFallback,
-      fallbackUrl: this.fallbackUrl,
+      // The password itself never leaves the main process; the dialog only needs
+      // to know whether one is set, so the field can show a placeholder.
+      hasNwPassword: this.nwPassword !== '',
       nickname: this.nickname,
       pollSeconds: this.pollSeconds,
       historyDays: this.historyDays,
@@ -309,7 +299,7 @@ module.exports = {
   defaults,
   clampZoom,
   DEFAULT_CHAT_FOLDER,
-  DEFAULT_SERVER_URL,
+  DEFAULT_NW_URL,
   LEGACY_SHARED_CHAT_FOLDER,
   LEGACY_DEFAULT_CHAT_FOLDER,
   ZOOM_MIN,

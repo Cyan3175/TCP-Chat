@@ -19,6 +19,7 @@ const {
   BrowserWindow,
   Notification,
   clipboard,
+  desktopCapturer,
   dialog,
   ipcMain,
   nativeImage,
@@ -1061,34 +1062,97 @@ function registerIpc() {
   })
 
   /*
-   * Screenshot the window and hand the pixels back to the renderer.
+   * Screenshot the window, glass included, by reading the screen.
    *
-   * It does not write the clipboard itself, which was the first attempt and does
-   * not work here: this build's `clipboard` object has no writeImage and no
-   * readImage, and its `write` answers "expects an array of ClipboardItem" — it
-   * is the web clipboard API, not Electron's. The renderer has a real
-   * navigator.clipboard, so the bytes go there and it does the writing.
+   * capturePage is the wrong instrument. It reads the renderer's own surface, and
+   * the glass is not part of it: the panel is a separate DirectComposition window
+   * pinned underneath, so a capturePage shot of a glass window is the app's
+   * content over nothing at all.
    *
-   * capturePage reads the renderer's own surface, which is why the custom title
-   * bar ends up in the picture — it is HTML, not chrome. The one thing it cannot
-   * see is the glass: that panel is a separate native window pinned underneath
-   * and marked WDA_EXCLUDEFROMCAPTURE, so with glass on the shot holds the app's
-   * own content and not the backdrop behind it.
+   * Reading the screen instead gets the composited result, which is what the
+   * window actually looks like. It works because of a setting already in place:
+   * the addon puts our window under 'dda-only', which keeps it out of PrintScreen
+   * but visible to desktop duplication — and desktopCapturer is duplication.
+   *
+   * The whole display is grabbed and then cropped, rather than asking for the
+   * window directly: window sources are per-window and would not include the
+   * glass panel either.
    */
   ipcMain.handle('window:capture', async () => {
     if (!mainWindow || mainWindow.isDestroyed()) {
       return { ok: false, message: '窗口不可用' }
     }
+    /*
+     * Raised first, and waited for.
+     *
+     * A screen capture returns whatever is topmost in that rectangle, so with
+     * another window in front the shot is of that window. moveTop alone was not
+     * enough — a maximised browser stayed in front of it — so the window goes
+     * always-on-top for the moment the capture takes and is put back afterwards.
+     * Whatever it was before is read first rather than assumed to be false.
+     */
+    const wasOnTop = mainWindow.isAlwaysOnTop()
     try {
-      const image = await mainWindow.webContents.capturePage()
-      if (image.isEmpty()) return { ok: false, message: '截图为空' }
-      const { width, height } = image.getSize()
-      // Plain base64, not a data URL: the renderer builds the Blob itself, and
-      // fetch() on a data: URL is refused by the page's CSP.
-      return { ok: true, png: image.toPNG().toString('base64'), width, height }
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      if (!mainWindow.isVisible()) mainWindow.show()
+      mainWindow.setAlwaysOnTop(true)
+      mainWindow.moveTop()
+      mainWindow.focus()
+      await new Promise((resolve) => setTimeout(resolve, 250))
+    } catch {
+      /* a window that will not come forward still gets its screenshot attempted */
+    }
+
+    try {
+      const bounds = mainWindow.getBounds()
+      const display = screen.getDisplayMatching(bounds)
+      const scale = display.scaleFactor || 1
+
+      const sources = await desktopCapturer.getSources({
+        types: ['screen'],
+        thumbnailSize: {
+          width: Math.round(display.size.width * scale),
+          height: Math.round(display.size.height * scale),
+        },
+      })
+      const source =
+        sources.find((s) => String(s.display_id) === String(display.id)) || sources[0]
+      if (!source || source.thumbnail.isEmpty()) {
+        return { ok: false, message: '读不到屏幕画面' }
+      }
+
+      if (process.env.TCPCHAT_DUMP_SCREEN) {
+        const thumb = source.thumbnail.resize({ width: 800 })
+        fs.writeFileSync(
+          path.join(process.env.TCPCHAT_DUMP_SCREEN, 'full-screen.png'),
+          thumb.toPNG(),
+        )
+        log.info(
+          `capture geometry: bounds=${JSON.stringify(bounds)} display=${JSON.stringify(display.bounds)} size=${JSON.stringify(display.size)} scale=${scale} thumb=${JSON.stringify(source.thumbnail.getSize())}`,
+        )
+      }
+
+      const shot = source.thumbnail.crop({
+        x: Math.round((bounds.x - display.bounds.x) * scale),
+        y: Math.round((bounds.y - display.bounds.y) * scale),
+        width: Math.round(bounds.width * scale),
+        height: Math.round(bounds.height * scale),
+      })
+      if (shot.isEmpty()) return { ok: false, message: '截图区域为空' }
+
+      const { width, height } = shot.getSize()
+      return { ok: true, png: shot.toPNG().toString('base64'), width, height }
     } catch (err) {
       log.warn('screenshot failed', err)
       return { ok: false, message: String(err?.message || err) }
+    } finally {
+      // Put it back, whatever happened, or the app stays pinned above everything
+      // for the rest of the session.
+      try {
+        if (!wasOnTop) mainWindow.setAlwaysOnTop(false)
+      } catch {
+        /* window already gone */
+      }
     }
   })
 

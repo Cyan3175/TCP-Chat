@@ -732,6 +732,33 @@ async function runSelfTest({ win, outDir, settings, send, glassControls, glassSt
       win.focus()
       win.webContents.focus()
       await new Promise((resolve) => setTimeout(resolve, 400))
+
+      /*
+       * Saved to disk as well as copied, because whether the glass is in the
+       * picture is not something a return value can answer — it needs looking at.
+       */
+      const shot = await win.webContents.executeJavaScript('window.tcpchat.window.capture()')
+      if (shot?.ok) {
+        fs.writeFileSync(
+          path.join(outDir, '10-screenshot.png'),
+          Buffer.from(shot.png, 'base64'),
+        )
+        record('screenshot size', `${shot.width}x${shot.height} -> 10-screenshot.png`)
+      } else {
+        record('screenshot size', shot?.message || 'capture failed')
+      }
+
+      /*
+       * The whole display as well, so the geometry can be checked rather than
+       * reasoned about: where the window actually sits, and whether the crop
+       * arithmetic in window:capture agrees with it.
+       */
+      const info = await win.webContents.executeJavaScript(`(async () => {
+        const s = await window.tcpchat.window.state?.()
+        return s || null
+      })()`)
+      record('window state', JSON.stringify(info))
+
       await win.webContents.executeJavaScript("document.getElementById('btn-shot').click(), true")
       // capturePage takes a frame from the compositor; it is not instant.
       await new Promise((resolve) => setTimeout(resolve, 1500))

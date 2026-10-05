@@ -254,3 +254,48 @@ void GlassPanel::Present() {
     // With the FLIP model the RTV is invalid after Present; re-acquire next frame
     rtv_.Reset();
 }
+
+HRESULT GlassPanel::ReadBack(ID3D11DeviceContext* ctx, std::vector<unsigned char>* out,
+                             UINT* width, UINT* height) {
+    if (!swapchain_ || !device_ || !ctx || !out) return E_FAIL;
+
+    ComPtr<ID3D11Texture2D> backBuffer;
+    if (FAILED(swapchain_->GetBuffer(0, IID_PPV_ARGS(&backBuffer)))) return E_FAIL;
+
+    D3D11_TEXTURE2D_DESC desc{};
+    backBuffer->GetDesc(&desc);
+
+    // The same staging arrangement glass_debug uses to dump this texture: this
+    // is that path with the pixels handed back rather than written to a BMP.
+    D3D11_TEXTURE2D_DESC sd = desc;
+    sd.Usage = D3D11_USAGE_STAGING;
+    sd.BindFlags = 0;
+    sd.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+    sd.MiscFlags = 0;
+    sd.MipLevels = 1;
+    sd.ArraySize = 1;
+    sd.SampleDesc.Count = 1;
+    sd.SampleDesc.Quality = 0;
+
+    ComPtr<ID3D11Texture2D> staging;
+    if (FAILED(device_->CreateTexture2D(&sd, nullptr, staging.GetAddressOf()))) return E_FAIL;
+    ctx->CopyResource(staging.Get(), backBuffer.Get());
+
+    D3D11_MAPPED_SUBRESOURCE map{};
+    if (FAILED(ctx->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &map))) return E_FAIL;
+
+    const UINT w = desc.Width;
+    const UINT h = desc.Height;
+    const size_t rowBytes = static_cast<size_t>(w) * 4;
+    out->resize(rowBytes * static_cast<size_t>(h));
+    for (UINT y = 0; y < h; ++y) {
+        const auto* row = static_cast<const unsigned char*>(map.pData) +
+                          static_cast<size_t>(y) * map.RowPitch;
+        std::memcpy(out->data() + static_cast<size_t>(y) * rowBytes, row, rowBytes);
+    }
+    ctx->Unmap(staging.Get(), 0);
+
+    if (width) *width = w;
+    if (height) *height = h;
+    return S_OK;
+}

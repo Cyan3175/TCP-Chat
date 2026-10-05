@@ -11,6 +11,8 @@
 #include <windows.h>
 #include <wrl/client.h>
 
+#include <vector>
+
 using Microsoft::WRL::ComPtr;
 
 struct GlassParams {
@@ -72,6 +74,21 @@ public:
 
     ID3D11RenderTargetView* AcquireBackBuffer();  // rebuilds swapchain buffers on resize
     void Present();
+
+    /*
+     * Read the current back buffer out as tightly packed BGRA rows.
+     *
+     * The back buffer is the only thing that actually reaches the screen — the
+     * comment in renderer.cc says as much where it probes it — so it is also the
+     * only thing that can be composited into a screenshot and still be what the
+     * user sees. The panel is excluded from every capture path by design, which
+     * makes this the one way those pixels leave the process.
+     *
+     * Worker thread only, like every other method here.
+     */
+    HRESULT ReadBack(ID3D11DeviceContext* ctx, std::vector<unsigned char>* out, UINT* width,
+                     UINT* height);
+
 
 private:
     HRESULT EnsureSwapchain(ID3D11Device* device, UINT width, UINT height);

@@ -233,6 +233,32 @@ void GlassSession::SetLumaCallback(LumaCallback cb) {
     lumaCallback_ = std::move(cb);
 }
 
+void GlassSession::ReadPanel(int id, PanelReadCallback cb) {
+    Post([this, id, cb = std::move(cb)] {
+        auto it = panels_.find(id);
+        if (it == panels_.end() || !it->second.panel) {
+            if (glassdbg::enabled()) {
+                std::fprintf(stderr, "[glass-probe] ReadPanel(id=%d) ran, not found (panels=%zu)\n",
+                             id, panels_.size());
+                std::fflush(stderr);
+            }
+            cb(false, {}, 0, 0);
+            return;
+        }
+
+        std::vector<unsigned char> pixels;
+        UINT w = 0;
+        UINT h = 0;
+        const HRESULT hr = it->second.panel->ReadBack(context_.Get(), &pixels, &w, &h);
+        if (glassdbg::enabled()) {
+            std::fprintf(stderr, "[glass-probe] ReadPanel(id=%d) hr=0x%08lx %ux%u bytes=%zu\n", id,
+                         static_cast<unsigned long>(hr), w, h, pixels.size());
+            std::fflush(stderr);
+        }
+        cb(SUCCEEDED(hr) && !pixels.empty(), std::move(pixels), w, h);
+    });
+}
+
 void GlassSession::Shutdown() {
     if (!running_.load()) return;
     running_ = false;

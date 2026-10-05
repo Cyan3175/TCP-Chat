@@ -1061,40 +1061,78 @@ function registerIpc() {
   })
 
   /*
-   * Screenshot the window's own surface.
+   * Screenshot the window, glass included.
    *
-   * This was changed to read the screen in the hope of catching the glass, and
-   * changed back, because the glass cannot be caught. The addon says so itself:
+   * Two layers, because no single capture can see both. capturePage reads the
+   * renderer and is the only thing that shows the application; the glass panel is
+   * a separate window excluded from every capture path — the addon says it has to
+   * be, or the glass captures itself — and the only way at its pixels is the
+   * addon's own readback.
    *
-   *   excludeFromCapture — "Exclude the panel from screen capture (screenshots/
-   *   recording/DDA/WGC), default true. Must stay true to avoid self-capture
-   *   feedback loops; disable only for testing."
+   * So: the page over the glass, alpha-composited. Where the page is opaque the
+   * page wins; where it is transparent the glass shows through, which is exactly
+   * what the window looks like on screen.
    *
-   * and it puts our window under 'dda-only', which the addon documents as "the
-   * window is dropped from Desktop Duplication only ... and the app still shows
-   * up in screenshots". desktopCapturer is Desktop Duplication. So a screen grab
-   * has both the window and the panel removed from it, which is why the screen
-   * version photographed the desktop and nothing else — reliably, and by design.
-   *
-   * capturePage is therefore the right instrument after all: it reads the
-   * renderer directly, so it is not subject to any of that, and it is the only
-   * one of the two that shows the application.
-   *
-   * What it cannot show is the glass backdrop, because the glass is not part of
-   * the page. With glass on, the areas where it shows through come back
-   * transparent.
+   * Reading the screen instead was tried and abandoned: the window is under
+   * 'dda-only' and desktopCapturer is desktop duplication, so both layers are
+   * absent from it and the shot is of whatever is behind the window.
    */
   ipcMain.handle('window:capture', async () => {
     if (!mainWindow || mainWindow.isDestroyed()) {
       return { ok: false, message: '窗口不可用' }
     }
     try {
-      const image = await mainWindow.webContents.capturePage()
-      if (image.isEmpty()) return { ok: false, message: '截图为空' }
-      const { width, height } = image.getSize()
-      // Plain base64, not a data URL: fetch() on a data: URL is refused by the
-      // page's CSP, and the failure reads as an unhelpful "Failed to fetch".
-      return { ok: true, png: image.toPNG().toString('base64'), width, height }
+      const page = await mainWindow.webContents.capturePage()
+      if (page.isEmpty()) return { ok: false, message: '截图为空' }
+      const size = page.getSize()
+
+      const backdrop = glass?.readPanel?.() ?? null
+      if (!backdrop) {
+        // No glass, or no readback: the page on its own, which is what the
+        // button did before and is still the right answer when glass is off.
+        return { ok: true, png: page.toPNG().toString('base64'), width: size.width, height: size.height }
+      }
+
+      /*
+       * Both sides are BGRA at 4 bytes a pixel. The page is straight alpha, the
+       * glass is premultiplied, so the glass term is added as it stands rather
+       * than multiplied again.
+       *
+       * The two are not guaranteed to be the same size — the panel is the
+       * window's client area in physical pixels and the page is the viewport at
+       * the same scale, which has matched every time it has been checked — so the
+       * backdrop is sampled only where it overlaps and treated as absent outside.
+       */
+      const out = Buffer.alloc(size.width * size.height * 4)
+      const pagePixels = page.toBitmap()
+      const bw = backdrop.width
+      const bh = backdrop.height
+      const glassPixels = backdrop.pixels
+
+      for (let y = 0; y < size.height; y += 1) {
+        for (let x = 0; x < size.width; x += 1) {
+          const i = (y * size.width + x) * 4
+          const a = pagePixels[i + 3] / 255
+          const inv = 1 - a
+          const inside = x < bw && y < bh
+          for (let c = 0; c < 3; c += 1) {
+            const under = inside ? glassPixels[(y * bw + x) * 4 + c] : 0
+            out[i + c] = Math.min(255, Math.round(pagePixels[i + c] * a + under * inv))
+          }
+          out[i + 3] = 255
+        }
+      }
+
+      const composed = nativeImage.createFromBitmap(out, {
+        width: size.width,
+        height: size.height,
+      })
+      return {
+        ok: true,
+        png: composed.toPNG().toString('base64'),
+        width: size.width,
+        height: size.height,
+      }
     } catch (err) {
       log.warn('screenshot failed', err)
       return { ok: false, message: String(err?.message || err) }

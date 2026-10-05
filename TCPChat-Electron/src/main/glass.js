@@ -148,6 +148,31 @@ class GlassController {
     return Boolean(this.panel) && this.enabled
   }
 
+  /**
+   * The glass as it was last drawn, as straight BGRA.
+   *
+   * The panel is excluded from every capture path — the addon says it has to be,
+   * or the glass captures itself — so this is the only way its pixels get out of
+   * the process, and therefore the only way a screenshot can contain them.
+   *
+   * The readback runs on the addon's worker thread and blocks this call for a
+   * few milliseconds. Returns null when the glass is off, so callers fall back to
+   * whatever they would have done anyway.
+   */
+  readPanel() {
+    if (!this.active) return null
+    const native = this.glass?._native
+    if (!native || typeof native.readPanel !== 'function') return null
+    try {
+      const result = native.readPanel(this.panel.id)
+      if (!result || !result.ok || !result.pixels) return null
+      return { width: result.width, height: result.height, pixels: result.pixels }
+    } catch (err) {
+      log.warn('glass readback failed', err)
+      return null
+    }
+  }
+
   status() {
     return {
       enabled: this.active,

@@ -66,6 +66,22 @@ public:
     void SetLumaBands(int id, std::vector<LumaBand> bands);
     void SetLumaCallback(LumaCallback cb);  // invoked on the worker thread (caller handles thread-safe dispatch)
 
+    /*
+     * Read a panel's back buffer out, on the worker thread.
+     *
+     * Posted through the same command queue as everything else, and that is what
+     * makes it safe: the copy is serialised with the render loop instead of
+     * racing it, and the device and context it needs are worker-thread members.
+     * The cost is one readback's worth of stall (a few milliseconds) in the frame
+     * it lands on, which is the price of the panel being invisible to every other
+     * capture path.
+     *
+     * The callback runs on the worker thread too — the caller dispatches.
+     */
+    using PanelReadCallback =
+        std::function<void(bool ok, std::vector<unsigned char> pixels, UINT width, UINT height)>;
+    void ReadPanel(int id, PanelReadCallback cb);
+
     void Shutdown();
 
 private:

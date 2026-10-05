@@ -2,6 +2,9 @@
 #include <napi.h>
 #include <windows.h>
 
+#include <chrono>
+#include <condition_variable>
+#include <mutex>
 #include <utility>
 #include <vector>
 
@@ -530,6 +533,69 @@ Napi::Value ProbeGlassShot(const Napi::CallbackInfo& info) {
 
 }  // namespace
 
+/*
+ * Read a panel's back buffer and hand it back as {ok, width, height, pixels}.
+ *
+ * Blocking, on purpose. The readback itself runs on the worker thread, so this
+ * waits for it — a few milliseconds for one panel, once, when someone asks for a
+ * screenshot. The alternative is a ThreadSafeFunction and a callback crossing
+ * threads, and the lifetime rules there are a great deal of machinery to buy a
+ * few milliseconds back on an action nobody performs twice a second.
+ *
+ * The wait is bounded so a stalled worker returns nothing rather than hanging the
+ * caller forever.
+ */
+Napi::Value ReadPanel(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 1 || !info[0].IsNumber()) {
+        Napi::TypeError::New(env, "readPanel(id)").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+    const int id = info[0].As<Napi::Number>().Int32Value();
+
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool done = false;
+    bool ok = false;
+    std::vector<unsigned char> pixels;
+    UINT width = 0;
+    UINT height = 0;
+
+    GlassSession::Instance().ReadPanel(
+        id, [&](bool readOk, std::vector<unsigned char> readPixels, UINT w, UINT h) {
+            std::lock_guard<std::mutex> lock(mutex);
+            ok = readOk;
+            pixels = std::move(readPixels);
+            width = w;
+            height = h;
+            done = true;
+            cv.notify_one();
+        });
+
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        cv.wait_for(lock, std::chrono::seconds(5), [&] { return done; });
+    }
+
+    if (!done) {
+        if (glassdbg::enabled()) {
+            std::fprintf(stderr, "[glass-probe] ReadPanel(id=%d) timed out\n", id);
+            std::fflush(stderr);
+        }
+        return env.Null();
+    }
+
+    Napi::Object out = Napi::Object::New(env);
+    out.Set("ok", Napi::Boolean::New(env, ok));
+    out.Set("width", Napi::Number::New(env, width));
+    out.Set("height", Napi::Number::New(env, height));
+    if (ok && !pixels.empty()) {
+        out.Set("pixels",
+                Napi::Buffer<unsigned char>::Copy(env, pixels.data(), pixels.size()));
+    }
+    return out;
+}
+
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("isSupported", Napi::Function::New(env, IsSupported));
     exports.Set("osBuild", Napi::Function::New(env, OsBuild));
@@ -540,6 +606,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("setPanelBounds", Napi::Function::New(env, SetPanelBounds));
     exports.Set("setPanelParams", Napi::Function::New(env, SetPanelParams));
     exports.Set("anchorPanel", Napi::Function::New(env, AnchorPanel));
+    exports.Set("readPanel", Napi::Function::New(env, ReadPanel));
     exports.Set("setLumaBands", Napi::Function::New(env, SetLumaBands));
     exports.Set("setLumaCallback", Napi::Function::New(env, SetLumaCallback));
     exports.Set("setWindowCapturePolicy", Napi::Function::New(env, SetWindowCapturePolicy));

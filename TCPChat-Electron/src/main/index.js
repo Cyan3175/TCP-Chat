@@ -658,38 +658,78 @@ function registerIpc() {
   // forever — and the cause was never found. A data URL involves no scheme, no
   // protocol handler and no CSP entry, so there is nothing left to go wrong for
   // a picture that is read once and then sits behind the messages.
-  const IMAGE_MIME = {
-    '.png': 'image/png',
-    '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.webp': 'image/webp',
-    '.gif': 'image/gif',
-    '.bmp': 'image/bmp',
+  /*
+   * Image format from the leading bytes, not the file name.
+   *
+   * Windows' own cached wallpapers are `TranscodedWallpaper_<hash>` with no
+   * extension, so keying off the name rejected every one of them with "cannot
+   * read this file" — while the thumbnail beside it rendered fine, because that
+   * goes through nativeImage and actually decodes. Two paths, two different
+   * notions of what the file is; the magic number is the one that is not a guess.
+   */
+  function sniffImageMime(bytes) {
+    if (bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50) return 'image/png'
+    if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+      return 'image/jpeg'
+    }
+    if (bytes.length >= 6 && bytes.subarray(0, 3).toString('latin1') === 'GIF') return 'image/gif'
+    if (bytes.length >= 2 && bytes[0] === 0x42 && bytes[1] === 0x4d) return 'image/bmp'
+    if (
+      bytes.length >= 12 &&
+      bytes.subarray(0, 4).toString('latin1') === 'RIFF' &&
+      bytes.subarray(8, 12).toString('latin1') === 'WEBP'
+    ) {
+      return 'image/webp'
+    }
+    return null
   }
 
-  /** Read the chosen image, or null when there is nothing usable. */
+  /**
+   * Read the chosen image.
+   *
+   * Returns { url } on success, or { error } saying which of the ways it failed —
+   * a single "cannot read this" for a missing file, an over-large one and an
+   * unrecognised format is what let the extension bug hide behind a message that
+   * was true of none of them.
+   */
   async function readBackground() {
     const file = settings.plainBackgroundPath
-    if (!file) return null
-    const mime = IMAGE_MIME[path.extname(file).toLowerCase()]
-    if (!mime) return null
+    if (!file) return { error: '还没有选择图片' }
+
+    let stat
     try {
-      const stat = await fsp.stat(file)
-      /*
-       * A ceiling, because this crosses IPC as base64 and a 40 MB photo would be
-       * a 55 MB string. Anything above this is not a background, it is a mistake.
-       */
-      if (!stat.isFile() || stat.size > 24 * 1024 * 1024) return null
-      const bytes = await fsp.readFile(file)
-      return `data:${mime};base64,${bytes.toString('base64')}`
+      stat = await fsp.stat(file)
     } catch {
-      return null
+      return { error: `文件找不到了：${path.basename(file)}` }
     }
+    if (!stat.isFile()) return { error: '这个路径不是文件' }
+    /*
+     * A ceiling, because this crosses IPC as base64 and a 40 MB photo would be a
+     * 55 MB string. Anything above this is not a background, it is a mistake.
+     */
+    if (stat.size > 24 * 1024 * 1024) {
+      return { error: `图片 ${Math.round(stat.size / 1048576)} MB，超过 24 MB 上限` }
+    }
+
+    let bytes
+    try {
+      bytes = await fsp.readFile(file)
+    } catch (err) {
+      return { error: `读不了这个文件：${err.code || err.message}` }
+    }
+
+    const mime = sniffImageMime(bytes)
+    if (!mime) return { error: '这不是 PNG / JPEG / GIF / BMP / WebP 图片' }
+    return { url: `data:${mime};base64,${bytes.toString('base64')}` }
   }
 
   ipcMain.handle('app:background', async () => {
-    const url = await readBackground()
-    return { url, path: url ? settings.plainBackgroundPath : null, fit: settings.plainBackgroundFit }
+    const read = await readBackground()
+    return {
+      url: read.url ?? null,
+      path: read.url ? settings.plainBackgroundPath : null,
+      fit: settings.plainBackgroundFit,
+    }
   })
 
   /*
@@ -714,7 +754,7 @@ function registerIpc() {
    *
    * Asking someone to go and find a wallpaper when the machine already has a
    * folder full of them is a worse first run than opening on that folder, and
-   * the recent strip can start out holding what Windows' own recent strip holds.
+   * the recent strip can start out holding what Windows' own strip holds.
    */
   const WINDOWS_WALLPAPER_ROOT = path.join(
     process.env.windir || 'C:\\Windows',
@@ -730,12 +770,38 @@ function registerIpc() {
   )
 
   /**
-   * Windows' cached wallpapers, newest first.
+   * The desktop's own recent strip, in its own order.
    *
-   * They carry no extension — TranscodedWallpaper_<hash> — but they are JPEG
-   * underneath, which is why the thumbnail goes through nativeImage rather than
-   * anything that trusts a file name.
+   * Windows shows the default wallpaper of each built-in theme — one picture per
+   * folder under Web\Wallpaper, the first by name. Spotlight is skipped: it
+   * feeds the rotating-spotlight feature rather than being a theme, and Windows
+   * does not list it here either.
+   *
+   * Derived rather than listed, so a machine with different themes gets its own
+   * set instead of five paths that may not exist.
    */
+  function windowsThemeDefaults() {
+    try {
+      const out = []
+      for (const name of fs.readdirSync(WINDOWS_WALLPAPER_ROOT).sort()) {
+        if (name.toLowerCase() === 'spotlight') continue
+        const dir = path.join(WINDOWS_WALLPAPER_ROOT, name)
+        if (!fs.statSync(dir).isDirectory()) continue
+        const first = fs
+          .readdirSync(dir)
+          .filter((n) => /\.(jpe?g|png)$/i.test(n))
+          .sort((a, b) =>
+            a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }),
+          )[0]
+        if (first) out.push(path.join(dir, first))
+      }
+      return out
+    } catch {
+      return []
+    }
+  }
+
+  /** Windows' cached wallpapers, newest first. */
   function windowsRecentWallpapers(limit) {
     try {
       return fs
@@ -754,15 +820,22 @@ function registerIpc() {
   /**
    * The recent list with thumbnails attached, skipping anything since deleted.
    *
-   * Falls back to Windows' own recent wallpapers so the strip is not empty on a
-   * fresh install; once a picture is chosen in the app, it takes over.
+   * Falls back to the desktop's own set so the strip is not empty on a fresh
+   * install; once a picture is chosen in the app, the user's list takes over.
    */
   function recentWithThumbs() {
-    const files = settings.plainBackgroundRecent.length
-      ? settings.plainBackgroundRecent
-      : windowsRecentWallpapers(6)
+    if (settings.plainBackgroundRecent.length === 0) {
+      const fallback = windowsThemeDefaults()
+      const files = fallback.length ? fallback : windowsRecentWallpapers(6)
+      const out = []
+      for (const file of files) {
+        const thumb = thumbnail(file, 160)
+        if (thumb) out.push({ path: file, name: path.basename(file), thumb })
+      }
+      return out
+    }
     const out = []
-    for (const file of files) {
+    for (const file of settings.plainBackgroundRecent) {
       const thumb = thumbnail(file, 160)
       if (thumb) out.push({ path: file, name: path.basename(file), thumb })
     }
@@ -812,15 +885,15 @@ function registerIpc() {
   async function useBackground(file) {
     const previous = settings.plainBackgroundPath
     settings.plainBackgroundPath = file
-    const url = await readBackground()
-    if (!url) {
+    const read = await readBackground()
+    if (!read.url) {
       settings.plainBackgroundPath = previous
-      return { ok: false, error: '这个文件读不出来，或者超过了 24 MB' }
+      return { ok: false, error: read.error }
     }
     rememberBackground(file)
     settings.save()
     send('settings-changed', settings.toRenderer())
-    return { ok: true, url, path: file }
+    return { ok: true, url: read.url, path: file }
   }
 
   ipcMain.handle('app:set-background-fit', async (_e, { fit } = {}) => {

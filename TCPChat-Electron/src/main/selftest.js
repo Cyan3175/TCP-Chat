@@ -482,7 +482,18 @@ async function runSelfTest({ win, outDir, settings, send, glassControls, glassSt
         businessPrimary: getComputedStyle(document.body).getPropertyValue('--dsw-alias-state-business-primary').trim(),
         token: getComputedStyle(document.body).getPropertyValue('--dsw-alias-label-primary').trim(),
         contentFont: getComputedStyle(document.documentElement).getPropertyValue('--dsh-content-font-size').trim(),
-        surfacesOk: !transparent(bg(list)) && !transparent(bg(selfBubble)) && !transparent(bg(otherBubble)),
+        /*
+         * The bubbles stay opaque; the list is deliberately transparent when a
+         * backdrop is on, which is the whole point of having one. Stated as the
+         * two cases rather than one, so this does not read as a failure every
+         * time the feature it is checking is in use.
+         */
+        surfacesOk:
+          !transparent(bg(selfBubble)) &&
+          !transparent(bg(otherBubble)) &&
+          (document.body.dataset.plainBg === 'on'
+            ? transparent(bg(list))
+            : !transparent(bg(list))),
       }
     })()`)
     record('dom', JSON.stringify(domReport))
@@ -565,6 +576,31 @@ async function runSelfTest({ win, outDir, settings, send, glassControls, glassSt
   )
     record('settings', JSON.stringify(settingsReport))
     record('shot 06-settings', `${await shoot(win, path.join(outDir, '06-settings.png'))} bytes`)
+
+    /*
+     * The background card on its own.
+     *
+     * It sits far enough down the settings dialog that the full-height shot
+     * never reaches it, and it is the one part of that dialog whose whole value
+     * is visual — a thumbnail strip that renders empty tells you nothing from a
+     * count of its children.
+     */
+    const bgRect = await win.webContents.executeJavaScript(
+      "(() => { const f = document.getElementById('set-bg-preview'); if (!f) return null; const card = f.closest('.field'); if (!card) return null; card.scrollIntoView({ block: 'center' }); const r = card.getBoundingClientRect(); return { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height), vh: window.innerHeight } })()",
+    )
+    if (bgRect && bgRect.width > 0 && bgRect.height > 0) {
+      const image = await win.webContents.capturePage({
+        x: Math.max(0, bgRect.x - 8),
+        y: Math.max(0, bgRect.y - 8),
+        width: bgRect.width + 16,
+        height: bgRect.height + 16,
+      })
+      fs.writeFileSync(path.join(outDir, '08-background-card.png'), image.toPNG())
+      const size = image.getSize()
+      record('shot 08-background-card', `${size.width}x${size.height}`)
+    } else {
+      record('shot 08-background-card', 'card not found')
+    }
 
     fs.writeFileSync(
       path.join(outDir, 'selftest.json'),

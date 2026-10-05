@@ -306,7 +306,7 @@ function buildDialog(state) {
         ]),
         h('div', {
           class: 'caption',
-          text: '只在关闭液态玻璃时显示。图片上面会盖一层主题色薄雾，保证消息文字在照片上仍然看得清。',
+          text: '只在关闭液态玻璃时显示。图片原样显示，不加任何叠加；消息气泡自己有底色，所以文字仍然看得清。',
         }),
       ]),
       h('div', { class: 'settings-row' }, [
@@ -478,7 +478,10 @@ export async function openSettings(state) {
 
   function paintBackground({ preview, recents, fit }) {
     if (bgPreview) {
-      bgPreview.src = preview || ''
+      // Remove the attribute rather than setting src to '' — an empty src
+      // resolves to the page URL and the browser tries to decode the document.
+      if (preview) bgPreview.src = preview
+      else bgPreview.removeAttribute('src')
       bgPreview.hidden = !preview
     }
     if (bgEmpty) bgEmpty.hidden = Boolean(preview)

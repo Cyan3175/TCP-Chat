@@ -799,20 +799,15 @@ body.maximized .rz {
   object-fit: cover;
 }
 
-#plain-bg::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: var(--plain-bg-scrim);
-}
-
-body[data-plain-bg='on'] {
-  --plain-bg-scrim: rgb(255 255 255 / 56%);
-}
-
-body[data-plain-bg='on'][data-ds-dark-theme] {
-  --plain-bg-scrim: rgb(16 16 18 / 62%);
-}
+/*
+ * No scrim over the picture.
+ *
+ * There was one — the theme's surface colour at 56% in light, 62% in dark — to
+ * keep text legible over a photo. It also meant the picture you chose was never
+ * quite the picture you got. The bubbles carry their own opaque background, so
+ * their text reads either way; leaving the gaps to show the photograph
+ * unmodified is the point of choosing one.
+ */
 
 /*
  * Only in the plain theme. Under glass #app is a translucent tint over the
@@ -863,6 +858,15 @@ body[data-glass='off'][data-plain-bg='on'] #app {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+/*
+ * An explicit display beats the UA stylesheet's [hidden] { display: none }, so
+ * hiding the empty preview has to be restated here or the browser shows a broken
+ * image glyph in the frame.
+ */
+.bg-preview[hidden] {
+  display: none;
 }
 
 .bg-preview-empty {

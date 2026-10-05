@@ -60,8 +60,13 @@
 
         <div class="titlebar-actions">
           <button class="btn" id="btn-search" type="button" title="搜索 (Ctrl+F)">🔍</button>
-          <button class="btn" id="btn-glass" type="button" title="液态玻璃">◍</button>
-          <button class="btn" id="btn-theme" type="button" title="切换深浅色">◐</button>
+          <!--
+            The glass and light/dark toggles used to sit here. Both are settings
+            rather than switches worth a permanent button: the theme already had a
+            dropdown, and the glass is now one of the interface styles. Two icons
+            competing with search and settings for the same row, each doing
+            something you set once.
+          -->
           <button class="btn" id="btn-settings" type="button" title="设置">⚙</button>
           <button class="btn" id="btn-min" type="button" title="最小化">─</button>
           <button class="btn" id="btn-max" type="button" title="最大化">▢</button>

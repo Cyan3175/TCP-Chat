@@ -216,8 +216,19 @@ function buildDialog(state) {
     h('option', { value: 'default', text: '默认' }),
     h('option', { value: 'deepseek', text: 'DeepSeek' }),
     h('option', { value: 'edge', text: 'Edge（Fluent 2）' }),
+    h('option', { value: 'glass', text: '液态玻璃' }),
   ])
-  uiSelect.value = ['deepseek', 'edge'].includes(state.uiStyle) ? state.uiStyle : 'default'
+  /*
+   * One control for "what does it look like", rather than a style list plus a
+   * separate switch.
+   *
+   * Glass is not a fourth style the way the other three are — it replaces the
+   * surface with the native panel, and the styles underneath stop being visible.
+   * Presenting it as a peer of them is honest about that: you are choosing one
+   * appearance, and glass is one of the choices. The stored settings stay as they
+   * were, `uiStyle` plus `glassEnabled`, and this reads and writes both.
+   */
+  uiSelect.value = state.glassEnabled ? 'glass' : ['deepseek', 'edge'].includes(state.uiStyle) ? state.uiStyle : 'default'
 
   const zoomRange = h('input', {
     class: 'slider',
@@ -290,7 +301,15 @@ function buildDialog(state) {
   body.append(
     h('div', { class: 'settings-group' }, [
       h('div', { class: 'settings-group-title', text: '液态玻璃' }),
-      switchRow('set-glass', state.glassEnabled, '启用原生液态玻璃背景（折射 + 色散）'),
+      /*
+       * No switch here: turning glass on and off is now the 液态玻璃 entry in
+       * 界面风格, and two controls for one setting is a way to leave them
+       * disagreeing. What is left below only matters once it is on.
+       */
+      h('div', {
+        class: 'caption',
+        text: '开关在「外观 → 界面风格」里选「液态玻璃」。下面几项只在开启后起作用。',
+      }),
       h('div', { class: 'field' }, [
         h('div', { class: 'field-label', text: '背景模糊' }),
         h('div', { class: 'settings-row' }, [blurRange, blurLabel]),
@@ -386,7 +405,13 @@ function buildDialog(state) {
     theme: () => Number(themeSelect.value) || 0,
     uiStyle: () => (['deepseek', 'edge'].includes(uiSelect.value) ? uiSelect.value : 'default'),
     zoom: () => clamp(Number(zoomRange.value) / 100, 0.6, 2.4),
-    glass: () => document.getElementById('set-glass').checked,
+    /*
+     * Glass comes from the same picker, so the two cannot disagree.
+     *
+     * Choosing it leaves uiStyle alone rather than resetting it: switching glass
+     * off again should land back on the style that was underneath, not on 默认.
+     */
+    glass: () => uiSelect.value === 'glass',
     glassQuality: () => clamp(Number(qualityRange.value) || 0, 0, 100),
     glassBlurSigma: () => clamp(Number(blurRange.value) || 0, 0, 12),
   }

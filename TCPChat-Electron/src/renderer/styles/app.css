@@ -532,6 +532,22 @@ mark.find {
   transition: border-color var(--ds-transition-duration-fast) var(--ds-ease-in-out);
 }
 
+/*
+ * No scrollbar in the composer.
+ *
+ * The app's global ::-webkit-scrollbar-thumb is a rounded pill painted inset
+ * against the element's own right edge. On a box this short it does not read as
+ * a scrollbar at all — it reads as a stray vertical capsule lying on the input's
+ * border, which is exactly how it was reported.
+ *
+ * The composer grows with its text up to max-height, so the bar is almost never
+ * wanted; width 0 hides it and the textarea still scrolls when it does overflow.
+ */
+.composer-input::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
 .composer-input::placeholder {
   color: var(--dsw-alias-label-caption);
 }

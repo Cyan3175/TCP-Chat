@@ -400,21 +400,6 @@ function paintConnection() {
   }
 }
 
-function paintGlassButton() {
-  const button = document.getElementById('btn-glass')
-  if (!button) return
-  const { supported, reason, mode, source } = state.glass
-  button.classList.toggle('is-active', mode === 'on')
-  if (!supported) {
-    button.title = `液态玻璃不可用：${reason}`
-  } else if (mode === 'on') {
-    button.title = `液态玻璃已开启（${source === 'wallpaper' ? '桌面壁纸' : '实时桌面'}背景，点击关闭）`
-  } else {
-    button.title = '液态玻璃已关闭（点击开启）'
-  }
-  button.style.opacity = supported ? '' : '0.45'
-}
-
 /**
  * Tell the user once if the glass pipeline could not be built, and say so in the
  * status bar. Without a WebGL2 context the theme stays opaque, which is correct
@@ -437,7 +422,6 @@ function noteGlassHealth() {
 
 function paintToolbar() {
   paintConnection()
-  paintGlassButton()
   paintStatus()
 }
 
@@ -460,25 +444,11 @@ function applyGlassMode() {
     delete document.body.dataset.luma
     lumaMode = ''
   }
-  paintGlassButton()
   paintStatus()
   if (mode === 'on') syncBubblePanels()
   else clearBubblePanels()
   // The backdrop belongs to the plain theme, so the mode change decides it.
   applyPlainBackground()
-}
-async function toggleGlass() {
-  if (!state.glass.supported) {
-    showToast(`液态玻璃不可用：${state.glass.reason}`, true)
-    return
-  }
-  const next = !(state.glass.requested ?? false)
-  state.glass = await window.tcpchat.glass.setEnabled(next)
-  state.settings = { ...state.settings, glassEnabled: next }
-  applyGlassMode()
-  if (next && (state.glass.mode ?? 'off') !== 'on') {
-    showToast(`液态玻璃开启失败：${state.glass.reason}`, true)
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -568,18 +538,9 @@ function initTitlebar() {
   document.getElementById('btn-min').addEventListener('click', () => window.tcpchat.window.minimize())
   document.getElementById('btn-max').addEventListener('click', () => window.tcpchat.window.toggleMaximize())
   document.getElementById('btn-close').addEventListener('click', () => window.tcpchat.window.close())
-  document.getElementById('btn-glass').addEventListener('click', () => void toggleGlass())
   document.getElementById('btn-settings').addEventListener('click', () =>
     openSettings(state.settings ?? {}),
   )
-  document.getElementById('btn-theme').addEventListener('click', async () => {
-    const order = [0, 1, 2]
-    const currentTheme = state.settings?.theme ?? 0
-    const nextTheme = order[(order.indexOf(currentTheme) + 1) % order.length]
-    state.settings = { ...state.settings, theme: nextTheme }
-    applyTheme()
-    await window.tcpchat.settings.update({ theme: nextTheme })
-  })
 }
 
 /** Frameless windows need their own resize affordances. */

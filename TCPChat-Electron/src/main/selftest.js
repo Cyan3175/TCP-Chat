@@ -229,7 +229,7 @@ async function runSelfTest({ win, outDir, settings, send, glassControls, glassSt
       console.log('probe :', JSON.stringify(probe))
       const sentHash = await win.webContents.executeJavaScript('window.__glassFrameInfo ?? null')
       console.log('received:', JSON.stringify(sentHash))
-      for (const stage of ['source', 'blur', 'lens']) {
+      for (const stage of ['source', 'lens']) {
         await win.webContents.executeJavaScript(`window.__glassStage = '${stage}'`)
         await new Promise((resolve) => setTimeout(resolve, 400))
         const dataUrl = await win.webContents.executeJavaScript(

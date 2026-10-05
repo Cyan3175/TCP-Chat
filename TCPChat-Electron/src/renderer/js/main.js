@@ -589,10 +589,16 @@ async function captureWindow() {
       holder.addEventListener('error', () => reject(new Error('图片装入页面失败')), { once: true })
     })
 
+    /*
+     * Floored, not rounded. The first version rounded, and with a 1x1 box at
+     * bottom:0 the centre came to viewportHeight — one row past the bottom of the
+     * page, where there is no image, so copyImageAt had nothing to take. That is
+     * why the toast said success and nothing could be pasted.
+     */
     const rect = holder.getBoundingClientRect()
     const ok = await window.tcpchat.window.copyImageAt({
-      x: rect.left + rect.width / 2,
-      y: rect.top + rect.height / 2,
+      x: Math.floor(rect.left + rect.width / 2),
+      y: Math.floor(rect.top + rect.height / 2),
     })
     if (!ok) {
       showToast('复制到剪贴板失败', true)

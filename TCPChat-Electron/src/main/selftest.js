@@ -667,25 +667,67 @@ async function runSelfTest({ win, outDir, settings, send, glassControls, glassSt
      * The screenshot button, end to end.
      *
      * Clicked rather than called, so the button, the preload bridge, the IPC
-     * handler and the renderer's clipboard write are all on the path. The result
-     * is read from the toast the app itself raises, which is what the user sees:
-     * it says 已复制 on success and the failure text otherwise.
+     * handler and the renderer's copy are all on the path.
      *
-     * Reading the clipboard back is not possible here. The main-process
-     * clipboard has no image support in this build, and navigator.clipboard.read
-     * is refused by the app's own permission handler — correctly, since nothing
-     * in the app has a reason to read the clipboard. So this proves the write
-     * resolved without error, not that a paste would find the picture.
+     * Verified by pasting. The clipboard cannot be read directly here — the
+     * main-process clipboard has no image support in this build, and
+     * navigator.clipboard.read is refused by the app's permission policy — but
+     * webContents.paste() exists, and pasting into a contenteditable is what a
+     * user would do. If an image lands, the element ends up holding an img whose
+     * naturalWidth is the screenshot's width.
+     *
+     * The toast is not evidence, and was the mistake last time. It fires when
+     * copyImageAt returns, copyImageAt returns void, and the version this
+     * replaced reported success while the point it was given fell one row below
+     * the bottom of the page.
      */
     try {
+      /*
+       * Control first: the same paste, with text on the clipboard.
+       *
+       * Without this, "no img" is ambiguous — it could mean the screenshot never
+       * reached the clipboard, or that webContents.paste() is not delivering
+       * anything into this probe at all. Text settles which.
+       */
+      clipboard.writeText('PASTE-CONTROL-OK')
+      await win.webContents.executeJavaScript("document.getElementById('shot-control-probe')?.remove(), true")
+      await win.webContents.executeJavaScript(`(() => {
+        const box = document.createElement('div')
+        box.id = 'shot-control-probe'
+        box.contentEditable = 'true'
+        box.style.cssText = 'position:fixed;left:0;top:0;width:200px;height:60px;opacity:0.01;'
+        document.body.append(box)
+        box.focus()
+        return true
+      })()`)
+      await new Promise((resolve) => setTimeout(resolve, 200))
+      win.webContents.paste()
+      await new Promise((resolve) => setTimeout(resolve, 600))
+      const control = await win.webContents.executeJavaScript(`(() => {
+        const box = document.getElementById('shot-control-probe')
+        const text = box ? box.textContent : '(missing)'
+        if (box) box.remove()
+        return text
+      })()`)
+      record('paste control (text)', control === 'PASTE-CONTROL-OK' ? 'OK' : `got "${control}"`)
+
+      /*
+       * A known-size image control was tried here and removed: it fed a data:
+       * URL, the page's CSP refuses those, so the image never decoded and the
+       * control reported 0x0 for something that was never a picture. It was
+       * measuring the CSP, not the clipboard. The text control above is the one
+       * that is actually sound.
+       *
+       * Image dimensions pasted back cannot be measured in this window either:
+       * a pasted bitmap arrives as a blob: URL and reports naturalWidth 0 here,
+       * so "IMG 0x0" from the check below does not mean the clipboard is empty.
+       * What it does establish is that the clipboard changed to an image at all,
+       * which is the thing that was broken.
+       */
+
       await win.webContents.executeJavaScript(
         "document.querySelectorAll('.toast').forEach(n => n.remove()), true",
       )
-      /*
-       * Focused first. navigator.clipboard.write is refused unless the document
-       * has focus, and a headless self-test window does not have it — the real
-       * button is only ever clicked in a window that does.
-       */
       win.show()
       win.focus()
       win.webContents.focus()
@@ -693,12 +735,38 @@ async function runSelfTest({ win, outDir, settings, send, glassControls, glassSt
       await win.webContents.executeJavaScript("document.getElementById('btn-shot').click(), true")
       // capturePage takes a frame from the compositor; it is not instant.
       await new Promise((resolve) => setTimeout(resolve, 1500))
-      const toast = await win.webContents.executeJavaScript(
-        "(() => { const t = document.querySelector('.toast'); return t ? t.textContent.trim() : '(no toast)' })()",
-      )
-      record('screenshot button', toast)
+
+      await win.webContents.executeJavaScript(`(() => {
+        const box = document.createElement('div')
+        box.id = 'paste-probe'
+        box.contentEditable = 'true'
+        box.style.cssText = 'position:fixed;left:0;top:0;width:200px;height:60px;opacity:0.01;'
+        document.body.append(box)
+        box.focus()
+        return true
+      })()`)
+      await new Promise((resolve) => setTimeout(resolve, 200))
+      win.webContents.paste()
+      await new Promise((resolve) => setTimeout(resolve, 900))
+
+      const result = await win.webContents.executeJavaScript(`(async () => {
+        const box = document.getElementById('paste-probe')
+        if (!box) return '(probe missing)'
+        const img = box.querySelector('img')
+        if (!img) { const h = box.innerHTML.slice(0, 80); box.remove(); return 'no img; html=' + h }
+        // A pasted image arrives as a blob: URL and has no dimensions until it
+        // decodes, so measuring straight away reports 0x0 for a good copy.
+        try { await img.decode() } catch {}
+        if (!img.complete) {
+          await new Promise((r) => { img.addEventListener('load', r, { once: true }); img.addEventListener('error', r, { once: true }); setTimeout(r, 2000) })
+        }
+        const out = 'IMG ' + img.naturalWidth + 'x' + img.naturalHeight + ' src=' + img.src.slice(0, 24)
+        box.remove()
+        return out
+      })()`)
+      record('screenshot paste-back', result)
     } catch (err) {
-      record('screenshot button', `threw: ${err.message}`)
+      record('screenshot paste-back', `threw: ${err.message}`)
     }
 
     fs.writeFileSync(

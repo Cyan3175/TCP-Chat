@@ -950,18 +950,24 @@ body[data-plain-bg='on'][data-bg-fit='repeat'] #plain-bg img {
 /*
  * Where the screenshot sits while copyImageAt reads it.
  *
- * It has to be actually painted — Chromium will not rasterise what it believes
- * is invisible, and an unrendered image has nothing to copy — so this cannot be
- * display:none or opacity:0. Instead it is put at the very bottom of the stack,
- * behind the composer, where it is covered by the message list for the few
- * milliseconds the copy takes.
+ * copyImageAt resolves the node at a point in the page, so the node has to be
+ * reachable by a hit test there *and* actually drawn. Three earlier versions got
+ * this wrong, each in a way that produced an empty clipboard and a success toast:
+ *
+ *   z-index: -1           behind the app's opaque surfaces, so never drawn
+ *   pointer-events: none  transparent to hit testing, so never found
+ *   opacity: 0.01         found and drawn, but copied out as 0x0
+ *
+ * It is therefore fully opaque and in front. It is on screen for the few tens of
+ * milliseconds the copy takes, and it is small and in the corner so that this
+ * reads as a flicker rather than as a picture appearing.
  */
 .shot-copy-source {
   position: fixed;
   left: 0;
-  bottom: 0;
-  width: 1px;
-  height: 1px;
-  z-index: -1;
-  pointer-events: none;
+  top: 0;
+  width: 64px;
+  height: 64px;
+  z-index: 2147483647;
+  object-fit: cover;
 }

@@ -70,6 +70,7 @@ const state = {
     historyDays: 7,
     autoScroll: true,
     theme: 0,
+    uiStyle: 'default',
     fontFamily: '',
     cryptoPasswords: [],
     sendPasswordIndex: 0,
@@ -235,6 +236,20 @@ function applyTheme() {
   const preference = state.settings?.theme ?? 0
   const dark = preference === 2 || (preference === 0 && prefersDark())
   document.body.toggleAttribute('data-ds-dark-theme', dark)
+}
+
+/**
+ * The UI set, on the root element rather than the body.
+ *
+ * applyTheme puts the light/dark attribute on the body, and the two are meant to
+ * combine — a UI set does not choose a palette, it chooses shape and code
+ * colouring on top of whichever palette is in force. Keying it on the root keeps
+ * them independent and still lets a rule name both together.
+ */
+function applyUiStyle() {
+  const style = state.settings?.uiStyle === 'deepseek' ? 'deepseek' : 'default'
+  if (style === 'default') delete document.documentElement.dataset.ui
+  else document.documentElement.dataset.ui = style
 }
 
 function applyFont() {
@@ -739,6 +754,7 @@ function subscribe() {
     const previous = state.settings
     state.settings = settings
     applyTheme()
+    applyUiStyle()
     applyFont()
     applyZoom()
     paintToolbar()
@@ -783,6 +799,7 @@ async function boot() {
   state.glass = initial.glass ?? state.glass
 
   applyTheme()
+  applyUiStyle()
   applyFont()
   applyZoom()
   applyGlassMode()
@@ -839,6 +856,7 @@ async function boot() {
       if (!updated) return null
       state.settings = updated
       applyTheme()
+      applyUiStyle()
       applyFont()
       applyZoom()
       state.glass = await window.tcpchat.glass.status()

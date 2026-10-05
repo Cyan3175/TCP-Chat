@@ -123,6 +123,13 @@ function defaults() {
      */
     launchAtLogin: false,
 
+    /**
+     * UI set: 'default' for the product look, 'deepseek' for the chat client's.
+     *
+     * Orthogonal to light/dark, which is what actually decides the palette.
+     */
+    uiStyle: 'default',
+
     /** Pop a notification for an incoming message. */
     notifyOnMessage: true,
 
@@ -180,6 +187,7 @@ class Settings {
 
     if (typeof this.nickname !== 'string') this.nickname = ''
     this.launchAtLogin = this.launchAtLogin === true
+    this.uiStyle = this.uiStyle === 'deepseek' ? 'deepseek' : 'default'
     this.notifyOnMessage = this.notifyOnMessage !== false
     this.pollSeconds = Math.round(clamp(this.pollSeconds, POLL_MIN, POLL_MAX, POLL_MIN))
     this.historyDays = Math.round(clamp(this.historyDays, HISTORY_MIN, HISTORY_MAX, 7))
@@ -292,6 +300,7 @@ class Settings {
       nwUrl: this.nwUrl,
       chatFolder: this.chatFolder,
       launchAtLogin: this.launchAtLogin,
+      uiStyle: this.uiStyle,
       notifyOnMessage: this.notifyOnMessage,
       // The password itself never leaves the main process; the dialog only needs
       // to know whether one is set, so the field can show a placeholder.

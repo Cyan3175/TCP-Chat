@@ -1,0 +1,175 @@
+/*
+ * DeepSeek UI set.
+ *
+ * Taken from the DeepSeek chat client's own stylesheet — the four saved pages
+ * reference https://fe-static.deepseek.com/chat/static/main.6c351450f6.css, and
+ * what is worth having from it is not the palette. That stylesheet's colours are
+ * the same --dsw-alias-* tokens this app already ports from DSH Desktop, because
+ * both are the same design system; re-importing them would have changed nothing.
+ *
+ * Two things in it are genuinely its own:
+ *
+ *   * Buttons are pills. `--dsl-button-border-radius: 4096px` is the largest
+ *     value that still renders, which is a way of saying "fully round" that
+ *     survives any height. This app's buttons are 8px rounded rectangles.
+ *
+ *   * Code is coloured with Atom One rather than with the product palette. The
+ *     literal colours in that stylesheet — #e45649, #50a14f, #a626a4, #0184bc,
+ *     #986801 and the dark set #e06c75, #98c379, #c678dd, #56b6c2, #d19a66 —
+ *     are the Atom One Light and Dark syntax themes, not DSH aliases.
+ *
+ * Everything is keyed on [data-ui='deepseek'] on the root element, so the
+ * default look is untouched and switching is a single attribute.
+ */
+
+/* ------------------------------------------------------------------ */
+/* Shape                                                              */
+/* ------------------------------------------------------------------ */
+
+html[data-ui='deepseek'] {
+  /* The chat client's own corner value; the product default is 12. */
+  --dsw-radius-md: 10px;
+}
+
+html[data-ui='deepseek'] .btn,
+html[data-ui='deepseek'] .bg-recent-item,
+html[data-ui='deepseek'] .tag,
+html[data-ui='deepseek'] .switch-track {
+  border-radius: 999px;
+}
+
+html[data-ui='deepseek'] .switch-track::after {
+  border-radius: 50%;
+}
+
+/*
+ * The title bar's buttons are square targets with an icon in them, and making
+ * those pills just crops the glyph. They keep their shape; only the ones that
+ * carry a word are rounded.
+ */
+html[data-ui='deepseek'] .titlebar-actions .btn {
+  border-radius: var(--dsw-radius-xs);
+}
+
+/* ------------------------------------------------------------------ */
+/* Code — Atom One                                                    */
+/* ------------------------------------------------------------------ */
+
+/* Light. */
+html[data-ui='deepseek'] .hljs-comment,
+html[data-ui='deepseek'] .hljs-quote {
+  color: #a0a1a7;
+}
+
+html[data-ui='deepseek'] .hljs-keyword,
+html[data-ui='deepseek'] .hljs-selector-tag,
+html[data-ui='deepseek'] .hljs-literal,
+html[data-ui='deepseek'] .hljs-section,
+html[data-ui='deepseek'] .hljs-doctag,
+html[data-ui='deepseek'] .hljs-name,
+html[data-ui='deepseek'] .hljs-strong,
+html[data-ui='deepseek'] .hljs-selector-pseudo {
+  color: #a626a4;
+}
+
+html[data-ui='deepseek'] .hljs-string,
+html[data-ui='deepseek'] .hljs-regexp,
+html[data-ui='deepseek'] .hljs-addition,
+html[data-ui='deepseek'] .hljs-meta .hljs-string {
+  color: #50a14f;
+}
+
+html[data-ui='deepseek'] .hljs-number,
+html[data-ui='deepseek'] .hljs-symbol,
+html[data-ui='deepseek'] .hljs-bullet,
+html[data-ui='deepseek'] .hljs-variable,
+html[data-ui='deepseek'] .hljs-template-variable,
+html[data-ui='deepseek'] .hljs-attr,
+html[data-ui='deepseek'] .hljs-attribute,
+html[data-ui='deepseek'] .hljs-link {
+  color: #986801;
+}
+
+html[data-ui='deepseek'] .hljs-title,
+html[data-ui='deepseek'] .hljs-title.function_,
+html[data-ui='deepseek'] .hljs-built_in,
+html[data-ui='deepseek'] .hljs-class .hljs-title {
+  color: #4078f2;
+}
+
+html[data-ui='deepseek'] .hljs-type,
+html[data-ui='deepseek'] .hljs-params,
+html[data-ui='deepseek'] .hljs-selector-class,
+html[data-ui='deepseek'] .hljs-selector-id,
+html[data-ui='deepseek'] .hljs-property {
+  color: #c18401;
+}
+
+html[data-ui='deepseek'] .hljs-meta,
+html[data-ui='deepseek'] .hljs-operator {
+  color: #0184bc;
+}
+
+html[data-ui='deepseek'] .hljs-deletion {
+  color: #e45649;
+}
+
+/* Dark. Atom One Dark, which is a different set of hues rather than the light
+   one dimmed — the light palette is unreadable on a dark surface. */
+html[data-ui='deepseek'][data-ds-dark-theme] .hljs-comment,
+html[data-ui='deepseek'][data-ds-dark-theme] .hljs-quote {
+  color: #5c6370;
+}
+
+html[data-ui='deepseek'][data-ds-dark-theme] .hljs-keyword,
+html[data-ui='deepseek'][data-ds-dark-theme] .hljs-selector-tag,
+html[data-ui='deepseek'][data-ds-dark-theme] .hljs-literal,
+html[data-ui='deepseek'][data-ds-dark-theme] .hljs-section,
+html[data-ui='deepseek'][data-ds-dark-theme] .hljs-doctag,
+html[data-ui='deepseek'][data-ds-dark-theme] .hljs-name,
+html[data-ui='deepseek'][data-ds-dark-theme] .hljs-strong,
+html[data-ui='deepseek'][data-ds-dark-theme] .hljs-selector-pseudo {
+  color: #c678dd;
+}
+
+html[data-ui='deepseek'][data-ds-dark-theme] .hljs-string,
+html[data-ui='deepseek'][data-ds-dark-theme] .hljs-regexp,
+html[data-ui='deepseek'][data-ds-dark-theme] .hljs-addition,
+html[data-ui='deepseek'][data-ds-dark-theme] .hljs-meta .hljs-string {
+  color: #98c379;
+}
+
+html[data-ui='deepseek'][data-ds-dark-theme] .hljs-number,
+html[data-ui='deepseek'][data-ds-dark-theme] .hljs-symbol,
+html[data-ui='deepseek'][data-ds-dark-theme] .hljs-bullet,
+html[data-ui='deepseek'][data-ds-dark-theme] .hljs-variable,
+html[data-ui='deepseek'][data-ds-dark-theme] .hljs-template-variable,
+html[data-ui='deepseek'][data-ds-dark-theme] .hljs-attr,
+html[data-ui='deepseek'][data-ds-dark-theme] .hljs-attribute,
+html[data-ui='deepseek'][data-ds-dark-theme] .hljs-link {
+  color: #d19a66;
+}
+
+html[data-ui='deepseek'][data-ds-dark-theme] .hljs-title,
+html[data-ui='deepseek'][data-ds-dark-theme] .hljs-title.function_,
+html[data-ui='deepseek'][data-ds-dark-theme] .hljs-built_in,
+html[data-ui='deepseek'][data-ds-dark-theme] .hljs-class .hljs-title {
+  color: #61afef;
+}
+
+html[data-ui='deepseek'][data-ds-dark-theme] .hljs-type,
+html[data-ui='deepseek'][data-ds-dark-theme] .hljs-params,
+html[data-ui='deepseek'][data-ds-dark-theme] .hljs-selector-class,
+html[data-ui='deepseek'][data-ds-dark-theme] .hljs-selector-id,
+html[data-ui='deepseek'][data-ds-dark-theme] .hljs-property {
+  color: #e5c07b;
+}
+
+html[data-ui='deepseek'][data-ds-dark-theme] .hljs-meta,
+html[data-ui='deepseek'][data-ds-dark-theme] .hljs-operator {
+  color: #56b6c2;
+}
+
+html[data-ui='deepseek'][data-ds-dark-theme] .hljs-deletion {
+  color: #e06c75;
+}

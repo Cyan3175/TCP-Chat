@@ -369,10 +369,11 @@ asarUnpack:
 
 ## 来源与许可
 
-* `vendor/electron-liquid-glass/` 是 [`@hicccc77/electron-liquid-glass`](https://github.com/hicccc77/electron-liquid-glass) 0.4.0 的随包分发副本（MIT），
-  含 `prebuilds/win32-x64` 预编译二进制。本机没有 MSVC C++ 工具链与 Python，
-  无法从 `electron-liquid-glass-main/` 的源码编译，因此使用官方发布版的 JS + 二进制配对
-  （两者必须同版本，`index.js` 会按 `capturePolicy` 参数与原生侧对接）。
+* `vendor/electron-liquid-glass/` 是 [`@hicccc77/electron-liquid-glass`](https://github.com/hicccc77/electron-liquid-glass) 0.4.0 的随包分发副本（MIT）。
+  它的 JS 包装与源码都在这里，原生插件由 `npm run build:native` **从 `vendor/` 下的源码本机编译**，
+  针对 Electron 的头文件——不是官方发布版的预编译二进制。
+  （早先那版用的是发布版二进制，理由是"本机没有 MSVC 和 Python"。这条已经作废：
+  VS 2026 Insiders 装了，插件也一直是从源码编的。）
 * DSH Desktop WebUI 设计令牌来自 DeepSeek Harness 的 `@deepseek-ai/dsh-client-ui-theme`，
   仅提取配色/字体/圆角/层次等设计变量用于本项目的普通主题。
 * 其余代码 MIT。

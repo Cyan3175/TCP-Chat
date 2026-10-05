@@ -1172,18 +1172,17 @@ function registerIpc() {
 }
 
 /**
- * Permission policy. Only the microphone, the local font list and the clipboard
- * *write* are granted, and only to our own renderer: everything else
- * (geolocation, notifications from web content, USB, serial, …) is denied, and a
- * denied permission never reaches the DOM.
+ * Permission policy. Only the microphone and the local font list are granted, and
+ * only to our own renderer: everything else (geolocation, notifications from web
+ * content, USB, serial, …) is denied, and a denied permission never reaches the
+ * DOM.
  *
- * The clipboard appears here because the screenshot button copies through
- * navigator.clipboard — this build's main-process clipboard has no image support.
- * Write only, and only the sanitized variant: nothing in the app reads the
- * clipboard, so read stays denied.
+ * clipboard-sanitized-write was granted here while the screenshot button went
+ * through navigator.clipboard. It does not any more — copyImageAt is a native
+ * webContents call and needs no permission — so the grant went with it.
  */
 function installPermissionHandlers(session) {
-  const allowed = new Set(['media', 'audioCapture', 'local-fonts', 'clipboard-sanitized-write'])
+  const allowed = new Set(['media', 'audioCapture', 'local-fonts'])
 
   session.setPermissionRequestHandler((contents, permission, callback) => {
     const isOurs = contents === mainWindow?.webContents

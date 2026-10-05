@@ -22,7 +22,7 @@
  * Set PYTHON to a real interpreter if the Microsoft Store stub is on PATH.
  */
 
-const { spawnSync } = require('child_process')
+const { spawnSync, execFileSync } = require('child_process')
 const fs = require('fs')
 const path = require('path')
 
@@ -38,17 +38,53 @@ if (!fs.existsSync(moduleDir)) {
   process.exit(1)
 }
 
-/** Find a usable Python 3, ignoring the Microsoft Store stub. */
+/**
+ * Find a usable Python 3, ignoring the Microsoft Store stub.
+ *
+ * The list used to name Python312 and Python311 outright, which meant it stopped
+ * working the moment either was replaced — it did, when 3.12 was removed and 3.15
+ * installed. The minor version is not something this script should have an
+ * opinion about, so it now looks for whatever Python3* directories exist and
+ * takes the newest, and falls back to the launcher.
+ */
 function findPython() {
   if (process.env.PYTHON && fs.existsSync(process.env.PYTHON)) return process.env.PYTHON
-  const candidates = [
-    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python312', 'python.exe'),
-    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python311', 'python.exe'),
-    'C:\\Python312\\python.exe',
-    'C:\\Python311\\python.exe',
+
+  const roots = [
+    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python'),
+    'C:\\',
+    path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Python'),
   ]
-  for (const candidate of candidates) {
-    if (candidate && fs.existsSync(candidate)) return candidate
+
+  const found = []
+  for (const root of roots) {
+    let entries = []
+    try {
+      entries = fs.readdirSync(root, { withFileTypes: true })
+    } catch {
+      continue // not installed there, which is the normal case for most of them
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory() || !/^Python3\d*$/i.test(entry.name)) continue
+      const exe = path.join(root, entry.name, 'python.exe')
+      if (fs.existsSync(exe)) found.push({ exe, version: Number((entry.name.match(/\d+$/) || [0])[0]) })
+    }
+  }
+  if (found.length) {
+    // Newest first: a machine can hold several, and the addon should build with
+    // the one that is actually current.
+    found.sort((a, b) => b.version - a.version)
+    return found[0].exe
+  }
+
+  // The launcher, last: it is on PATH by default and knows where everything is.
+  for (const candidate of ['py']) {
+    try {
+      execFileSync(candidate, ['-3', '-c', 'pass'], { stdio: 'ignore' })
+      return candidate
+    } catch {
+      /* no launcher */
+    }
   }
   return null
 }

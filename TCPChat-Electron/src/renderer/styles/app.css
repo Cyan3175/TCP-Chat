@@ -769,3 +769,77 @@ body.maximized .rz {
   color: var(--dsw-alias-label-primary);
   pointer-events: none;
 }
+
+/* ------------------------------------------------------------------ */
+/* Plain theme backdrop                                               */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The picture the user picked, behind the whole app.
+ *
+ * A real element rather than a background-image: #app has to go transparent for
+ * it to read through, and its own background colour stays as the fallback so a
+ * picture that fails to load leaves the plain surface rather than a hole.
+ *
+ * The scrim is the theme's own surface colour at partial alpha, which keeps
+ * message text legible over a photo and needs no separate light/dark values.
+ */
+#plain-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  background: var(--dsw-alias-bg-base);
+}
+
+#plain-bg img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+#plain-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--plain-bg-scrim);
+}
+
+body[data-plain-bg='on'] {
+  --plain-bg-scrim: rgb(255 255 255 / 56%);
+}
+
+body[data-plain-bg='on'][data-ds-dark-theme] {
+  --plain-bg-scrim: rgb(16 16 18 / 62%);
+}
+
+/*
+ * Only in the plain theme. Under glass #app is a translucent tint over the
+ * native panel, so the layer would read through and put the picture behind the
+ * desktop mirror.
+ */
+body[data-glass='off'][data-plain-bg='on'] #plain-bg {
+  display: block;
+}
+
+/*
+ * The message list is the one surface that has to let the backdrop through.
+ *
+ * It carries an opaque --surface-canvas, which in glass mode is cleared for the
+ * same reason: the whole point of a backdrop is seeing it. Without this the
+ * picture only shows in the gaps between bubbles and reads as a rendering bug
+ * rather than a background.
+ *
+ * The chrome — title bar, composer, status bar — stays opaque. Text over a photo
+ * is the thing worth avoiding, and those rows are mostly text.
+ */
+body[data-glass='off'][data-plain-bg='on'] .msg-list {
+  background: transparent;
+}
+
+body[data-glass='off'][data-plain-bg='on'] #app {
+  position: relative;
+  z-index: 1;
+  background: transparent;
+}

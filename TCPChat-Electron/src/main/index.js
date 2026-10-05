@@ -647,6 +647,78 @@ function registerIpc() {
   /** Addon counters, for the settings dialog. */
   ipcMain.handle('glass:stats', async () => (glass ? glass.stats() : null))
 
+  // ---- plain-theme background ----
+  //
+  // The image travels as a data URL rather than over a custom scheme.
+  //
+  // The first attempt at this feature registered `appbg://` and served the file
+  // from it; the request never completed. Switching to `tcpcache://`, which the
+  // attachment cache uses, behaved identically — `img.complete` stayed false
+  // forever — and the cause was never found. A data URL involves no scheme, no
+  // protocol handler and no CSP entry, so there is nothing left to go wrong for
+  // a picture that is read once and then sits behind the messages.
+  const IMAGE_MIME = {
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.webp': 'image/webp',
+    '.gif': 'image/gif',
+    '.bmp': 'image/bmp',
+  }
+
+  /** Read the chosen image, or null when there is nothing usable. */
+  async function readBackground() {
+    const file = settings.plainBackgroundPath
+    if (!file) return null
+    const mime = IMAGE_MIME[path.extname(file).toLowerCase()]
+    if (!mime) return null
+    try {
+      const stat = await fsp.stat(file)
+      /*
+       * A ceiling, because this crosses IPC as base64 and a 40 MB photo would be
+       * a 55 MB string. Anything above this is not a background, it is a mistake.
+       */
+      if (!stat.isFile() || stat.size > 24 * 1024 * 1024) return null
+      const bytes = await fsp.readFile(file)
+      return `data:${mime};base64,${bytes.toString('base64')}`
+    } catch {
+      return null
+    }
+  }
+
+  ipcMain.handle('app:background', async () => {
+    const url = await readBackground()
+    return { url, path: url ? settings.plainBackgroundPath : null }
+  })
+
+  ipcMain.handle('app:pick-background', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: '选择背景图片',
+      properties: ['openFile'],
+      filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] }],
+    })
+    if (result.canceled || !result.filePaths?.length) return { ok: false, canceled: true }
+    const file = result.filePaths[0]
+    const url = await (async () => {
+      const previous = settings.plainBackgroundPath
+      settings.plainBackgroundPath = file
+      const read = await readBackground()
+      if (!read) settings.plainBackgroundPath = previous
+      return read
+    })()
+    if (!url) return { ok: false, error: '这个文件读不出来，或者超过了 24 MB' }
+    settings.save()
+    send('settings-changed', settings.toRenderer())
+    return { ok: true, url, path: file }
+  })
+
+  ipcMain.handle('app:clear-background', async () => {
+    settings.plainBackgroundPath = null
+    settings.save()
+    send('settings-changed', settings.toRenderer())
+    return { ok: true }
+  })
+
   // ---- files ----
   ipcMain.handle('files:pick', async (_e, { kind } = {}) => {
     const filters =

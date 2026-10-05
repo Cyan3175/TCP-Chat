@@ -433,6 +433,19 @@ async function runSelfTest({ win, outDir, settings, send, glassControls, glassSt
       * a stray backtick would close it early.
       */
      appBg: bg(document.getElementById('app')),
+     plainBg: document.body.dataset.plainBg || '',
+     // naturalWidth stays 0 when a backdrop never loads, which is exactly
+     // how the first attempt at this feature failed.
+     plainBgProbe: (() => {
+       const l = document.getElementById('plain-bg');
+       const i = document.getElementById('plain-bg-img');
+       if (!l || !i) return 'missing';
+       const ls = getComputedStyle(l); const r = i.getBoundingClientRect();
+       return [ls.display, ls.zIndex, ls.position, l.hidden ? 'hidden' : 'shown',
+               Math.round(r.width) + 'x' + Math.round(r.height),
+               i.complete ? 'complete' : 'loading',
+               (i.getAttribute('src') || '').slice(0, 24)].join(' | ');
+     })(),
         selfBubbleBg: bg(selfBubble),
         otherBubbleBg: bg(otherBubble),
         selfTextColor: selfBubble ? getComputedStyle(selfBubble).color : null,

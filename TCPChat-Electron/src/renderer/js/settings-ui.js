@@ -77,8 +77,17 @@ function numberInput(id, value, min, max, step = 1) {
   })
 }
 
-function switchRow(id, checked, label) {
-  return h('label', { class: 'switch' }, [
+/** Just the file name — a full path is noise in a settings row. */
+function nameFromPath(filePath) {
+  if (typeof filePath !== 'string' || filePath === '') return '未选择'
+  return filePath.split(/[\\/]/).pop() || filePath
+}
+
+function backgroundName(state) {
+  return nameFromPath(state?.plainBackgroundPath)
+}
+
+function switchRow(id, checked, label) {  return h('label', { class: 'switch' }, [
     h('input', { type: 'checkbox', id, checked: checked === true }),
     h('span', { class: 'switch-track' }),
     h('span', { text: label }),
@@ -272,6 +281,18 @@ function buildDialog(state) {
         h('div', { class: 'settings-row' }, [qualityRange, qualityLabel]),
         h('div', { class: 'caption', text: '质量越高，模糊半径、边缘位移与色散越强' }),
       ]),
+      h('div', { class: 'field' }, [
+        h('div', { class: 'field-label', text: '普通主题背景' }),
+        h('div', { class: 'settings-row' }, [
+          h('button', { class: 'btn', id: 'set-bg-pick', type: 'button', text: '选择图片…' }),
+          h('button', { class: 'btn', id: 'set-bg-clear', type: 'button', text: '清除' }),
+          h('span', { class: 'caption', id: 'set-bg-name', text: backgroundName(state) }),
+        ]),
+        h('div', {
+          class: 'caption',
+          text: '只在关闭液态玻璃时显示。图片上面会盖一层主题色薄雾，保证消息文字在照片上仍然看得清。',
+        }),
+      ]),
       h('div', { class: 'settings-row' }, [
         h('button', { class: 'btn', id: 'set-glass-retry', type: 'button', text: '重建玻璃面板' }),
         h('span', {
@@ -426,6 +447,27 @@ export async function openSettings(state) {
     const after = await window.tcpchat.glass.retry()
     glassStatus.textContent = describe(after)
     glassStatus.style.color = after.active === false && after.supported ? 'var(--dsw-alias-state-warn-label)' : ''
+  })
+
+  /*
+   * The backdrop is applied the moment it is chosen rather than on Save, because
+   * the point of picking a picture is seeing whether you like it behind your
+   * messages. It also means Cancel cannot un-choose it, so the row says which
+   * file is in use and offers Clear.
+   */
+  const bgName = dialog.querySelector('#set-bg-name')
+  dialog.querySelector('#set-bg-pick').addEventListener('click', async () => {
+    const result = await window.tcpchat.app.pickBackground()
+    if (result?.canceled) return
+    if (!result?.ok) {
+      showToast(result?.error || '这张图片用不了', true)
+      return
+    }
+    if (bgName) bgName.textContent = nameFromPath(result.path)
+  })
+  dialog.querySelector('#set-bg-clear').addEventListener('click', async () => {
+    await window.tcpchat.app.clearBackground()
+    if (bgName) bgName.textContent = '未选择'
   })
 
 

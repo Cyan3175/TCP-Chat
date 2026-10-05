@@ -246,6 +246,50 @@ function applyFont() {
   }
 }
 
+/*
+ * Plain-theme backdrop.
+ *
+ * The picture is the user's own, chosen in settings, and arrives as a data URL.
+ * The first attempt at this feature served the desktop wallpaper over a custom
+ * scheme and the image request never completed; a data URL has no scheme,
+ * handler or CSP entry to get wrong.
+ *
+ * Only shown in the plain theme: under glass #app is a translucent tint over the
+ * native panel, so the layer would read through and put the picture behind the
+ * desktop mirror.
+ */
+let plainBackgroundUrl = null
+
+async function applyPlainBackground() {
+  const layer = document.getElementById('plain-bg')
+  const img = document.getElementById('plain-bg-img')
+  if (!layer || !img) return
+
+  if (plainBackgroundUrl === null) {
+    try {
+      const info = await window.tcpchat.app.background()
+      plainBackgroundUrl = info?.url ?? ''
+    } catch {
+      plainBackgroundUrl = ''
+    }
+  }
+
+  const want = Boolean(plainBackgroundUrl) && document.body.dataset.glass !== 'on'
+  if (want) {
+    if (img.getAttribute('src') !== plainBackgroundUrl) img.src = plainBackgroundUrl
+    layer.hidden = false
+    document.body.dataset.plainBg = 'on'
+  } else {
+    layer.hidden = true
+    document.body.dataset.plainBg = ''
+  }
+}
+
+/** Forget the cached data URL so the next apply re-reads from the main process. */
+function invalidatePlainBackground() {
+  plainBackgroundUrl = null
+}
+
 function applyZoom() {
   const zoom = clamp(state.settings?.zoom ?? 1, ZOOM_MIN, ZOOM_MAX)
   /*
@@ -387,6 +431,8 @@ function applyGlassMode() {
   paintStatus()
   if (mode === 'on') syncBubblePanels()
   else clearBubblePanels()
+  // The backdrop belongs to the plain theme, so the mode change decides it.
+  applyPlainBackground()
 }
 async function toggleGlass() {
   if (!state.glass.supported) {
@@ -679,6 +725,12 @@ function subscribe() {
     applyFont()
     applyZoom()
     paintToolbar()
+    // Picking or clearing a backdrop comes through here; drop the cached data
+    // URL so the next apply reads the new one instead of reusing the old.
+    if (previous?.plainBackgroundPath !== settings.plainBackgroundPath) {
+      invalidatePlainBackground()
+      applyPlainBackground()
+    }
     if (previous && previous.chatFolder !== settings.chatFolder) resetMessages(state.messages)
   })
 

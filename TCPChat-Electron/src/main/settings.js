@@ -72,6 +72,19 @@ function defaults() {
      */
     glassBlurSigma: 0,
 
+    /*
+     * Plain-theme background: null, or the absolute path of an image the user
+     * picked.
+     *
+     * Not the desktop wallpaper. That was the first attempt and it never
+     * rendered — the request for the image simply never completed, through a
+     * dedicated scheme and through tcpcache both. Letting someone choose a
+     * picture sidesteps that, and it is the better feature anyway: a backdrop
+     * you picked reads better behind messages than whatever happens to be on
+     * the desktop.
+     */
+    plainBackgroundPath: null,
+
     zoom: 1,
     // Electron-only additions (ignored by the C# build).
     windowBounds: null,
@@ -122,6 +135,10 @@ class Settings {
 
     this.glassQuality = Math.round(clamp(this.glassQuality, 0, 100, 60))
     this.glassBlurSigma = clamp(this.glassBlurSigma, 0, 20, 0)
+    // Anything that is not a usable path reads as "no background chosen".
+    if (typeof this.plainBackgroundPath !== 'string' || this.plainBackgroundPath === '') {
+      this.plainBackgroundPath = null
+    }
     this.zoom = clampZoom(typeof this.zoom === 'number' ? this.zoom : 1)
 
     // 11.2 moved from a single password to an ordered list. Blank entries are

@@ -17,6 +17,12 @@
     <link rel="stylesheet" href="./styles/glass.css" />
   </head>
   <body data-glass="off">
+    <!--
+      Plain-theme backdrop: the picture the user chose, behind #app and under a
+      scrim that keeps message text readable. Hidden until one is set.
+    -->
+    <div id="plain-bg" hidden><img id="plain-bg-img" alt="" /></div>
+
     <!-- The backdrop is the native glass panel pinned below this window. -->
 
     <div id="app">

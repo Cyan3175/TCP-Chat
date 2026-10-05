@@ -92,16 +92,15 @@ function buildDialog(state) {
   body.append(
     h('div', { class: 'settings-group' }, [
       h('div', { class: 'settings-group-title', text: '连接' }),
-      field('服务地址', textInput('set-nw-url', state.nwUrl), '默认 https://nw.zhaohans.cn（文件浏览服务，消息就存在它后面）'),
-      field(
-        '密码',
-        textInput('set-nw-password', '', {
-          type: 'password',
-          placeholder: state.hasNwPassword ? '已设置，留空则不修改' : '请输入密码',
-        }),
-        '下载和上传都用这个密码。留空表示沿用已保存的那个。',
-      ),
-      field('消息目录', textInput('set-folder', state.chatFolder), '服务器上的相对路径，目录必须事先存在，程序不会自动创建'),
+      /*
+       * The address, the password and the chat folder are not shown.
+       *
+       * There is one service, one password and one folder now — the WebDAV host
+       * they used to be a choice against is gone — so three editable boxes only
+       * offered ways to break a working install. They keep their values; the
+       * folder and address are shown read-only by the status bar, which is where
+       * you would look to confirm what you are connected to anyway.
+       */
       field('昵称', textInput('set-nickname', state.nickname), '显示在消息上，仅作为身份标识'),
       h('div', { class: 'settings-row' }, [
         h('button', { class: 'btn', id: 'set-test', type: 'button', text: '测试连接' }),
@@ -117,7 +116,7 @@ function buildDialog(state) {
       field(
         '同步周期（秒）',
         numberInput('set-poll', state.pollSeconds, 1, 120),
-        '1–120 秒，改完立即生效',
+        '1–120 秒，改完立即生效。填 1 就是实时——服务没有推送通道，轮询到秒级已经是它能让的最快速度。',
       ),
       field(
         '历史天数',
@@ -345,16 +344,11 @@ function buildDialog(state) {
   )
 
   pickers = {
-    nwUrl: () => document.getElementById('set-nw-url').value.trim(),
     /*
-     * Blank means "leave the saved one alone", not "clear it".
-     *
-     * The dialog is never given the password — only whether one is set — so an
-     * empty box cannot be told apart from an untouched one, and wiping the saved
-     * password on every save would be much the worse of the two guesses.
+     * No nwUrl, nwPassword or folder picker: those three have no input any more.
+     * They are left out of the patch entirely rather than sent back unchanged, so
+     * `settings:update` keeps the values it already holds.
      */
-    nwPassword: () => document.getElementById('set-nw-password').value,
-    folder: () => document.getElementById('set-folder').value.trim(),
     nickname: () => document.getElementById('set-nickname').value,
     poll: () => clamp(Number(document.getElementById('set-poll').value) || 3, 1, 120),
     history: () => clamp(Number(document.getElementById('set-history').value) || 7, 1, 365),
@@ -396,8 +390,6 @@ function collect() {
   while (passwords.length > 1 && passwords[passwords.length - 1] === '') passwords.pop()
 
   const patch = {
-    nwUrl: pickers.nwUrl(),
-    chatFolder: pickers.folder(),
     nickname: pickers.nickname(),
     pollSeconds: pickers.poll(),
     historyDays: pickers.history(),
@@ -411,13 +403,6 @@ function collect() {
     glassQuality: pickers.glassQuality(),
     glassBlurSigma: pickers.glassBlurSigma(),
   }
-
-  /*
-   * Only send the password when one was actually typed. An untouched box is
-   * empty, and sending that would clear the saved one on every save.
-   */
-  const typed = pickers.nwPassword()
-  if (typed !== '') patch.nwPassword = typed
 
   return patch
 }
@@ -462,12 +447,9 @@ export async function openSettings(state) {
   dialog.querySelector('#set-test').addEventListener('click', async () => {
     testResult.textContent = '正在测试…'
     testResult.style.color = ''
-    const candidate = {
-      nwUrl: pickers.nwUrl(),
-      nwPassword: pickers.nwPassword(),
-      chatFolder: pickers.folder(),
-    }
-    const result = await window.tcpchat.settings.test(candidate)
+    // Nothing to pass: the address, password and folder are no longer editable,
+    // so the main process tests what it already has.
+    const result = await window.tcpchat.settings.test()
     testResult.textContent = result.message
     testResult.style.color = result.ok ? 'var(--dsw-alias-state-success-primary)' : 'var(--dsw-alias-state-error-primary)'
   })
@@ -578,9 +560,15 @@ export async function openSettings(state) {
   dialog.querySelector('#set-save').addEventListener('click', async () => {
     const patch = collect()
 
-    // Changing the folder or server abandons the current board: warn first.
-    const boardChanged =
-      patch.nwUrl !== current.nwUrl || patch.chatFolder !== current.chatFolder
+    /*
+     * Changing the folder abandons the current board: warn first.
+     *
+     * Checked against `in patch` rather than by comparing values. The folder and
+     * the address no longer have inputs, so they are absent from the patch, and
+     * an absent key read as `undefined` compares unequal to the saved string —
+     * which would have raised this dialog on every single save.
+     */
+    const boardChanged = 'chatFolder' in patch && patch.chatFolder !== current.chatFolder
     if (boardChanged) {
       const proceed = await confirmDialog({
         title: '切换聊天目录',

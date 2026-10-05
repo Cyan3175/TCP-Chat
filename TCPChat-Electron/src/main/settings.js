@@ -25,12 +25,25 @@ const LEGACY_DEFAULT_CHAT_FOLDER = 'nw集训/学生资料临存/聊天'
  */
 const DEFAULT_NW_URL = 'https://nw.zhaohans.cn'
 
+/*
+ * The service password, so a new install works without anyone being told it.
+ *
+ * An empty saved value means the default rather than "no password": the service
+ * has no anonymous mode, so an empty one is never a working configuration and
+ * treating it as a deliberate choice would only produce a login failure.
+ */
+const DEFAULT_NW_PASSWORD = 'nw123123'
+
 const ZOOM_MIN = 0.6
 const ZOOM_MAX = 2.4
 const ZOOM_STEP = 0.1
 /** Base font size for message content, in CSS pixels at zoom 1. */
 const BASE_FONT_SIZE = 14
 
+/*
+ * The polling floor. There is no push channel on the service, so this is as
+ * close to real time as the transport allows.
+ */
 const POLL_MIN = 1
 const POLL_MAX = 120
 const HISTORY_MIN = 1
@@ -63,10 +76,11 @@ function defaults() {
   return {
     folderMigratedV113: false,
     nwUrl: DEFAULT_NW_URL,
-    nwPassword: '',
+    nwPassword: DEFAULT_NW_PASSWORD,
     chatFolder: DEFAULT_CHAT_FOLDER,
     nickname: '',
-    pollSeconds: 3,
+    /* Real time, as far as polling gets: one round a second. */
+    pollSeconds: 1,
     historyDays: 7,
     autoScroll: true,
     theme: 0, // 0 = follow system, 1 = light, 2 = dark
@@ -133,7 +147,9 @@ class Settings {
       this.nwUrl = DEFAULT_NW_URL
     }
     this.nwUrl = this.nwUrl.trim().replace(/\/+$/g, '')
-    if (typeof this.nwPassword !== 'string') this.nwPassword = ''
+    if (typeof this.nwPassword !== 'string' || this.nwPassword === '') {
+      this.nwPassword = DEFAULT_NW_PASSWORD
+    }
 
     if (typeof this.chatFolder !== 'string' || this.chatFolder.trim() === '') {
       this.chatFolder = DEFAULT_CHAT_FOLDER
@@ -151,7 +167,7 @@ class Settings {
     }
 
     if (typeof this.nickname !== 'string') this.nickname = ''
-    this.pollSeconds = Math.round(clamp(this.pollSeconds, POLL_MIN, POLL_MAX, 3))
+    this.pollSeconds = Math.round(clamp(this.pollSeconds, POLL_MIN, POLL_MAX, POLL_MIN))
     this.historyDays = Math.round(clamp(this.historyDays, HISTORY_MIN, HISTORY_MAX, 7))
     this.autoScroll = this.autoScroll !== false
     this.theme = [0, 1, 2].includes(Number(this.theme)) ? Number(this.theme) : 0
@@ -300,6 +316,7 @@ module.exports = {
   clampZoom,
   DEFAULT_CHAT_FOLDER,
   DEFAULT_NW_URL,
+  DEFAULT_NW_PASSWORD,
   LEGACY_SHARED_CHAT_FOLDER,
   LEGACY_DEFAULT_CHAT_FOLDER,
   ZOOM_MIN,

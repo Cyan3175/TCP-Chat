@@ -585,8 +585,19 @@ async function runSelfTest({ win, outDir, settings, send, glassControls, glassSt
      * is visual — a thumbnail strip that renders empty tells you nothing from a
      * count of its children.
      */
+    /*
+     * Scroll first, measure after a frame.
+     *
+     * Doing both in one call measured before the scroll had been applied, so the
+     * rect belonged to whatever had been on screen — the connection group — and
+     * the capture came back showing that instead of the card.
+     */
+    await win.webContents.executeJavaScript(
+      "(() => { const f = document.getElementById('set-bg-preview'); const card = f && f.closest('.field'); if (card) card.scrollIntoView({ block: 'center', behavior: 'instant' }); return true })()",
+    )
+    await new Promise((resolve) => setTimeout(resolve, 250))
     const bgRect = await win.webContents.executeJavaScript(
-      "(() => { const f = document.getElementById('set-bg-preview'); if (!f) return null; const card = f.closest('.field'); if (!card) return null; card.scrollIntoView({ block: 'center' }); const r = card.getBoundingClientRect(); return { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height), vh: window.innerHeight } })()",
+      "(() => { const f = document.getElementById('set-bg-preview'); if (!f) return null; const card = f.closest('.field'); if (!card) return null; const r = card.getBoundingClientRect(); return { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height), vh: window.innerHeight } })()",
     )
     if (bgRect && bgRect.width > 0 && bgRect.height > 0) {
       const image = await win.webContents.capturePage({

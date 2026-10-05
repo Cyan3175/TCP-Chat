@@ -820,22 +820,38 @@ function registerIpc() {
   /**
    * The recent list with thumbnails attached, skipping anything since deleted.
    *
-   * Falls back to the desktop's own set so the strip is not empty on a fresh
-   * install; once a picture is chosen in the app, the user's list takes over.
+   * Your own picks come first, then the desktop's set — appended, not substituted.
+   *
+   * An earlier version replaced the desktop pictures the moment you chose one of
+   * your own, so the row you had just been looking at vanished and the picture you
+   * picked sat alone. Keeping both means the strip only ever grows, and the stock
+   * wallpapers stay reachable without going back through the file dialog.
    */
   function recentWithThumbs() {
-    if (settings.plainBackgroundRecent.length === 0) {
-      const fallback = windowsThemeDefaults()
-      const files = fallback.length ? fallback : windowsRecentWallpapers(6)
-      const out = []
-      for (const file of files) {
-        const thumb = thumbnail(file, 160)
-        if (thumb) out.push({ path: file, name: path.basename(file), thumb })
-      }
-      return out
+    const picks = settings.plainBackgroundRecent
+    const stock = windowsThemeDefaults()
+    const fallback = stock.length ? stock : windowsRecentWallpapers(6)
+
+    /*
+     * Compare on a normalised key, not the raw string.
+     *
+     * Windows paths are case-insensitive and the separators differ depending on
+     * where a path came from — the picker and readdir do not have to agree. A
+     * plain includes() let the same wallpaper appear twice, once at the front
+     * because it had just been chosen and once in place among the stock ones.
+     */
+    const key = (p) => p.replace(/\//g, '\\').toLowerCase()
+    const seen = new Set(picks.map(key))
+    const files = [...picks]
+    for (const file of fallback) {
+      const k = key(file)
+      if (seen.has(k)) continue
+      seen.add(k)
+      files.push(file)
     }
+
     const out = []
-    for (const file of settings.plainBackgroundRecent) {
+    for (const file of files) {
       const thumb = thumbnail(file, 160)
       if (thumb) out.push({ path: file, name: path.basename(file), thumb })
     }

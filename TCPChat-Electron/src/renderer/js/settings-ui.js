@@ -482,9 +482,18 @@ export async function openSettings(state) {
       // resolves to the page URL and the browser tries to decode the document.
       if (preview) bgPreview.src = preview
       else bgPreview.removeAttribute('src')
-      bgPreview.hidden = !preview
     }
-    if (bgEmpty) bgEmpty.hidden = Boolean(preview)
+    /*
+     * The .hidden class, not the [hidden] attribute.
+     *
+     * Both elements carry an explicit display — block and flex — and an explicit
+     * display beats the UA stylesheet's [hidden] { display: none }. The class in
+     * base.css is marked !important and is what the rest of the app already uses;
+     * the attribute silently did nothing here, which is how "未选择背景" ended up
+     * printed across a picture that was plainly selected.
+     */
+    bgPreview?.classList.toggle('hidden', !preview)
+    bgEmpty?.classList.toggle('hidden', Boolean(preview))
     if (bgFit && fit) bgFit.value = fit
     if (!bgRecents) return
     clear(bgRecents)

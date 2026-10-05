@@ -421,6 +421,14 @@ async function runSelfTest({ win, outDir, settings, send, glassControls, glassSt
         failed: list.querySelectorAll('.bubble.is-failed').length,
         selfBubbles: list.querySelectorAll('.msg.self').length,
         glassAttr: document.body.dataset.glass,
+     /*
+      * What the renderer believes about the glass, next to what the main process
+      * did with it. The two disagreeing is the whole reason a screenshot came
+      * back with no backdrop in it: the panel exists at the window's rect, but
+      * the page paints opaque because it still thinks the glass is off, and an
+      * opaque page has no transparent area for the backdrop to show through.
+      */
+     glassState: JSON.stringify(window.__tcpchatGlassState ?? null),
         dark: document.body.hasAttribute('data-ds-dark-theme'),
         canvasBg: bg(list),
      /*
@@ -725,6 +733,19 @@ async function runSelfTest({ win, outDir, settings, send, glassControls, glassSt
        * which is the thing that was broken.
        */
 
+      /*
+       * Glass on, explicitly, before capturing.
+       *
+       * The self-test turns it on for the two glass shots at the start and off
+       * again for the plain-theme ones, and this probe runs last — so the first
+       * version of it asked for a readback with the glass already disabled and
+       * got nothing, which looked like a broken readback rather than a screenshot
+       * taken at the wrong moment.
+       */
+      if (glassControls?.setEnabled) {
+        glassControls.setEnabled(true)
+        await new Promise((resolve) => setTimeout(resolve, 900))
+      }
       await win.webContents.executeJavaScript(
         "document.querySelectorAll('.toast').forEach(n => n.remove()), true",
       )

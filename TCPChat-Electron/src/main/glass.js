@@ -160,12 +160,30 @@ class GlassController {
    * whatever they would have done anyway.
    */
   readPanel() {
-    if (!this.active) return null
+    if (!this.active) {
+      log.info(`glass readback: not active (panel=${Boolean(this.panel)} enabled=${this.enabled})`)
+      return null
+    }
     const native = this.glass?._native
-    if (!native || typeof native.readPanel !== 'function') return null
+    if (!native || typeof native.readPanel !== 'function') {
+      log.info(`glass readback: native.readPanel missing (native=${Boolean(native)})`)
+      return null
+    }
     try {
       const result = native.readPanel(this.panel.id)
-      if (!result || !result.ok || !result.pixels) return null
+      if (!result) {
+        log.info('glass readback: native returned null (timed out)')
+        return null
+      }
+      if (!result.ok || !result.pixels) {
+        log.info(
+          `glass readback: ok=${result.ok} w=${result.width} h=${result.height} bytes=${
+            result.pixels ? result.pixels.length : 0
+          }`,
+        )
+        return null
+      }
+      log.info(`glass readback: ${result.width}x${result.height} ${result.pixels.length} bytes`)
       return { width: result.width, height: result.height, pixels: result.pixels }
     } catch (err) {
       log.warn('glass readback failed', err)

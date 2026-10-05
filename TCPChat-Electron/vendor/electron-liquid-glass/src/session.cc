@@ -250,12 +250,24 @@ void GlassSession::ReadPanel(int id, PanelReadCallback cb) {
         UINT w = 0;
         UINT h = 0;
         const HRESULT hr = it->second.panel->ReadBack(context_.Get(), &pixels, &w, &h);
+
+        /*
+         * Decided before the call, not in its argument list.
+         *
+         * `cb(SUCCEEDED(hr) && !pixels.empty(), std::move(pixels), w, h)` reads as
+         * if the check happens first, but C++ leaves argument evaluation order
+         * unspecified and MSVC evaluates right to left — so the vector was moved
+         * from before `pixels.empty()` was asked about it, and every readback
+         * reported ok=false with 0 bytes while still reporting the right size.
+         */
+        const bool ok = SUCCEEDED(hr) && !pixels.empty();
+
         if (glassdbg::enabled()) {
             std::fprintf(stderr, "[glass-probe] ReadPanel(id=%d) hr=0x%08lx %ux%u bytes=%zu\n", id,
                          static_cast<unsigned long>(hr), w, h, pixels.size());
             std::fflush(stderr);
         }
-        cb(SUCCEEDED(hr) && !pixels.empty(), std::move(pixels), w, h);
+        cb(ok, std::move(pixels), w, h);
     });
 }
 

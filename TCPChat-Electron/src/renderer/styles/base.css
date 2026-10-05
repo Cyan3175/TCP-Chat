@@ -281,6 +281,15 @@ a:hover {
   cursor: pointer;
 }
 
+/*
+ * Text selection. DSH tints it with --dsw-alias-bg-document-selection (40% of
+ * its blue over whatever is behind); the app had no rule at all and inherited
+ * the browser default, which is the one visible place the port did not reach.
+ */
+::selection {
+  background: var(--dsw-alias-bg-document-selection);
+}
+
 /* Switch ----------------------------------------------------------- */
 
 .switch {
@@ -319,7 +328,9 @@ a:hover {
   width: calc(var(--switch-h) - 4px);
   height: calc(var(--switch-h) - 4px);
   border-radius: 50%;
-  background: #fff;
+  /* DSH's own thumb colour rather than a literal white: it resolves to
+     --dsw-static-neutral-bluish-00, which is not pure white in either theme. */
+  background: var(--dsw-alias-switch-thumb);
   box-shadow: 0 1px 2px rgb(0 0 0 / 25%);
   transition: transform var(--ds-transition-duration-fast) var(--ds-ease-in-out);
 }

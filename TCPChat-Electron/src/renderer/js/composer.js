@@ -34,9 +34,20 @@ export function configureComposer(handlers) {
   onStatus = handlers.onStatus ?? onStatus
 }
 
-/** Grow the textarea to fit, capped at the CSS max-height. */
+/**
+ * Grow the textarea to fit, capped at the CSS max-height.
+ *
+ * The height is written as an inline pixel value, so it sticks until something
+ * recomputes it: the draft changing, the reply banner appearing, a font-size
+ * change. Anything that alters how tall the content is has to call this again.
+ *
+ * Page-wide zoom does not, which is why this stays private — a zoom factor
+ * scales the inline height along with everything else. It was only a problem
+ * while zoom changed the font size alone.
+ */
 function autoGrow() {
   const el = input()
+  if (!el) return
   el.style.height = 'auto'
   const next = Math.min(el.scrollHeight, 170)
   el.style.height = `${Math.max(34, next)}px`

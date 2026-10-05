@@ -86,35 +86,48 @@ From the page's upload handler:
 
 ```js
 const form = new FormData()
-form.append('password', password)
-// ...files
+form.append('password', password)                    // the upload password
+form.append('dir', 'nw集训/学生资料临存/tcp_chat')     // forward slashes
+form.append('file', fileObject)                      // its name becomes the file name
 await fetch('/nw/upload', { method: 'POST', body: form })
 ```
 
-Confirmed by the operator: **this overwrites a file of the same name**, and it
-uses the *upload* password, which is a separate field from the download auth.
+The reply is JSON and worth reading rather than only checking the status:
 
-**Unverified.** No upload has been attempted, deliberately: nothing here can be
-deleted, so any test file would stay in the storage permanently. Verifying this
-costs one file that cannot be cleaned up.
+```json
+{"success":true,"file":"_nwprobe_1791169102189.bin","size":512,
+ "dir":"nw集训/学生资料临存/tcp_chat","overwritten":false,
+ "message":"已上传到 nw集训/学生资料临存/tcp_chat/_nwprobe_1791169102189.bin"}
+```
+
+**Verified against the live host:**
+
+- the upload returns `200` with `success: true` and the byte count it stored
+- downloading it back returns those bytes **exactly** — SHA-256 of what was sent
+  and what came back matched
+- **uploading the same name again overwrites**, and says so: `"overwritten": true`.
+  The second upload replaced a 512-byte file with a 600-byte one and the read back
+  matched the second payload.
+
+`overwritten` is the server telling the client which of the two happened, so
+"created" and "replaced" can be told apart without listing first.
+
+The test file was left in place, as agreed with the operator: two random-byte
+payloads, nothing readable in either. It is named `_nwprobe_<ms>.bin` so the
+message listing ignores it.
 
 ## What is missing
 
 **There is no delete.** The operator confirms the UI cannot remove a file and no
 endpoint for it was found.
 
-This is the one thing that matters for using this API as a transport. The app's
-withdraw deletes the message file and its attachment:
+Withdraw therefore cannot delete anything. The agreed approach is a **tombstone**:
+overwrite the message file in place with a record marking it withdrawn — which
+upload permits, and which the server reports as `overwritten: true`.
 
-```js
-const ok = await this.dav.remove(combine(this.chatFolder, msg.remoteName))
-if (!ok) return false
-this._deleted.add(msg.remoteName)   // local bookkeeping only
-```
-
-The local `_deleted` set only stops *this* client from listing the message again.
-The other side would still see it. So on this transport, withdraw genuinely
-cannot work — it is not a matter of wiring.
+This changes the wire format: a client that does not understand the tombstone
+record will render a withdrawn message as an empty one. This app and the C# build
+have to agree on the shape before either starts writing them.
 
 The alternative would be to overwrite the message with a tombstone record, which
 upload permits. That changes the wire format, and the C# build and any older
@@ -127,6 +140,25 @@ multistatus bodies. This API speaks JSON and HTML with a session cookie, has no
 delete, and identifies files by backslash path. Nothing is shared between them
 beyond the bytes of the files themselves.
 
-A useful side effect of that: because both front doors reach the same storage,
-a client on this transport and a client on WebDAV read and write the same
-messages and interoperate, as long as no withdraw is involved.
+That matters because the WebDAV side is going away: `dev.zhaohans.cn` is
+abandoned, confirmed by the operator, and returns 502. This is not a spare
+address to fall back to — it is where the messages are going to live.
+
+The two front doors reach the same storage, so a client on this transport and a
+client still on WebDAV read and write the same messages. They interoperate, with
+the single exception of withdraw: a tombstone written through this API is just a
+message file to a WebDAV client, which will not know what it means until the
+record is understood on both sides.
+
+## What a transport has to do
+
+Status of each piece, from probing only:
+
+| Capability | State |
+| --- | --- |
+| Auth, session cookie, 24h expiry | Verified |
+| List a directory | Verified, but only by parsing HTML — no JSON listing for files |
+| Read a file | Verified |
+| Write a file | Verified |
+| Overwrite a file | Verified |
+| Delete a file | **Does not exist** |

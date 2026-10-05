@@ -14,7 +14,7 @@
     "watch": "node scripts/build-renderer.mjs --watch",
     "test": "npm run test:interop",
     "test:interop": "node tests/interop.test.mjs",
-    "test:protocol": "node tests/protocol.test.mjs",
+
     "test:live": "node scripts/live-check.cjs",
     "selftest": "npm run build:renderer && node scripts/run-electron.cjs . --selftest",
     "tokens": "node scripts/extract-dsh-tokens.mjs",

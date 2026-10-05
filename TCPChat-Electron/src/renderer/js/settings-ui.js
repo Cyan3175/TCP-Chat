@@ -124,6 +124,16 @@ function buildDialog(state) {
         '1–365 天，只加载最近这么多天的消息',
       ),
       switchRow('set-autoscroll', state.autoScroll, '新消息自动滚动到底部'),
+      switchRow(
+        'set-notify',
+        state.notifyOnMessage !== false,
+        '新消息弹通知（只在窗口不在前面时）',
+      ),
+      switchRow(
+        'set-launch',
+        state.launchAtLogin === true,
+        '开机时自动启动（直接进托盘，不弹窗口）',
+      ),
     ]),
   )
 
@@ -353,6 +363,8 @@ function buildDialog(state) {
     poll: () => clamp(Number(document.getElementById('set-poll').value) || 3, 1, 120),
     history: () => clamp(Number(document.getElementById('set-history').value) || 7, 1, 365),
     autoScroll: () => document.getElementById('set-autoscroll').checked,
+    launchAtLogin: () => document.getElementById('set-launch').checked,
+    notifyOnMessage: () => document.getElementById('set-notify').checked,
     passwords: () => passwordList.value.split('\n').map((line) => line.trim()),
     sendIndex: () => Number(sendSelect.value) || 0,
     font: () => fontInput.value.trim(),
@@ -394,6 +406,8 @@ function collect() {
     pollSeconds: pickers.poll(),
     historyDays: pickers.history(),
     autoScroll: pickers.autoScroll(),
+    launchAtLogin: pickers.launchAtLogin(),
+    notifyOnMessage: pickers.notifyOnMessage(),
     cryptoPasswords: passwords,
     sendPasswordIndex: pickers.sendIndex(),
     fontFamily: pickers.font(),

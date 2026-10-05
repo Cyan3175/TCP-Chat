@@ -115,6 +115,18 @@ function defaults() {
     plainBackgroundPath: null,
 
     /*
+     * Start with the system, straight into the tray.
+     *
+     * A message board is only useful while it is listening, and the tray is what
+     * makes listening cost nothing visible. Off by default: writing a startup
+     * entry is a change to the machine, not to the app.
+     */
+    launchAtLogin: false,
+
+    /** Pop a notification for an incoming message. */
+    notifyOnMessage: true,
+
+    /*
      * How the picture meets the window, mirroring the desktop's own fit modes.
      * Stored as the CSS object-fit keyword so nothing has to translate it.
      */
@@ -167,6 +179,8 @@ class Settings {
     }
 
     if (typeof this.nickname !== 'string') this.nickname = ''
+    this.launchAtLogin = this.launchAtLogin === true
+    this.notifyOnMessage = this.notifyOnMessage !== false
     this.pollSeconds = Math.round(clamp(this.pollSeconds, POLL_MIN, POLL_MAX, POLL_MIN))
     this.historyDays = Math.round(clamp(this.historyDays, HISTORY_MIN, HISTORY_MAX, 7))
     this.autoScroll = this.autoScroll !== false
@@ -277,6 +291,8 @@ class Settings {
     return {
       nwUrl: this.nwUrl,
       chatFolder: this.chatFolder,
+      launchAtLogin: this.launchAtLogin,
+      notifyOnMessage: this.notifyOnMessage,
       // The password itself never leaves the main process; the dialog only needs
       // to know whether one is set, so the field can show a placeholder.
       hasNwPassword: this.nwPassword !== '',

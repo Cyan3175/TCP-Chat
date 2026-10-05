@@ -34,9 +34,18 @@ const settingsModule = require('./settings')
 const { ChatService, sanitizeFileName } = require('./chat-service')
 const { MessageStore } = require('./message-store')
 const { GlassController } = require('./glass')
+const tray = require('./tray')
 
 const APP_VERSION = require('../../package.json').version
 process.env.TCPCHAT_VERSION = APP_VERSION
+
+/**
+ * Launched by the login entry rather than by hand.
+ *
+ * The entry passes this flag, so a normal launch still opens the window while a
+ * startup one goes straight to the tray.
+ */
+const START_IN_TRAY = process.argv.includes('--hidden')
 
 const IS_DEV = process.argv.includes('--dev')
 /** `--selftest [--out=<dir>]` seeds fixtures and captures screenshots, then exits. */
@@ -181,6 +190,47 @@ let connection = { ok: false, message: '未连接', connected: false }
 let statusText = ''
 let quitting = false
 
+/** Bring the window back from the tray, or from minimised. */
+function showMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  mainWindow.show()
+  mainWindow.focus()
+}
+
+/** Create the tray icon the first time it is needed. */
+function ensureTray() {
+  if (tray.exists()) return
+  tray.install({
+    iconPath: path.join(__dirname, '..', 'renderer', 'assets', 'icon.png'),
+    onShow: showMainWindow,
+    onQuit: () => {
+      quitting = true
+      app.quit()
+    },
+  })
+}
+
+/**
+ * Keep the system's startup entry in step with the setting.
+ *
+ * `--hidden` is what tells the next launch to come up in the tray. In a packaged
+ * build `process.execPath` is the app itself; in development it is Electron, and
+ * the app path has to be passed too or the entry would start an empty Electron.
+ */
+function applyLoginItem(current) {
+  try {
+    app.setLoginItemSettings({
+      openAtLogin: current.launchAtLogin === true,
+      path: process.execPath,
+      args: app.isPackaged ? ['--hidden'] : [app.getAppPath(), '--hidden'],
+    })
+  } catch (err) {
+    // A refused startup entry must not take the app with it.
+    log.warn('could not update the login item', err)
+  }
+}
+
 /**
  * Push a message to the renderer.
  *
@@ -246,11 +296,20 @@ function wireChat(service) {
     store.upsert(msg)
     send('message-added', msg)
 
-    // Only other people's messages are worth a toast, and only while the window
-    // is not in front already.
+    /*
+     * Only a message that has just arrived is worth a toast.
+     *
+     * `message-added` also carries the replay of the local cache at startup and
+     * a re-read of anything whose fingerprint moved on the server. Neither is
+     * news, and the first one meant a notification per cached message on every
+     * launch — the window not being in front is the normal state at startup, so
+     * the guard below never suppressed any of them.
+     */
     const isSelf = settings.nickname !== '' && msg.from === settings.nickname
     const focused = mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused()
-    if (!isSelf && !focused) notifyMessage(msg)
+    if (!isSelf && !focused && !msg.fromCache && settings.notifyOnMessage !== false) {
+      notifyMessage(msg)
+    }
     pushStats()
   })
 
@@ -262,6 +321,9 @@ function wireChat(service) {
   service.on('status', (text) => {
     statusText = text
     send('status', text)
+    // The tray is the only thing visible when the window is hidden, so the
+    // connection state has to live there too.
+    tray.setStatus(text)
   })
 
   service.on('synced', (at) => {
@@ -357,7 +419,15 @@ function createWindow() {
   })
 
   win.once('ready-to-show', () => {
-    win.show()
+    /*
+     * Started by the login entry: come up in the tray and leave the screen alone.
+     *
+     * Showing the window on every boot is the reason people turn startup entries
+     * off again. The window is built either way so the renderer is live and the
+     * app is genuinely receiving; it is just not put in front of anyone.
+     */
+    if (START_IN_TRAY) ensureTray()
+    else win.show()
     if (IS_DEV) win.webContents.openDevTools({ mode: 'detach' })
   })
 
@@ -386,6 +456,21 @@ function createWindow() {
   }, 500)
   win.on('resize', persistBounds)
   win.on('move', persistBounds)
+
+  /*
+   * Closing hides the window and leaves the app running in the tray.
+   *
+   * The polling, the cache and the decryption all live here in the main process,
+   * so nothing has to be kept alive artificially — the window is the only thing
+   * that goes away. Quitting is still reachable: the tray menu, or anything that
+   * sets `quitting`, and then this lets the close through.
+   */
+  win.on('close', (event) => {
+    if (quitting) return
+    event.preventDefault()
+    win.hide()
+    ensureTray()
+  })
 
   win.on('closed', () => {
     if (mainWindow === win) mainWindow = null
@@ -473,6 +558,7 @@ function registerIpc() {
       else if (lookChanged) glass.setQuality(settings.glassQuality)
     }
 
+    applyLoginItem(settings)
     send('settings-changed', settings.toRenderer())
     pushStats()
     return settings.toRenderer()
@@ -1182,18 +1268,30 @@ if (!gotLock) {
   app.quit()
 } else {
   app.on('second-instance', () => {
-    if (!mainWindow) return
-    if (mainWindow.isMinimized()) mainWindow.restore()
-    mainWindow.show()
-    mainWindow.focus()
+    // Also brings it back from the tray, which a plain show() would not undo.
+    showMainWindow()
   })
 
   app.setAppUserModelId('TCPChat')
-  app.whenReady().then(bootstrap).catch((err) => {
-    log.error('bootstrap failed', err)
-    dialog.showErrorBox('TCP Chat 启动失败', String(err?.stack || err))
-    app.quit()
-  })
+  app
+    .whenReady()
+    .then(bootstrap)
+    .then(() => {
+      /*
+       * Re-assert the startup entry on every launch.
+       *
+       * An installed build moves between versions, and the path recorded in the
+       * entry is the one that has to exist. Writing it again costs nothing and
+       * means an upgrade cannot leave a startup entry pointing at a folder that
+       * is no longer there.
+       */
+      if (settings) applyLoginItem(settings)
+    })
+    .catch((err) => {
+      log.error('bootstrap failed', err)
+      dialog.showErrorBox('TCP Chat 启动失败', String(err?.stack || err))
+      app.quit()
+    })
 }
 
 app.on('window-all-closed', () => {

@@ -253,10 +253,56 @@ export function renderAttachment(attach, remoteName, openMenu) {
   return card
 }
 
+/**
+ * The one thing allowed to be playing.
+ *
+ * Three kinds of player end up here and no single mechanism covers all of them.
+ * A voice note is an Audio object the app creates and never inserts into the
+ * document, so it cannot be found by looking and its events never reach a
+ * document listener. Audio and video attachments are real elements, so the
+ * reverse is true for them. Both halves are handled below.
+ */
+let currentVoiceStop = null
+
+/** Pause every audio/video element in the document except `keep`. */
+function pauseDocumentMedia(keep) {
+  for (const el of document.querySelectorAll('audio, video')) {
+    if (el !== keep && !el.paused) el.pause()
+  }
+}
+
+/*
+ * A media element started: silence the voice note.
+ *
+ * Capture phase, so this runs before anything else reacts to the same play, and
+ * unattached voice notes never appear here — their events do not reach the
+ * document, which is what keeps this from stopping the note that just started.
+ */
+document.addEventListener(
+  'play',
+  (event) => {
+    const el = event.target
+    if (!(el instanceof HTMLMediaElement)) return
+    if (currentVoiceStop) currentVoiceStop()
+    pauseDocumentMedia(el)
+  },
+  true,
+)
+
 /** Voice note: round play button, static waveform bars, duration. */
 function renderVoice(attach, remoteName, openMenu) {
   let audio = null
   let playing = false
+  /*
+   * Guards the whole handler, not just its last step.
+   *
+   * Resolving the attachment is a round trip, and until it finishes `audio` is
+   * still null and `playing` is still false — so a second click during that
+   * window takes the same branch as the first and builds a second Audio object.
+   * The two then play over each other, and only one of them is reachable from the
+   * button, so no amount of clicking afterwards stops the other.
+   */
+  let busy = false
   const bars = h(
     'div',
     { class: 'bars' },
@@ -272,9 +318,19 @@ function renderVoice(attach, remoteName, openMenu) {
   const stop = () => {
     playing = false
     button.textContent = '▶'
+    /*
+     * Only give up the slot if it is still ours.
+     *
+     * stop() also runs from the pause and ended listeners, so when a second note
+     * takes the slot the first one's pause fires and would otherwise clear the
+     * registration the second one just made.
+     */
+    if (currentVoiceStop === stop) currentVoiceStop = null
   }
 
   button.addEventListener('click', async () => {
+    if (busy) return
+    busy = true
     try {
       if (!audio) {
         const url = await resolveAttachment(remoteName)
@@ -290,13 +346,20 @@ function renderVoice(attach, remoteName, openMenu) {
         audio.pause()
         stop()
       } else {
+        // Silence whatever was playing before this one starts: another note, an
+        // audio attachment, or a video.
+        if (currentVoiceStop && currentVoiceStop !== stop) currentVoiceStop()
+        pauseDocumentMedia(null)
         await audio.play()
         playing = true
+        currentVoiceStop = stop
         button.textContent = '❚❚'
       }
     } catch (err) {
       stop()
       showToast(err.message || '语音播放失败', true)
+    } finally {
+      busy = false
     }
   })
 

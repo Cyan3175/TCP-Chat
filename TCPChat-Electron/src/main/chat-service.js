@@ -581,6 +581,15 @@ class ChatService extends EventEmitter {
           if (msg.enc) this._decrypt(msg, name)
           msg.remoteName = name
           msg.isSelf = this.nickname !== '' && msg.from === this.nickname
+          /*
+           * Marked, so the window can tell a replay from an arrival.
+           *
+           * These are messages that were already here last time; the only new
+           * thing about them is that the app has started. Without this they are
+           * indistinguishable from a message that just came in, and every launch
+           * raises a notification per cached message.
+           */
+          msg.fromCache = true
           this._seen.add(name)
           this.emit('message-added', msg)
           emitted += 1

@@ -27,6 +27,21 @@ const { MessageCipher } = require('./crypto')
 const { cacheDir } = require('./paths')
 const { log } = require('./logger')
 
+/**
+ * The spare address, or null when there is not one to use.
+ *
+ * Null rather than an empty string so the WebDAV client can treat "no fallback"
+ * as a plain absence and keep its original single-host behaviour.
+ */
+function fallbackFor(settings) {
+  if (!settings || settings.autoFallback !== true) return null
+  const url = String(settings.fallbackUrl ?? '').trim()
+  if (!url) return null
+  // Falling back to the address already in use is not a fallback.
+  const primary = String(settings.serverUrl ?? '').trim().replace(/\/+$/, '')
+  return url.replace(/\/+$/, '') === primary ? null : url
+}
+
 /** How many message files are fetched concurrently during a sync round. */
 const FETCH_CONCURRENCY = 4
 
@@ -161,7 +176,7 @@ class ChatService extends EventEmitter {
     super()
     this.settings = settings
     this.nickname = settings.nickname
-    this.dav = new WebDavClient(settings.serverUrl)
+    this.dav = new WebDavClient(settings.serverUrl, fallbackFor(settings))
     /** @type {MessageCipher} */
     this.cipher = new MessageCipher([], 0, false)
     this._cache = null
@@ -236,7 +251,7 @@ class ChatService extends EventEmitter {
 
   /** Rebuild the cipher from the current settings (server URL / folder changes included). */
   async reload() {
-    this.dav = new WebDavClient(this.settings.serverUrl)
+    this.dav = new WebDavClient(this.settings.serverUrl, fallbackFor(this.settings))
     this.nickname = this.settings.nickname
     this._cache = null
     await this.applyCryptoPasswords(

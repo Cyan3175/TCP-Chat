@@ -104,6 +104,17 @@ function defaults() {
     /** Recently chosen pictures, newest first. Paths only; thumbnails are built on demand. */
     plainBackgroundRecent: [],
 
+    /*
+     * Use a second address when the configured one is not usable.
+     *
+     * The two hosts resolve to the same machine and only one vhost serves at a
+     * time, so the configured one is regularly the one returning 502. Off by
+     * default: an address quietly becoming a different address is a surprise, and
+     * the field below is where you say which one to fall back to.
+     */
+    autoFallback: false,
+    fallbackUrl: 'https://nw.zhaohans.cn',
+
     zoom: 1,
     // Electron-only additions (ignored by the C# build).
     windowBounds: null,
@@ -128,6 +139,12 @@ class Settings {
       this.serverUrl = DEFAULT_SERVER_URL
     }
     this.serverUrl = this.serverUrl.trim()
+
+    this.autoFallback = this.autoFallback === true
+    if (typeof this.fallbackUrl !== 'string' || !/^https?:\/\//i.test(this.fallbackUrl.trim())) {
+      this.fallbackUrl = 'https://nw.zhaohans.cn'
+    }
+    this.fallbackUrl = this.fallbackUrl.trim()
 
     if (typeof this.chatFolder !== 'string' || this.chatFolder.trim() === '') {
       this.chatFolder = DEFAULT_CHAT_FOLDER
@@ -255,6 +272,8 @@ class Settings {
     return {
       serverUrl: this.serverUrl,
       chatFolder: this.chatFolder,
+      autoFallback: this.autoFallback,
+      fallbackUrl: this.fallbackUrl,
       nickname: this.nickname,
       pollSeconds: this.pollSeconds,
       historyDays: this.historyDays,

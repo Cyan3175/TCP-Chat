@@ -11,11 +11,30 @@
  */
 
 const { log } = require('./logger')
-
 const DAV_NS = 'DAV:'
 // Derived, not written down: a literal here goes stale silently, and this
 // one had been advertising 12.0.0 while the app was on 12.2.
 const USER_AGENT = `TCPChat/${require('../../package.json').version} (Electron)`
+
+/**
+ * Did the request fail to reach a host at all?
+ *
+ * Distinguished from an HTTP error because only this counts as "that server is
+ * not available" — the case failover exists for. A 404 means something answered.
+ */
+function isConnectionError(err) {
+  const code = err?.cause?.code || err?.code || ''
+  if (code === 'ENOTFOUND' || code === 'ECONNREFUSED' || code === 'ECONNRESET') return true
+  if (code === 'ETIMEDOUT' || code === 'EAI_AGAIN' || code === 'EHOSTUNREACH') return true
+  if (code === 'UND_ERR_CONNECT_TIMEOUT' || code === 'UND_ERR_SOCKET') return true
+  // Our own timeout, or anything the TLS layer refused to complete.
+  if (err?.name === 'AbortError' || err?.name === 'TimeoutError') return true
+  if (/fetch failed|socket hang up|network|certificate/i.test(String(err?.message ?? ''))) {
+    return true
+  }
+  return false
+}
+
 
 // ---------------------------------------------------------------------------
 // XML
@@ -229,9 +248,12 @@ class WebDavError extends Error {
 
 class WebDavClient {
   /**
-   * @param {string} baseUrl server root, e.g. `https://dev.zhaohans.cn`
+   * @param {string} baseUrl     server root, e.g. `https://dev.zhaohans.cn`
+   * @param {string} fallbackUrl second root to use when the first is unusable,
+   *                             or null for none. Left null the client behaves
+   *                             exactly as before.
    */
-  constructor(baseUrl) {
+  constructor(baseUrl, fallbackUrl = null) {
     const trimmed = String(baseUrl ?? '').trim()
     if (!/^https?:\/\//i.test(trimmed)) {
       throw new WebDavError(`Invalid server URL: ${baseUrl}`)
@@ -247,6 +269,33 @@ class WebDavClient {
       }
     })()
     this._basePath = basePath
+
+    /*
+     * Failover.
+     *
+     * Two hosts, one of which is regularly the one that is down: they resolve to
+     * the same address and only one vhost is serving at a time. Retrying the dead
+     * one on every poll would cost a round trip — or a 25 second timeout — each
+     * time, so once one host has been found unusable the other is used from then
+     * on, with an occasional probe back so a recovered host is picked up without
+     * a restart.
+     */
+    const fallback = String(fallbackUrl ?? '').trim().replace(/\/+$/g, '')
+    this.fallbackUrl = fallback && /^https?:\/\//i.test(fallback) ? fallback + '/' : null
+    this._onFallback = false
+    this._probePrimaryAt = 0
+    /** Set when a request was served by the fallback, for the status line. */
+    this.usingFallback = false
+  }
+
+  /** How long to stay on the fallback before testing the primary again. */
+  static get PRIMARY_PROBE_MS() {
+    return 60000
+  }
+
+  /** A status that means the host is up but cannot serve: try the other one. */
+  static _hostDown(status) {
+    return status === 502 || status === 503 || status === 504
   }
 
   /**
@@ -290,18 +339,62 @@ class WebDavClient {
   }
 
   async _fetch(url, init, timeoutSeconds) {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), timeoutSeconds * 1000)
-    try {
-      return await fetch(url, {
-        ...init,
-        signal: controller.signal,
-        redirect: 'follow',
-        headers: { 'User-Agent': USER_AGENT, ...(init && init.headers) },
-      })
-    } finally {
-      clearTimeout(timer)
+    const send = async (target) => {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), timeoutSeconds * 1000)
+      try {
+        return await fetch(target, {
+          ...init,
+          signal: controller.signal,
+          redirect: 'follow',
+          headers: { 'User-Agent': USER_AGENT, ...(init && init.headers) },
+        })
+      } finally {
+        clearTimeout(timer)
+      }
     }
+
+    if (!this.fallbackUrl) return send(url)
+
+    // While on the fallback, only touch the primary when it is time to probe.
+    const onBackup = this._onFallback && Date.now() < this._probePrimaryAt
+    const primary = onBackup ? this.fallbackUrl : this.baseUrl
+    const other = onBackup ? this.baseUrl : this.fallbackUrl
+    const swap = (target) => target.replace(primary, other)
+
+    /*
+     * Fail over on a transport error or a gateway status, and on nothing else.
+     *
+     * A 401 or a 404 means the host answered: the other one would answer the
+     * same way, and swapping would only hide a wrong password or a missing folder
+     * behind a second, identical failure.
+     */
+    let first
+    try {
+      first = await send(url)
+      if (!WebDavClient._hostDown(first.status)) {
+        if (onBackup) {
+          // The primary answered after all; stay on it.
+          this._onFallback = false
+          this.usingFallback = false
+        }
+        return first
+      }
+    } catch (err) {
+      if (!isConnectionError(err)) throw err
+    }
+
+    const second = await send(swap(url)).catch((err) => {
+      // Neither host works. Report the one we were asked for, not the spare.
+      throw err
+    })
+    this._onFallback = !onBackup
+    this.usingFallback = this._onFallback
+    this._probePrimaryAt = this._onFallback ? Date.now() + WebDavClient.PRIMARY_PROBE_MS : 0
+    if (this._onFallback) {
+      log.info(`webdav: ${primary} unusable, using ${other} instead`)
+    }
+    return second
   }
 
   /**

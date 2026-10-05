@@ -93,6 +93,22 @@ function buildDialog(state) {
     h('div', { class: 'settings-group' }, [
       h('div', { class: 'settings-group-title', text: '连接' }),
       field('WebDAV 地址', textInput('set-server', state.serverUrl), '例如 https://dev.zhaohans.cn（匿名访问，无需账号）'),
+      /*
+       * Two addresses, one of which is regularly the one that is down: they
+       * resolve to the same machine and only one vhost serves at a time. This is
+       * for the case where the address above answers with a gateway error rather
+       * than working.
+       */
+      switchRow(
+        'set-fallback-on',
+        state.autoFallback === true,
+        '直接连接不可用时，改用备用地址',
+      ),
+      field(
+        '备用地址',
+        textInput('set-fallback-url', state.fallbackUrl),
+        '只在上面打开、并且主地址连不上（网络错误或 502/503/504）时使用。密码错误、目录不存在这类问题不会切换——另一个地址会有一模一样的毛病。',
+      ),
       field('消息目录', textInput('set-folder', state.chatFolder), '服务器上的相对路径，目录必须事先存在，程序不会自动创建'),
       field('昵称', textInput('set-nickname', state.nickname), '显示在消息上，仅作为身份标识'),
       h('div', { class: 'settings-row' }, [
@@ -338,6 +354,8 @@ function buildDialog(state) {
 
   pickers = {
     server: () => document.getElementById('set-server').value.trim(),
+    autoFallback: () => document.getElementById('set-fallback-on').checked,
+    fallbackUrl: () => document.getElementById('set-fallback-url').value.trim(),
     folder: () => document.getElementById('set-folder').value.trim(),
     nickname: () => document.getElementById('set-nickname').value,
     poll: () => clamp(Number(document.getElementById('set-poll').value) || 3, 1, 120),
@@ -381,6 +399,8 @@ function collect() {
 
   return {
     serverUrl: pickers.server(),
+    autoFallback: pickers.autoFallback(),
+    fallbackUrl: pickers.fallbackUrl(),
     chatFolder: pickers.folder(),
     nickname: pickers.nickname(),
     pollSeconds: pickers.poll(),

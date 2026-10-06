@@ -58,13 +58,23 @@ body[data-glass='on'][data-ds-dark-theme] {
   --shadow-bubble: inset 0 1px 0 rgb(255 255 255 / 18%), inset 0 0 0 1px rgb(255 255 255 / 5%), 0 1px 3px rgb(0 0 0 / 24%);
 }
 
-/* Frosted chrome: a touch of blur behind the fixed bars keeps text crisp over
-   busy wallpapers without competing with the native layer. */
-body[data-glass='on'] .titlebar,
-body[data-glass='on'] .composer,
-body[data-glass='on'] .statusbar {
-  backdrop-filter: blur(6px) saturate(1.15);
-}
+/*
+ * No backdrop-filter on the chrome.
+ *
+ * There was one here — blur(6px) across the titlebar, the composer and the status
+ * bar — and it could not do anything: `backdrop-filter` samples Chromium's own
+ * compositing surface, and the panel that supplies the real backdrop is a separate
+ * OS window underneath ours, so the filter only ever saw transparency. The comment
+ * further down says as much about the fixed bars.
+ *
+ * What it did cost was real. A backdrop-filter makes the GPU process keep a
+ * backdrop texture for the element and re-blur it as things move, and the status
+ * bar is always on screen, so the cost was permanent. Measured on a running
+ * window: 408 MB in the gpu process, the largest of the five, against 257 MB in
+ * the renderer whose message list had just been capped.
+ *
+ * The frosted look the user sees through these bars is the native panel's.
+ */
 
 /*
  * The message list is where the refraction and chromatic dispersion should be

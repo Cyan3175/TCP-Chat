@@ -40,10 +40,42 @@ const pending = []
 let writing = false
 let disabled = false
 
+/*
+ * Rotate once, on open.
+ *
+ * The log is append-only and nothing ever trimmed it: a profile a few days old
+ * had a 14 MB crash.log. One generation is kept, because the previous run's log
+ * is the one usually wanted and anything older is not worth the disk.
+ *
+ * Rotation belongs here rather than on a timer or on a size check during a run.
+ * Here there is no stream yet, so a rename cannot invalidate a handle; and the
+ * logger's own rule is that logging must never become a failure path, which a
+ * failed rename during a write would break.
+ */
+const MAX_LOG_BYTES = 2 * 1024 * 1024
+
+function rotateIfLarge() {
+  try {
+    const file = logFile()
+    const stat = fs.statSync(file, { throwIfNoEntry: false })
+    if (!stat || stat.size < MAX_LOG_BYTES) return
+    const previous = `${file}.1`
+    try {
+      fs.rmSync(previous, { force: true })
+    } catch {
+      /* Replacing the older generation is best-effort; losing it is not a failure. */
+    }
+    fs.renameSync(file, previous)
+  } catch {
+    /* A log that could not be rotated is still a working log. */
+  }
+}
+
 function openStream() {
   if (stream || opening) return stream
   opening = true
   try {
+    rotateIfLarge()
     stream = fs.createWriteStream(logFile(), { flags: 'a' })
     // The stream outlives the process if it errors; never let it raise.
     stream.on('error', () => {

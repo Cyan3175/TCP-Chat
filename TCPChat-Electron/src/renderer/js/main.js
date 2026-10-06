@@ -60,6 +60,16 @@ const ZOOM_STEP = 0.1
  * Everything the views read. Kept in one object so a view can be handed the
  * whole state without importing this module back (which would be a cycle).
  */
+/*
+ * How many messages are rendered at once, and how many more each 载入更早 adds.
+ *
+ * Every rendered message costs a Markdown parse, syntax highlighting and KaTeX,
+ * and stays in the DOM. 200 covers several screens of scrollback, which is what
+ * the window is for; the rest of the history is one click away and search reads
+ * the whole list regardless.
+ */
+const RENDER_WINDOW = 200
+
 const state = {
   /** Settings as the main process last reported them. */
   settings: {
@@ -82,6 +92,8 @@ const state = {
   connection: { ok: false, message: '未连接', connected: false },
   glass: { enabled: false, requested: false, supported: false, reason: 'not ready', mode: 'off' },
   messages: [],
+  /** How many of the newest messages are rendered. Raised by 载入更早. */
+  renderLimit: RENDER_WINDOW,
   windowMaximized: false,
   searchOpen: false,
 }
@@ -524,10 +536,30 @@ function dropMessage(remoteName) {
 function resetMessages(messages) {
   syncBubblePanels()
   state.messages = [...messages]
-  renderAll(state.messages, nickname())
+  state.renderLimit = RENDER_WINDOW
+  renderAll(state.messages, nickname(), state.renderLimit)
   scrollToBottom(false)
   reapplySearch()
   paintStatus()
+}
+
+/**
+ * Make sure a message is in the DOM, widening the render window if it is not.
+ *
+ * Search matches against the whole list but highlights and scrolls through the
+ * DOM, so a hit older than the window has a count and no element to show. Widening
+ * to exactly that message keeps the reveal working without rendering the history
+ * the window exists to avoid.
+ */
+function ensureRendered(remoteName) {
+  const index = state.messages.findIndex((m) => m.remoteName === remoteName)
+  if (index < 0) return false
+  const needed = state.messages.length - index
+  if (needed <= state.renderLimit) return true
+  state.renderLimit = needed
+  renderAll(state.messages, nickname(), state.renderLimit)
+  reapplySearch()
+  return true
 }
 
 // ---------------------------------------------------------------------------
@@ -882,9 +914,17 @@ async function boot() {
       const result = await window.tcpchat.chat.deleteMessage(msg.remoteName)
       if (!result?.ok) showToast(result?.error || '撤回失败', true)
     },
+    onLoadOlder: () => {
+      state.renderLimit += RENDER_WINDOW
+      renderAll(state.messages, nickname(), state.renderLimit)
+      // Keep the reader where they were. The button they pressed is what moved,
+      // and jumping to the bottom would undo the point of pressing it.
+      document.getElementById('load-older')?.scrollIntoView({ block: 'start' })
+      reapplySearch()
+    },
   })
 
-  configureSearch({ getMessages: () => state.messages })
+  configureSearch({ getMessages: () => state.messages, ensureRendered })
   configureSettings({
     onChange: async (patch) => {
       const updated = await window.tcpchat.settings.update(patch)

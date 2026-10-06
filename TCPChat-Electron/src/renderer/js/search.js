@@ -11,6 +11,14 @@ import { $, show, debounce } from './dom.js'
 import { matchesQuery, highlightInMessage, scrollToMessage } from './messages.js'
 
 let getMessages = () => []
+/**
+ * Widen the render window so a message is in the DOM. Set by main.js.
+ *
+ * Matching runs over the whole list, but highlighting and scrolling go through
+ * the DOM, which holds only the newest messages. Without this a hit older than
+ * the window would be counted and then silently not shown.
+ */
+let revealMessage = () => false
 let hits = []
 let current = -1
 let query = ''
@@ -21,6 +29,7 @@ const countEl = () => document.getElementById('search-count')
 
 export function configureSearch(handlers) {
   getMessages = handlers.getMessages ?? getMessages
+  revealMessage = handlers.ensureRendered ?? revealMessage
 }
 
 export const searchQuery = () => query
@@ -86,6 +95,9 @@ function focusCurrent() {
     paintCount()
     return
   }
+  // The hit may be older than what is rendered; widening to it first is what
+  // makes it findable at all.
+  revealMessage(hit.remoteName)
   const el = document.querySelector(`.msg[data-name="${window.CSS.escape(hit.remoteName)}"]`)
   el?.classList.add('current')
   scrollToMessage(hit.remoteName)

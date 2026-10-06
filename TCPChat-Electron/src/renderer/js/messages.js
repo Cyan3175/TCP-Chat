@@ -18,11 +18,13 @@ const DECRYPT_FAILED_TEXT = '⚠ 无法解密（密码与发送方不一致，�
 
 let onReply = () => {}
 let onWithdraw = () => {}
+let onLoadOlder = () => {}
 
 /** Wire the callbacks the context menu needs. */
 export function configureMessages(handlers) {
   onReply = handlers.onReply ?? onReply
   onWithdraw = handlers.onWithdraw ?? onWithdraw
+  onLoadOlder = handlers.onLoadOlder ?? onLoadOlder
 }
 
 const listEl = () => document.getElementById('msg-list')
@@ -187,8 +189,20 @@ function cssEscape(value) {
   return window.CSS?.escape ? window.CSS.escape(String(value)) : String(value).replace(/"/g, '\\"')
 }
 
-/** Full re-render from an ordered list. */
-export function renderAll(messages, nickname) {
+/**
+ * Full re-render from an ordered list, showing at most the newest `limit`.
+ *
+ * The limit is the difference between a working window and a gigabyte. Every
+ * message here costs a Markdown parse, syntax highlighting and KaTeX, and the
+ * result stays in the DOM for the life of the process: a profile with 513
+ * messages rendered all of them at once and held about 600 MB, having spiked to
+ * a gigabyte while they were being built.
+ *
+ * Nothing is lost by not rendering them — the list is still the whole history,
+ * search still matches against it, and the button below re-renders with a larger
+ * limit. Only what is on screen is what costs.
+ */
+export function renderAll(messages, nickname, limit = Infinity) {
   const list = listEl()
   clear(list)
   if (!messages.length) {
@@ -202,8 +216,21 @@ export function renderAll(messages, nickname) {
     return
   }
   emptyEl()?.classList.add('hidden')
+
+  const start = Math.max(0, messages.length - Math.max(1, limit))
+  if (start > 0) {
+    const more = h('button', {
+      class: 'load-older',
+      id: 'load-older',
+      type: 'button',
+      text: `载入更早的 ${start} 条`,
+    })
+    more.addEventListener('click', () => onLoadOlder())
+    list.append(more)
+  }
+
   let currentDay = null
-  for (const msg of messages) {
+  for (const msg of messages.slice(start)) {
     const key = dayKey(msg.time)
     if (key !== currentDay) {
       list.append(h('div', { class: 'msg-day', dataset: { day: key }, text: formatDay(msg.time) }))

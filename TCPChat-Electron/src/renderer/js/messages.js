@@ -19,6 +19,18 @@ const DECRYPT_FAILED_TEXT = '⚠ 无法解密（密码与发送方不一致，�
 let onReply = () => {}
 let onWithdraw = () => {}
 let onLoadOlder = () => {}
+/** How many messages may be in the DOM at once. Set by main.js. */
+let renderLimit = Infinity
+
+/**
+ * Tell the list how much of itself may exist at a time.
+ *
+ * main.js owns the number, because it owns the history; the list only needs to
+ * know when to stop.
+ */
+export function setRenderLimit(n) {
+  renderLimit = n
+}
 
 /** Wire the callbacks the context menu needs. */
 export function configureMessages(handlers) {
@@ -158,7 +170,59 @@ export function appendMessage(msg, nickname) {
   const el = renderMessage(msg, nickname)
   el.dataset.day = key
   list.append(el)
+  trimToWindow()
   return el
+}
+
+/**
+ * Keep only the newest `renderLimit` messages in the DOM.
+ *
+ * A limit on renderAll alone capped nothing that mattered: the startup replay and
+ * every later arrival come through appendMessage, so the list grew past the
+ * window one message at a time and the memory came straight back.
+ *
+ * Only whole elements are dropped here, never re-rendered — this runs once per
+ * arriving message, and re-rendering the window each time would be far more work
+ * than the appending it is trying to bound.
+ */
+function trimToWindow() {
+  if (!Number.isFinite(renderLimit)) return
+  const list = listEl()
+  let count = list.querySelectorAll('.msg').length
+  let trimmed = false
+  while (count > renderLimit) {
+    const first = list.querySelector('.msg')
+    if (!first) break
+    const day = first.previousElementSibling
+    first.remove()
+    count--
+    trimmed = true
+    // A day separator with nothing left beneath it would otherwise strand a date
+    // above messages from another day.
+    if (day?.classList.contains('msg-day') && !day.nextElementSibling?.classList.contains('msg')) {
+      day.remove()
+    }
+  }
+  if (trimmed) ensureLoadOlder(list)
+}
+
+/**
+ * Put a 载入更早 button above the window, once.
+ *
+ * renderAll writes the real count of what it left out; this path only knows that
+ * something was dropped, because the full history lives in main.js. So the button
+ * it adds says less rather than saying something wrong.
+ */
+function ensureLoadOlder(list) {
+  if (document.getElementById('load-older')) return
+  const more = h('button', {
+    class: 'load-older',
+    id: 'load-older',
+    type: 'button',
+    text: '载入更早的',
+  })
+  more.addEventListener('click', () => onLoadOlder())
+  list.prepend(more)
 }
 
 /** Replace an existing message in place (e.g. after a send failed or succeeded). */

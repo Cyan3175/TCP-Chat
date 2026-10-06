@@ -22,6 +22,7 @@ import {
   appendMessage,
   removeMessage,
   renderAll,
+  setRenderLimit,
   setEmptyText,
   isAtBottom,
   scrollToBottom,
@@ -537,6 +538,7 @@ function resetMessages(messages) {
   syncBubblePanels()
   state.messages = [...messages]
   state.renderLimit = RENDER_WINDOW
+  setRenderLimit(state.renderLimit)
   renderAll(state.messages, nickname(), state.renderLimit)
   scrollToBottom(false)
   reapplySearch()
@@ -557,6 +559,7 @@ function ensureRendered(remoteName) {
   const needed = state.messages.length - index
   if (needed <= state.renderLimit) return true
   state.renderLimit = needed
+  setRenderLimit(state.renderLimit)
   renderAll(state.messages, nickname(), state.renderLimit)
   reapplySearch()
   return true
@@ -916,6 +919,7 @@ async function boot() {
     },
     onLoadOlder: () => {
       state.renderLimit += RENDER_WINDOW
+      setRenderLimit(state.renderLimit)
       renderAll(state.messages, nickname(), state.renderLimit)
       // Keep the reader where they were. The button they pressed is what moved,
       // and jumping to the bottom would undo the point of pressing it.

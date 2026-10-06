@@ -191,13 +191,20 @@ let statusText = ''
 let quitting = false
 
 /**
- * False until a sync has completed since this launch.
+ * When this launch began. A message older than this is history, not an arrival.
  *
- * The first sync of a profile with no cache fetches the whole history, and every
- * message in it arrives through the same event a genuinely new one does. Nothing
- * before this flips is an arrival, so nothing before it raises a notification.
+ * Messages carry the millisecond timestamp out of their file name, so age can be
+ * read straight off the message instead of being inferred from how it got here.
+ * That replaces the two earlier guards rather than adding to them: a cached
+ * message and one fetched by the first sync are both simply older than the
+ * process, and a message that genuinely arrives while the first sync is running
+ * is newer than it and still raises a toast — which the previous "nothing before
+ * the first sync" rule got wrong.
+ *
+ * The comparison is strict, so it inherits the sender's clock: a machine running
+ * slow enough would have its new messages read as old and go unannounced.
  */
-let firstSyncDone = false
+const startedAt = Date.now()
 
 /** Bring the window back from the tray, or from minimised. */
 function showMainWindow() {
@@ -308,27 +315,20 @@ function wireChat(service) {
     /*
      * Only a message that has just arrived is worth a toast.
      *
-     * Three ways a message reaches this handler are not news, and each has
-     * produced a notification storm at some point:
+     * The test is the message's own timestamp against the time this process
+     * started, which covers every way an old message can reach this handler — the
+     * cache replay at startup, a re-read after a fingerprint changed, and the
+     * first sync of a profile with no cache, which fetches the whole history and
+     * delivers every message through the same event a new one uses.
      *
-     *   the replay of the local cache at startup  — stopped by msg.fromCache
-     *   a re-read of anything whose fingerprint moved on the server
-     *   the first sync after a cache that is empty or missing, which fetches the
-     *     entire history, so every message arrives looking brand new
-     *
-     * The last one is what a profile with no cache does, and the window is never
-     * in front during startup, so the focus guard suppresses none of it. A first
-     * sync is history by definition; only what arrives after it is an arrival.
+     * The focus guard alone suppresses none of that, because the window is never
+     * in front during startup.
      */
     const isSelf = settings.nickname !== '' && msg.from === settings.nickname
     const focused = mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused()
-    if (
-      !isSelf &&
-      !focused &&
-      !msg.fromCache &&
-      firstSyncDone &&
-      settings.notifyOnMessage !== false
-    ) {
+    const arrivedAt = Date.parse(msg.time)
+    const isNew = Number.isFinite(arrivedAt) && arrivedAt >= startedAt
+    if (!isSelf && !focused && isNew && settings.notifyOnMessage !== false) {
       notifyMessage(msg)
     }
     pushStats()
@@ -348,7 +348,6 @@ function wireChat(service) {
   })
 
   service.on('synced', (at) => {
-    firstSyncDone = true
     send('synced', at)
     pushStats()
   })
@@ -436,6 +435,14 @@ function createWindow() {
       nodeIntegration: false,
       sandbox: true,
       spellcheck: false,
+      /*
+       * Required, not a preference.
+       *
+       * Removing this to save idle CPU was tried and reverted: with the window
+       * hidden at startup the renderer never got a frame, and on show only the
+       * glass panel was there — a native window with nothing drawn under it. The
+       * renderer has to keep running while the window is hidden.
+       */
       backgroundThrottling: false,
     },
   })

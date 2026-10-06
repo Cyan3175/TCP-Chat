@@ -16,16 +16,25 @@ files:
   - package.json
   - src/**/*
   - '!src/**/*.map'
-  - '!**/node_modules/**/{test,__tests__,tests,example,examples,doc,docs}/**'
-  - '!**/node_modules/**/*.{md,map,ts,tsx}'
-  - '!node_modules/highlight.js/**/*.min.js.map'
-  # The vendored addon is a C++ source tree. Only its JS wrapper and the compiled
-  # binary belong in a release; the rest is MSVC output (.iobj 2.5 MB, .ipdb,
-  # .tlog, .vcxproj, .lib) plus headers — about 4 MB of build junk. The negation
-  # has to come before the include that re-adds the binary.
-  - '!node_modules/@hicccc77/electron-liquid-glass/{src,scripts,build}/**'
-  - 'node_modules/@hicccc77/electron-liquid-glass/build/Release/*.node'
-
+  # Nothing out of node_modules except what the main process actually loads.
+  #
+  # The renderer's dependencies are bundled into src/renderer/dist/app.js by
+  # esbuild, and KaTeX's stylesheet and fonts are copied into
+  # src/renderer/dist/katex by the same build. So the packages themselves were
+  # being shipped a second time, as source: highlight.js alone is 1,558 files and
+  # 5 MB, KaTeX another 118 and 3 MB, and markdown-it with its plugins a further
+  # 1 MB. Together they were 1,829 files and 10.4 MB of the archive's 13.6, none
+  # of which anything ever opens.
+  #
+  # Negate first, then re-add: later patterns win, and the addon's binary has to
+  # survive the negation to be unpacked.
+  - '!node_modules/**'
+  - node_modules/@hicccc77/electron-liquid-glass/index.js
+  - node_modules/@hicccc77/electron-liquid-glass/index.d.ts
+  - node_modules/@hicccc77/electron-liquid-glass/package.json
+  - node_modules/@hicccc77/electron-liquid-glass/build/Release/*.node
+  # The addon's wrapper resolves its binary through this.
+  - node_modules/node-gyp-build/**
 extraMetadata:
   main: src/main/index.js
 

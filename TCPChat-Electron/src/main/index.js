@@ -190,6 +190,15 @@ let connection = { ok: false, message: '未连接', connected: false }
 let statusText = ''
 let quitting = false
 
+/**
+ * False until a sync has completed since this launch.
+ *
+ * The first sync of a profile with no cache fetches the whole history, and every
+ * message in it arrives through the same event a genuinely new one does. Nothing
+ * before this flips is an arrival, so nothing before it raises a notification.
+ */
+let firstSyncDone = false
+
 /** Bring the window back from the tray, or from minimised. */
 function showMainWindow() {
   if (!mainWindow || mainWindow.isDestroyed()) return
@@ -299,15 +308,27 @@ function wireChat(service) {
     /*
      * Only a message that has just arrived is worth a toast.
      *
-     * `message-added` also carries the replay of the local cache at startup and
-     * a re-read of anything whose fingerprint moved on the server. Neither is
-     * news, and the first one meant a notification per cached message on every
-     * launch — the window not being in front is the normal state at startup, so
-     * the guard below never suppressed any of them.
+     * Three ways a message reaches this handler are not news, and each has
+     * produced a notification storm at some point:
+     *
+     *   the replay of the local cache at startup  — stopped by msg.fromCache
+     *   a re-read of anything whose fingerprint moved on the server
+     *   the first sync after a cache that is empty or missing, which fetches the
+     *     entire history, so every message arrives looking brand new
+     *
+     * The last one is what a profile with no cache does, and the window is never
+     * in front during startup, so the focus guard suppresses none of it. A first
+     * sync is history by definition; only what arrives after it is an arrival.
      */
     const isSelf = settings.nickname !== '' && msg.from === settings.nickname
     const focused = mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused()
-    if (!isSelf && !focused && !msg.fromCache && settings.notifyOnMessage !== false) {
+    if (
+      !isSelf &&
+      !focused &&
+      !msg.fromCache &&
+      firstSyncDone &&
+      settings.notifyOnMessage !== false
+    ) {
       notifyMessage(msg)
     }
     pushStats()
@@ -327,6 +348,7 @@ function wireChat(service) {
   })
 
   service.on('synced', (at) => {
+    firstSyncDone = true
     send('synced', at)
     pushStats()
   })

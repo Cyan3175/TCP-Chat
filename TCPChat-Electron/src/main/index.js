@@ -460,6 +460,19 @@ function createWindow() {
     if (IS_DEV) win.webContents.openDevTools({ mode: 'detach' })
   })
 
+  /*
+   * The glass follows the window's visibility, wherever it comes from.
+   *
+   * Bound to the window's own events rather than applied at each call site that
+   * hides or shows it: closing to the tray, minimising, the tray menu and
+   * anything added later all take these paths, and the glass being left on
+   * screen by itself is the failure when one of them is missed.
+   */
+  win.on('show', applyGlass)
+  win.on('restore', applyGlass)
+  win.on('hide', applyGlass)
+  win.on('minimize', applyGlass)
+
   win.on('focus', () => {
     try {
       win.flashFrame(false)
@@ -1296,12 +1309,32 @@ function applyGlass() {
   if (!glass) return
   // The controller reads this when it builds or re-tunes the panel.
   glass.quality = settings.glassQuality
-  const status = glass.apply(settings.glassEnabled)
-  if (settings.glassEnabled && !status.supported) {
+  /*
+   * A panel is only meaningful underneath a window.
+   *
+   * The glass is a separate native window pinned below ours, so creating it while
+   * ours is hidden puts a pane of glass on screen with nothing behind it — which
+   * is what starting in the tray did. And it is not just a rectangle in the wrong
+   * place: the panel re-renders from desktop duplication for as long as it
+   * exists, measured at about three quarters of a core, for something nobody
+   * asked to see.
+   *
+   * So the window's own visibility decides. The window is created either way when
+   * starting in the tray, which is what keeps the renderer live and the app
+   * genuinely receiving; it is the glass that has no business being there.
+   */
+  const wanted = settings.glassEnabled && windowVisible()
+  const status = glass.apply(wanted)
+  if (wanted && !status.supported) {
     log.warn('liquid glass requested but unavailable:', status.reason)
   }
   send('glass-state', glassStatusWithMode())
   send('settings-changed', settings.toRenderer())
+}
+
+/** True when the main window is on screen. */
+function windowVisible() {
+  return Boolean(mainWindow) && !mainWindow.isDestroyed() && mainWindow.isVisible()
 }
 
 

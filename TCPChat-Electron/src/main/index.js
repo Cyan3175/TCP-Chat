@@ -1449,7 +1449,19 @@ if (!gotLock) {
     showMainWindow()
   })
 
-  app.setAppUserModelId('TCPChat')
+  /*
+   * Must match the appId the installer registers, or toasts cannot find their way
+   * home.
+   *
+   * Windows attributes a toast to an AppUserModelID and, when one is clicked,
+   * resolves that ID back to a registered application. The Start Menu shortcut
+   * carries the appId from electron-builder.yml, so announcing a different name
+   * here left the ID unmatched — and an unmatched toast falls back to the
+   * executable that raised it, which for a packaged Electron app is a bare
+   * electron.exe with no app path. Clicking a message opened Electron's own
+   * welcome window instead of this one.
+   */
+  app.setAppUserModelId('cn.zhaohans.tcpchat')
   app
     .whenReady()
     .then(bootstrap)

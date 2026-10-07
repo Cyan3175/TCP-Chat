@@ -57,11 +57,16 @@ asarUnpack:
 
 win:
   icon: build/icon.ico
+  # Installer only. There is deliberately no portable target.
+  #
+  # A portable build unpacks itself into %TEMP% and runs from there, and the Start
+  # Menu entry it leaves points into that folder. Windows may clear %TEMP% at any
+  # time, so the shortcut can outlive the application it names - and until it is
+  # cleared, that entry launches a stale copy the user believes they have already
+  # replaced. Both of those happened, and one of them cost an afternoon of
+  # debugging a build that was never being run.
   target:
     - target: nsis
-      arch:
-        - x64
-    - target: portable
       arch:
         - x64
 
@@ -76,9 +81,6 @@ nsis:
   # The C# build's settings live in %LOCALAPPDATA%\TCPChat and are shared with
   # this app, so the uninstaller must not remove the user's profile.
   deleteAppDataOnUninstall: false
-
-portable:
-  artifactName: TCP-Chat-${version}-portable.${ext}
 
 # No auto-update channel is configured; publishing is manual.
 publish: null

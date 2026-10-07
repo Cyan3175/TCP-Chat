@@ -112,8 +112,14 @@ const { build, Platform, Arch } = require('electron-builder')
 
 async function main() {
   const files = await build({
+    // Installer only. The portable target is deliberately not here.
+    //
+    // Removing it from electron-builder.yml is not enough: this list is what
+    // electron-builder is actually asked for, and it wins. Leaving 'portable' in
+    // kept producing a 107 MB executable under the target's default name — with
+    // no "portable" in the filename, so it did not look like one.
     targets: Platform.WINDOWS.createTarget(
-      ['nsis', 'portable'],
+      ['nsis'],
       Arch.x64,
     ),
     publish: 'never',

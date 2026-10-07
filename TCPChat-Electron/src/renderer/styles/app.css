@@ -971,26 +971,3 @@ body[data-plain-bg='on'][data-bg-fit='repeat'] #plain-bg img {
   z-index: 2147483647;
   object-fit: cover;
 }
-/*
- * Files being dragged over the window.
- *
- * The whole window is a drop target, so the outline is drawn on the window rather
- * than on any one panel: a hint attached to the composer would say the drop has to
- * land there, and it does not.
- */
-body.dropping::after {
-  content: '松开发送文件';
-  position: fixed;
-  inset: 8px;
-  z-index: 2147483647;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 15px;
-  letter-spacing: 0.05em;
-  border: 2px dashed var(--dsw-alias-brand-primary, #7aaaff);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--dsw-alias-bg-layer-0, #000) 55%, transparent);
-  color: var(--dsw-alias-text-1, #fff);
-  pointer-events: none;
-}

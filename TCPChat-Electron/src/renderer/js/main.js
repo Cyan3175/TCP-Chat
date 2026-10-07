@@ -69,7 +69,7 @@ const ZOOM_STEP = 0.1
  * the window is for; the rest of the history is one click away and search reads
  * the whole list regardless.
  */
-const RENDER_WINDOW = 200
+const RENDER_WINDOW = 100
 
 const state = {
   /** Settings as the main process last reported them. */

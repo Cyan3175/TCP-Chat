@@ -52,7 +52,7 @@ function clearMarks() {
 }
 
 /** Recompute hits for the current query. */
-function recompute({ keepCurrent = false } = {}) {
+function recompute({ keepCurrent = false, reveal = true } = {}) {
   const previousName = hits[current]?.remoteName
   clearMarks()
   hits = []
@@ -85,10 +85,19 @@ function recompute({ keepCurrent = false } = {}) {
   } else {
     current = 0
   }
-  focusCurrent()
+  focusCurrent(reveal)
 }
 
-function focusCurrent() {
+/**
+ * Highlight and scroll to the current hit.
+ *
+ * `reveal` is what allows the render window to be widened to reach a hit, and it
+ * belongs only to going to a hit — typing a query, or stepping through results.
+ * Re-applying an existing query must not widen anything: it runs after every
+ * 载入更早 press, and widening there meant the button loaded whatever it took to
+ * reach the current hit rather than the one window it promises.
+ */
+function focusCurrent(reveal = true) {
   document.querySelectorAll('.msg.current').forEach((el) => el.classList.remove('current'))
   const hit = hits[current]
   if (!hit) {
@@ -97,7 +106,7 @@ function focusCurrent() {
   }
   // The hit may be older than what is rendered; widening to it first is what
   // makes it findable at all.
-  revealMessage(hit.remoteName)
+  if (reveal) revealMessage(hit.remoteName)
   const el = document.querySelector(`.msg[data-name="${window.CSS.escape(hit.remoteName)}"]`)
   el?.classList.add('current')
   scrollToMessage(hit.remoteName)
@@ -132,15 +141,22 @@ export function isSearchOpen() {
   return !bar().classList.contains('hidden')
 }
 
-/** Re-run the active query — used when the message list changes. */
+/**
+ * Re-run the active query because the list changed.
+ *
+ * Neither this nor reapplySearch below is navigation, so neither may widen the
+ * render window. Both run after the list was rebuilt, and letting them widen
+ * meant the 载入更早 button loaded whatever it took to reach the current hit
+ * instead of the one window it promises.
+ */
 export const refreshSearch = debounce(() => {
   if (!query) return
-  recompute({ keepCurrent: true })
+  recompute({ keepCurrent: true, reveal: false })
 }, 120)
 
 /** Called after a full re-render so highlights survive. */
 export function reapplySearch() {
-  if (query) recompute({ keepCurrent: true })
+  if (query) recompute({ keepCurrent: true, reveal: false })
 }
 
 export function initSearch() {

@@ -1,6 +1,27 @@
 'use strict'
 
 /*
+ * A transfer timeout that scales with how much has to move.
+ *
+ * Every request here is bounded by `AbortSignal.timeout`, which measures the whole
+ * request rather than idleness. A fixed number is therefore a size limit in
+ * disguise: 60 seconds is generous for a message file and impossible for a 100 MB
+ * attachment, so the attachment fails with an abort that reads like a network
+ * error and looks like the app refusing to open it.
+ *
+ * The allowance is a floor plus a per-megabyte rate. The rate is deliberately slow
+ * — around 330 KB/s — because it is there to notice a connection that has died,
+ * not to police a slow one, and a real transfer is bounded by the server anyway.
+ */
+const TRANSFER_FLOOR_SECONDS = 30
+const SECONDS_PER_MEGABYTE = 3
+
+function transferTimeoutSeconds(bytes) {
+  const mb = Math.max(0, Number(bytes) || 0) / 1048576
+  return TRANSFER_FLOOR_SECONDS + Math.ceil(mb) * SECONDS_PER_MEGABYTE
+}
+
+/*
  * Client for the file-browsing service at nw.zhaohans.cn.
  *
  * That service is not WebDAV. It is a small JSON-and-HTML API over what appears
@@ -107,8 +128,7 @@ class NwClient {
   }
 
   /** One request, re-authenticating once if the session has lapsed. */
-  async _request(url, init = {}, timeoutSeconds = 25) {
-    await this._auth()
+  async _request(url, init = {}, timeoutSeconds = 25) {    await this._auth()
     const send = () =>
       fetch(url, {
         ...init,
@@ -277,7 +297,7 @@ class NwClient {
    * The bytes are sent as a Blob rather than a stream so Node sets the multipart
    * length itself; the API has no chunked path.
    */
-  async put(filePath, data, _contentType = 'application/octet-stream', timeoutSeconds = 60) {
+  async put(filePath, data, _contentType = 'application/octet-stream', timeoutSeconds = null) {
     const full = NwClient._asDir(filePath)
     const dir = full.includes('/') ? full.slice(0, full.lastIndexOf('/')) : ''
     const name = full.slice(full.lastIndexOf('/') + 1)
@@ -291,7 +311,7 @@ class NwClient {
     const resp = await this._request(
       `${this.baseUrl}/nw/upload`,
       { method: 'POST', body: form },
-      timeoutSeconds,
+      timeoutSeconds ?? transferTimeoutSeconds(bytes.length),
     )
     const text = await resp.text()
     this.lastPutStatus = `${resp.status} ${text.slice(0, 120)}`
@@ -374,4 +394,4 @@ class NwClient {
   }
 }
 
-module.exports = { NwClient, NwError }
+module.exports = { NwClient, NwError, transferTimeoutSeconds }

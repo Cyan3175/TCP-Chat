@@ -22,7 +22,7 @@ const path = require('path')
 const { EventEmitter } = require('events')
 
 const { combine } = require('./webdav')
-const { NwClient } = require('./nw')
+const { NwClient, transferTimeoutSeconds } = require('./nw')
 const { MessageCache, timeOf } = require('./message-cache')
 const { MessageCipher } = require('./crypto')
 const { cacheDir } = require('./paths')
@@ -369,7 +369,9 @@ class ChatService extends EventEmitter {
         }
         bytes = encrypted
       }
-      if (!(await this.dav.put(remotePath, bytes, guessContentType(ext), 60))) {
+      // No fixed timeout: put derives one from the payload, because a flat 60
+      // seconds is a size limit in disguise and rejected every large attachment.
+      if (!(await this.dav.put(remotePath, bytes, guessContentType(ext)))) {
         this.emit('error', `附件上传失败 (${this.dav.lastPutStatus}): ${safeName}`)
         return null
       }
@@ -405,7 +407,9 @@ class ChatService extends EventEmitter {
     }
 
     try {
-      let bytes = await this.dav.getBytes(attach.path, 120)
+      // Scale with the attachment: 120 seconds is plenty for a document and an abort
+      // for a 100 MB one, which reads as the app refusing to open it.
+      let bytes = await this.dav.getBytes(attach.path, transferTimeoutSeconds(attach.size))
       if (bytes === null) return null
 
       if (this.cipher.enabled) {

@@ -51,9 +51,11 @@ import { closeMenu, isMenuOpen, showToast } from './overlays.js'
  * Zoom bounds. Mirrored from the main process (which clamps persisted values)
  * so the UI cannot drift from what the settings actually allow.
  */
-const ZOOM_MIN = 0.6
-const ZOOM_MAX = 2.4
-const ZOOM_STEP = 0.1
+const ZOOM_LEVEL_MIN = -3
+const ZOOM_LEVEL_MAX = 3
+const ZOOM_LEVEL_STEP = 0.5
+/** 1.2 ** level, the same relation the main process uses. */
+const zoomFactorForLevel = (level) => Math.pow(1.2, level)
 
 /** Base font size for message content, in CSS pixels at zoom 1. */
 
@@ -87,7 +89,7 @@ const state = {
     sendPasswordIndex: 0,
     glassEnabled: true,
     glassQuality: 60,
-    zoom: 1,
+    zoomLevel: 0,
   },
   stats: {},
   connection: { ok: false, message: '未连接', connected: false },
@@ -337,35 +339,47 @@ function invalidatePlainBackground() {
 }
 
 function applyZoom() {
-  const zoom = clamp(state.settings?.zoom ?? 1, ZOOM_MIN, ZOOM_MAX)
+  const level = zoomLevel()
   /*
    * Zoom scales the whole UI, not just message text.
    *
    * This used to set --dsh-content-font-size, which only reached the rules that
    * happened to read it: the message body and the composer. The title bar, the
-   * status bar and the buttons stayed put, so "zoom" meant two different things
-   * on the same screen — and the composer, scaling its type while its height
-   * stayed an inline pixel value, pushed its own placeholder out of the box.
+   * status bar and the buttons stayed put, so "zoom" meant two different things on
+   * the same screen — and the composer, scaling its type while its height stayed an
+   * inline pixel value, pushed its own placeholder out of the box.
    *
-   * A zoom factor moves the CSS pixel underneath everything instead, so every
-   * dimension in the app scales by the same amount and none of it can drift.
+   * A zoom level moves the CSS pixel underneath everything instead, so every
+   * dimension scales by the same amount and none of it can drift. The main process
+   * applies it, on the web contents rather than this frame, which is also what
+   * makes a reload come back at the zoom it was left at.
    */
-  window.tcpchat.window.setZoomFactor(zoom)
+  window.tcpchat.window.setZoomLevel(level)
   const label = document.getElementById('status-zoom')
-  if (label) label.textContent = `${Math.round(zoom * 100)}%`
+  if (label) label.textContent = `${Math.round(zoomFactorForLevel(level) * 100)}%`
+}
+
+/** The stored zoom, clamped to what the menu offers. */
+function zoomLevel() {
+  const level = state.settings?.zoomLevel
+  return clamp(typeof level === 'number' ? level : 0, ZOOM_LEVEL_MIN, ZOOM_LEVEL_MAX)
 }
 
 /** Step the zoom and persist it, mirroring Ctrl +/-/0 from the C# build. */
 async function stepZoom(direction) {
-  const currentZoom = state.settings?.zoom ?? 1
+  const currentLevel = zoomLevel()
   const next =
     direction === 0
-      ? 1
-      : clamp(Math.round((currentZoom + direction * ZOOM_STEP) * 100) / 100, ZOOM_MIN, ZOOM_MAX)
-  if (Math.abs(next - currentZoom) < 0.0001) return
-  state.settings = { ...state.settings, zoom: next }
+      ? 0
+      : clamp(
+          Math.round((currentLevel + direction * ZOOM_LEVEL_STEP) * 100) / 100,
+          ZOOM_LEVEL_MIN,
+          ZOOM_LEVEL_MAX,
+        )
+  if (Math.abs(next - currentLevel) < 0.0001) return
+  state.settings = { ...state.settings, zoomLevel: next }
   applyZoom()
-  await window.tcpchat.settings.update({ zoom: next })
+  await window.tcpchat.settings.update({ zoomLevel: next })
 }
 
 // ---------------------------------------------------------------------------

@@ -107,15 +107,25 @@ const api = {
     setBounds: (bounds) => ipcRenderer.invoke('window:set-bounds', bounds),
     getBounds: () => ipcRenderer.invoke('window:get-bounds'),
     /*
-     * Scales the whole page, chrome included.
+     * Zoom, in Chromium zoom levels rather than a factor.
      *
-     * The alternative — driving a --dsh-content-font-size variable from the
-     * renderer — only reached the elements that happened to reference it, so the
-     * message text grew while the composer did not and the placeholder spilled
-     * out of its box. A zoom factor scales the CSS pixel itself, so every
-     * dimension in the app moves together and nothing can come apart.
+     * A level is what the browser's own zoom is: 1.2 ** level, so 0 is 100% and
+     * the menu's -3..3 is roughly 58%..173%. Levels are used because they are what
+     * Chromium already speaks — Ctrl+wheel raises a zoom-changed event carrying
+     * one, and the main process applies and persists that directly, instead of a
+     * factor being recomputed here and pushed at a frame.
+     *
+     * Applied from the main process, on the web contents rather than the frame, so
+     * a reload comes back at the zoom it was left at. setZoomFactor here would only
+     * ever reach this document.
+     *
+     * What it solves is unchanged: the CSS pixel itself scales, so every dimension
+     * in the app moves together. Driving a font-size variable instead meant the
+     * message text grew while the composer did not, and the placeholder spilled out
+     * of its box.
      */
-    setZoomFactor: (factor) => webFrame.setZoomFactor(factor),
+    setZoomLevel: (level) => ipcRenderer.invoke('window:set-zoom-level', { level }),
+    getZoomLevel: () => ipcRenderer.invoke('window:get-zoom-level'),
   },
 
   app: {

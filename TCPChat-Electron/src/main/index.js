@@ -31,6 +31,7 @@ const {
 const { log, installCrashHandlers } = require('./logger')
 const { ensureDataDir, cacheDir } = require('./paths')
 const settingsModule = require('./settings')
+const { clampZoomLevel } = settingsModule
 const { ChatService, sanitizeFileName } = require('./chat-service')
 const { MessageStore } = require('./message-store')
 const { GlassController } = require('./glass')
@@ -466,6 +467,32 @@ function createWindow() {
     if (START_IN_TRAY) ensureTray()
     else win.show()
     if (IS_DEV) win.webContents.openDevTools({ mode: 'detach' })
+  })
+
+  /*
+   * Zoom is remembered the way DSH Desktop remembers it.
+   *
+   * `zoom-changed` is Chromium's own announcement that the zoom moved — Ctrl+wheel
+   * over the window raises it without the renderer being involved at all — so
+   * listening here is what keeps a gesture, the Ctrl +/- keys and the settings
+   * slider from each having their own idea of the current level.
+   *
+   * The restore runs on every load rather than once at startup, because that is
+   * when a web contents has a zoom to set: setting it earlier is discarded by the
+   * navigation.
+   */
+  win.webContents.on('zoom-changed', () => {
+    if (win.isDestroyed() || win.webContents.isDestroyed()) return
+    const level = win.webContents.getZoomLevel()
+    if (!Number.isFinite(level)) return
+    settings.zoomLevel = clampZoomLevel(level)
+    settings.save()
+  })
+
+  win.webContents.on('did-finish-load', () => {
+    if (win.isDestroyed() || win.webContents.isDestroyed()) return
+    const level = clampZoomLevel(Number(settings.zoomLevel))
+    if (level !== 0) win.webContents.setZoomLevel(level)
   })
 
   /*
@@ -1214,6 +1241,28 @@ function registerIpc() {
   })
 
   ipcMain.handle('window:get-bounds', () => (mainWindow ? mainWindow.getBounds() : null))
+
+  /*
+   * Zoom, in Chromium zoom levels, applied and remembered here.
+   *
+   * Levels rather than a factor because they are Chromium's own unit and because
+   * Ctrl+wheel already produces one: the renderer is told about it instead of
+   * recomputing a factor, so the keyboard, the menu and the gesture cannot
+   * disagree. Applying it on the web contents — rather than calling
+   * setZoomFactor in the frame — is what lets the zoom survive a reload.
+   */
+  ipcMain.handle('window:set-zoom-level', (_e, { level } = {}) => {
+    const clamped = clampZoomLevel(Number(level))
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.setZoomLevel(clamped)
+    }
+    settings.zoomLevel = clamped
+    return clamped
+  })
+
+  ipcMain.handle('window:get-zoom-level', () =>
+    mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents.getZoomLevel() : 0,
+  )
 
   /** Absolute bounds in DIP, used by the DOM resize handles. */
   ipcMain.handle('window:set-bounds', (_e, bounds = {}) => {

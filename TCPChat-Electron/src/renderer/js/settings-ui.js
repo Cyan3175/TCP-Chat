@@ -230,18 +230,33 @@ function buildDialog(state) {
    */
   uiSelect.value = state.glassEnabled ? 'glass' : ['deepseek', 'edge'].includes(state.uiStyle) ? state.uiStyle : 'default'
 
+  /*
+   * The slider moves in zoom levels, the same unit Ctrl +/- and Ctrl+wheel use,
+   * and shows percentages because that is what a person reads it as.
+   *
+   * It used to run 60..240% as a factor, which was a third scale of its own: the
+   * keyboard stepped by a factor, the menu spoke levels, and the slider could sit
+   * between two values neither of the others could produce. One unit, thirteen
+   * stops, 58%..173%.
+   */
+  const zoomPercent = (level) => `${Math.round(Math.pow(1.2, level) * 100)}%`
+  const zoomValue = typeof state.zoomLevel === 'number' ? state.zoomLevel : 0
   const zoomRange = h('input', {
     class: 'slider',
     id: 'set-zoom',
     type: 'range',
-    min: '60',
-    max: '240',
-    step: '10',
-    value: String(Math.round((state.zoom ?? 1) * 100)),
+    min: '-3',
+    max: '3',
+    step: '0.5',
+    value: String(zoomValue),
   })
-  const zoomLabel = h('span', { class: 'caption', id: 'set-zoom-label', text: `${Math.round((state.zoom ?? 1) * 100)}%` })
+  const zoomLabel = h('span', {
+    class: 'caption',
+    id: 'set-zoom-label',
+    text: zoomPercent(zoomValue),
+  })
   zoomRange.addEventListener('input', () => {
-    zoomLabel.textContent = `${zoomRange.value}%`
+    zoomLabel.textContent = zoomPercent(Number(zoomRange.value))
   })
 
   body.append(
@@ -378,7 +393,7 @@ function buildDialog(state) {
     font: () => fontInput.value.trim(),
     theme: () => Number(themeSelect.value) || 0,
     uiStyle: () => (['deepseek', 'edge'].includes(uiSelect.value) ? uiSelect.value : 'default'),
-    zoom: () => clamp(Number(zoomRange.value) / 100, 0.6, 2.4),
+    zoomLevel: () => clamp(Number(zoomRange.value), -3, 3),
     /*
      * Glass comes from the same picker, so the two cannot disagree.
      *
@@ -427,7 +442,7 @@ function collect() {
     fontFamily: pickers.font(),
     theme: pickers.theme(),
     uiStyle: pickers.uiStyle(),
-    zoom: pickers.zoom(),
+    zoomLevel: pickers.zoomLevel(),
     glassEnabled: pickers.glass(),
     glassQuality: pickers.glassQuality(),
   }

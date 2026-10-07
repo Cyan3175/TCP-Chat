@@ -34,10 +34,24 @@ const DEFAULT_NW_URL = 'https://nw.zhaohans.cn'
  */
 const DEFAULT_NW_PASSWORD = 'nw123123'
 
-const ZOOM_MIN = 0.6
-const ZOOM_MAX = 2.4
-const ZOOM_STEP = 0.1
-/** Base font size for message content, in CSS pixels at zoom 1. */
+/*
+ * Zoom, as Chromium zoom levels.
+ *
+ * A level is the browser's own unit: the factor is 1.2 ** level, so 0 is 100%,
+ * +3 is about 173% and -3 about 58%. DSH Desktop offers exactly this range in
+ * steps of 0.5, and the same numbers are used here so the two behave alike.
+ *
+ * Levels rather than a factor because they are what Chromium already speaks.
+ * Ctrl+wheel raises a zoom-changed event carrying one, and the main process applies
+ * and persists that directly instead of recomputing a factor and pushing it at a
+ * frame — which also means a reload comes back where it was left.
+ */
+const ZOOM_LEVEL_MIN = -3
+const ZOOM_LEVEL_MAX = 3
+const ZOOM_LEVEL_STEP = 0.5
+/** 1.2 ** level, spelled out once so the two directions cannot drift apart. */
+const zoomFactorForLevel = (level) => Math.pow(1.2, level)
+/** Base font size for message content, in CSS pixels at zoom level 0. */
 const BASE_FONT_SIZE = 14
 
 /*
@@ -65,11 +79,29 @@ function clamp(value, min, max, fallback) {
   return Math.min(max, Math.max(min, n))
 }
 
-/** Same rounding the C# `UiZoom.Clamp` performs. */
-function clampZoom(level) {
-  if (!Number.isFinite(level) || level <= 0) return 1
-  const clamped = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, level))
-  return Math.round(clamped * 100) / 100
+/** Clamp to the range the menu offers. Not rounded: Chromium keeps half steps. */
+function clampZoomLevel(level) {
+  if (!Number.isFinite(level)) return 0
+  return Math.min(ZOOM_LEVEL_MAX, Math.max(ZOOM_LEVEL_MIN, level))
+}
+
+/**
+ * Read a stored zoom, whichever unit it was written in.
+ *
+ * Until this change the setting was a factor between 0.6 and 2.4, and a profile
+ * that has one must not be read as a level. A stored 1 meant 100%; a level of 1
+ * means 120%, so reading it directly would quietly resize the app for everyone who
+ * already had a preference. The old key is therefore still honoured and converted.
+ */
+function readStoredZoom(settings) {
+  if (typeof settings.zoomLevel === 'number' && Number.isFinite(settings.zoomLevel)) {
+    return clampZoomLevel(settings.zoomLevel)
+  }
+  const factor = settings.zoom
+  if (typeof factor === 'number' && Number.isFinite(factor) && factor > 0) {
+    return clampZoomLevel(Math.log(factor) / Math.log(1.2))
+  }
+  return 0
 }
 
 function defaults() {
@@ -132,7 +164,7 @@ function defaults() {
     /** Recently chosen pictures, newest first. Paths only; thumbnails are built on demand. */
     plainBackgroundRecent: [],
 
-    zoom: 1,
+    zoomLevel: 0,
     // Electron-only additions (ignored by the C# build).
     windowBounds: null,
     glassTint: null,
@@ -195,7 +227,7 @@ class Settings {
     this.plainBackgroundRecent = Array.isArray(this.plainBackgroundRecent)
       ? this.plainBackgroundRecent.filter((p) => typeof p === 'string' && p !== '').slice(0, RECENT_MAX)
       : []
-    this.zoom = clampZoom(typeof this.zoom === 'number' ? this.zoom : 1)
+    this.zoomLevel = readStoredZoom(this)
 
     // 11.2 moved from a single password to an ordered list. Blank entries are
     // meaningful: a blank entry means "send in the clear" while the remaining
@@ -305,7 +337,7 @@ class Settings {
       encryptionEnabled: this.encryptionEnabled,
       glassEnabled: this.glassEnabled,
       glassQuality: this.glassQuality,
-      zoom: this.zoom,
+      zoomLevel: this.zoomLevel,
     }
   }
 }
@@ -326,15 +358,16 @@ module.exports = {
   Settings,
   load,
   defaults,
-  clampZoom,
+  clampZoomLevel,
+  zoomFactorForLevel,
   DEFAULT_CHAT_FOLDER,
   DEFAULT_NW_URL,
   DEFAULT_NW_PASSWORD,
   LEGACY_SHARED_CHAT_FOLDER,
   LEGACY_DEFAULT_CHAT_FOLDER,
-  ZOOM_MIN,
-  ZOOM_MAX,
-  ZOOM_STEP,
+  ZOOM_LEVEL_MIN,
+  ZOOM_LEVEL_MAX,
+  ZOOM_LEVEL_STEP,
   BASE_FONT_SIZE,
   POLL_MIN,
   POLL_MAX,

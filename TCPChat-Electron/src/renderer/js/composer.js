@@ -133,6 +133,22 @@ function buildQuote(msg) {
 async function pickAndSend(kind) {
   const paths = await window.tcpchat.files.pick(kind)
   if (!paths.length) return
+  await sendPaths(paths)
+}
+
+/**
+ * Send files that arrived by drag and drop.
+ *
+ * The same path the picker takes once it has its list — dropping only changes how
+ * the paths were chosen, so nothing about sending is duplicated here.
+ */
+export async function sendDroppedFiles(paths) {
+  const usable = (paths ?? []).filter((p) => typeof p === 'string' && p !== '')
+  if (!usable.length) return
+  await sendPaths(usable)
+}
+
+async function sendPaths(paths) {
   onStatus(`正在发送 ${paths.length} 个文件…`)
   const result = await onSendFiles(paths)
   const failed = (result?.results ?? []).filter((r) => !r.ok).length

@@ -32,6 +32,7 @@ import {
   setReply,
   initComposer,
   sendDraft,
+  sendDroppedFiles,
   focusComposer,
 } from './composer.js'
 import {
@@ -860,6 +861,67 @@ function subscribe() {
 // Boot
 // ---------------------------------------------------------------------------
 
+async /**
+ * Send files dropped on the window.
+ *
+ * The path has to come from the preload: File.path was removed in Electron 32 and
+ * this is Electron 44, so a dropped file no longer knows where it lives.
+ *
+ * dragover has to be prevented as well as drop. Without it Chromium treats the
+ * drop as a navigation and replaces the whole app with a picture of the file —
+ * the window survives, so it looks like a crash in the renderer rather than an
+ * unhandled drop.
+ *
+ * The counter is what makes the highlight survive moving between child elements:
+ * dragleave fires for each one on the way, so a boolean would flicker off over
+ * every gap.
+ */
+function initDropTarget() {
+  const carriesFiles = (event) => Array.from(event.dataTransfer?.types ?? []).includes('Files')
+  let depth = 0
+
+  const clear = () => {
+    depth = 0
+    document.body.classList.remove('dropping')
+  }
+
+  window.addEventListener('dragenter', (event) => {
+    if (!carriesFiles(event)) return
+    event.preventDefault()
+    depth += 1
+    document.body.classList.add('dropping')
+  })
+
+  window.addEventListener('dragover', (event) => {
+    if (!carriesFiles(event)) return
+    event.preventDefault()
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
+  })
+
+  window.addEventListener('dragleave', (event) => {
+    if (!carriesFiles(event)) return
+    depth = Math.max(0, depth - 1)
+    if (depth === 0) document.body.classList.remove('dropping')
+  })
+
+  window.addEventListener('drop', async (event) => {
+    if (!carriesFiles(event)) return
+    event.preventDefault()
+    clear()
+    const paths = Array.from(event.dataTransfer?.files ?? [])
+      .map((file) => window.tcpchat.files.pathFor(file))
+      .filter(Boolean)
+    if (!paths.length) {
+      showToast('这些文件没有可读取的本地路径', true)
+      return
+    }
+    await sendDroppedFiles(paths)
+  })
+
+  // A drop that misses the window ends the drag without a dragleave.
+  window.addEventListener('blur', clear)
+}
+
 async function boot() {
   const initial = await window.tcpchat.chat.state()
 
@@ -947,6 +1009,7 @@ async function boot() {
 
   initComposer()
   initSearch()
+  initDropTarget()
   initTitlebar()
   initResizeHandles()
   initShortcuts()

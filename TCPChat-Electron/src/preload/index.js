@@ -9,7 +9,7 @@
  * or crypto primitives.
  */
 
-const { contextBridge, ipcRenderer, webFrame } = require('electron')
+const { contextBridge, ipcRenderer, webFrame, webUtils } = require('electron')
 
 /** Main -> renderer pushes. */
 const EVENTS = [
@@ -92,6 +92,21 @@ const api = {
   files: {
     /** Native picker; returns [] when the user cancels. */
     pick: (kind) => ipcRenderer.invoke('files:pick', { kind }),
+    /*
+     * The filesystem path behind a dropped File, or '' when there is none.
+     *
+     * File.path was removed in Electron 32 and this is Electron 44, so a dropped
+     * file no longer carries its own location. webUtils is the replacement, and it
+     * only exists in the renderer's process — the page cannot reach it across
+     * context isolation, so it has to be called here on the File it was handed.
+     */
+    pathFor: (file) => {
+      try {
+        return webUtils.getPathForFile(file) || ''
+      } catch {
+        return ''
+      }
+    },
   },
 
   window: {

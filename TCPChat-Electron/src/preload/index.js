@@ -9,7 +9,7 @@
  * or crypto primitives.
  */
 
-const { contextBridge, ipcRenderer, webFrame, webUtils } = require('electron')
+const { contextBridge, ipcRenderer, webFrame } = require('electron')
 
 /** Main -> renderer pushes. */
 const EVENTS = [
@@ -98,10 +98,19 @@ const api = {
      * File.path was removed in Electron 32 and this is Electron 44, so a dropped
      * file no longer carries its own location. webUtils is the replacement, and it
      * only exists in the renderer's process — the page cannot reach it across
-     * context isolation, so it has to be called here on the File it was handed.
+     * context isolation, so it has to be asked here, about the File it was handed.
+     *
+     * It is fetched inside the call rather than destructured at the top of the
+     * file on purpose. This preload is sandboxed, and a sandboxed preload is given
+     * only part of the electron module; taking webUtils alongside the rest meant
+     * that where it was missing, the whole preload failed to load. That takes
+     * window.tcpchat with it, and the app then looks like it cannot connect — no
+     * error, no crash, just every feature quietly gone.
      */
     pathFor: (file) => {
       try {
+        const { webUtils } = require('electron')
+        if (!webUtils || typeof webUtils.getPathForFile !== 'function') return ''
         return webUtils.getPathForFile(file) || ''
       } catch {
         return ''

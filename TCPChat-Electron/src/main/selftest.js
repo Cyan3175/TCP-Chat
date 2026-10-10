@@ -90,13 +90,6 @@ function fixtures() {
       enc: 'AESGCM1:AAECAwQFBgcICQoLZGVhZGJlZWZkZWFkYmVlZg==',
     },
     {
-      minutes: 11,
-      from: '王五',
-      text: '',
-      decryptFailed: true,
-      enc: 'AESGCM1:deadbeefdeadbeefdeadbeef',
-    },
-    {
       minutes: 12,
       from: NICKNAME,
       text: '这是一条**发送失败**的消息示例。',
@@ -126,7 +119,6 @@ function fixtures() {
           }
         : null,
       enc: m.enc ?? null,
-      decryptFailed: m.decryptFailed === true,
       status: m.status ?? null,
       remoteName: name(m.minutes, id.split('_')[1]),
       isSelf: m.from === NICKNAME,
@@ -417,7 +409,6 @@ async function runSelfTest({ win, outDir, settings, send, glassControls, glassSt
         footnotes: list.querySelectorAll('.footnotes').length,
         voice: list.querySelectorAll('.voice').length,
         fileCards: list.querySelectorAll('.file-card').length,
-        placeholders: list.querySelectorAll('.bubble.is-placeholder').length,
         failed: list.querySelectorAll('.bubble.is-failed').length,
         selfBubbles: list.querySelectorAll('.msg.self').length,
         glassAttr: document.body.dataset.glass,

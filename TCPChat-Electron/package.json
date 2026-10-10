@@ -1,7 +1,7 @@
 {
   "name": "tcpchat-electron",
   "productName": "TCP Chat",
-  "version": "13.4.0",
+  "version": "26.1.0-snapshot-1",
   "description": "TCP Chat rewritten on Electron — WebDAV message board chat with native liquid-glass chrome, plus a DSH-Desktop-styled plain theme",
   "license": "MIT",
   "author": "Cyan3175",
@@ -12,8 +12,9 @@
     "start": "npm run build:renderer && electron .",
     "dev": "npm run build:renderer && electron . --dev",
     "watch": "node scripts/build-renderer.mjs --watch",
-    "test": "npm run test:interop",
+    "test": "npm run test:interop && npm run test:hidden",
     "test:interop": "node tests/interop.test.mjs",
+    "test:hidden": "node tests/hidden-messages.test.mjs",
 
     "test:live": "node scripts/live-check.cjs",
     "selftest": "npm run build:renderer && node scripts/run-electron.cjs . --selftest",

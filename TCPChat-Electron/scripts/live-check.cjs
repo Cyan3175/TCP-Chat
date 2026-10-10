@@ -101,7 +101,7 @@ async function main() {
   await chat.syncOnce()
 
   line('messages synced', received.length)
-  line('decrypt failures', received.filter((m) => m.decryptFailed).length)
+  line('decrypt failures', chat.undecryptableCount)
   line('with attachments', received.filter((m) => m.attach).length)
   line('senders seen', [...new Set(received.map((m) => m.from))].join(', ').slice(0, 120))
   if (errors.length) line('errors', errors.slice(0, 3).join(' | '))

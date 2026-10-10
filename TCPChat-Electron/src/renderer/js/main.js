@@ -501,7 +501,6 @@ function messageRenderKey(msg) {
     msg.remoteName ?? '',
     msg.text ?? '',
     msg.status ?? '',
-    msg.decryptFailed ? 1 : 0,
     msg.quote?.text ?? '',
     msg.attach?.name ?? '',
     msg.attach?.size ?? '',

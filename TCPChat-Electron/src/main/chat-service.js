@@ -582,7 +582,9 @@ class ChatService extends EventEmitter {
           if (msg.tombstone) continue
           if (!msg.enc && !msg.attach && !msg.text?.trim() && !msg.quote?.trim()) continue
 
-          if (msg.enc) this._decrypt(msg, name)
+          // Seen and cached either way, so a corrected password can still bring
+          // an unreadable message back later; shown only when it decrypted.
+          const readable = !msg.enc || this._decrypt(msg, name)
           msg.remoteName = name
           msg.isSelf = this.nickname !== '' && msg.from === this.nickname
           /*
@@ -595,6 +597,7 @@ class ChatService extends EventEmitter {
            */
           msg.fromCache = true
           this._seen.add(name)
+          if (!readable) continue
           this.emit('message-added', msg)
           emitted += 1
         } catch {
@@ -734,7 +737,7 @@ class ChatService extends EventEmitter {
           return
         }
 
-        if (msg.enc) this._decrypt(msg, entry.name)
+        const readable = !msg.enc || this._decrypt(msg, entry.name)
 
         this._seen.add(entry.name)
         this.cache.put(entry.name, text)
@@ -743,6 +746,16 @@ class ChatService extends EventEmitter {
         this.cache.setFingerprint(entry.name, MessageCache.fingerprintOf(entry))
         msg.remoteName = entry.name
         msg.isSelf = this.nickname !== '' && msg.from === this.nickname
+        if (!readable) {
+          /*
+           * Unreadable: the ciphertext is kept, so a corrected password revives
+           * the message on a later pass, but nothing is emitted for it. Saying so
+           * through `message-removed` is what takes down a copy that was readable
+           * until the file changed under us (the same channel a withdrawal uses).
+           */
+          this.emit('message-removed', entry.name)
+          return
+        }
         this.emit('message-added', msg)
       } catch (err) {
         // A single corrupt file is reported and left unseen for a retry.
@@ -770,23 +783,26 @@ class ChatService extends EventEmitter {
 
   /**
    * Decrypt a message body in place. The file name is the AAD, so a mismatched
-   * password (or a renamed/tampered ciphertext) fails here and the UI shows a
-   * placeholder rather than mojibake.
+   * password (or a renamed/tampered ciphertext) fails here.
+   *
+   * Returns false when the body could not be read. The message is then kept out
+   * of the list altogether rather than shown as a bubble that only says it cannot
+   * be read. It stays in the local cache, so a corrected password brings it back
+   * on the next pass, and `undecryptableCount` plus the diagnostic log keep count
+   * of what is being held back.
    */
   _decrypt(msg, remoteName) {
     const payload = this.cipher.tryDecryptPayload(remoteName, msg.enc)
     if (!payload) {
       this._undecryptable += 1
-      msg.decryptFailed = true
-      msg.text = ''
-      msg.quote = null
       this._diag(`解密失败(密码不一致?): ${remoteName}`)
-      return
+      return false
     }
     msg.text = payload.text
     msg.quote = payload.quote
     msg.attach = payload.attach
     if (payload.from) msg.from = payload.from
+    return true
   }
 
   dispose() {

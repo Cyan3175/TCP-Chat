@@ -283,13 +283,6 @@ body {
   box-shadow: var(--shadow-bubble);
 }
 
-.bubble.is-placeholder {
-  color: var(--dsw-alias-state-warn-primary);
-  background: var(--dsw-alias-state-warn-tertiary);
-  border-color: transparent;
-  font-size: 13px;
-}
-
 .bubble.is-failed {
   border-color: var(--dsw-alias-state-error-primary);
 }

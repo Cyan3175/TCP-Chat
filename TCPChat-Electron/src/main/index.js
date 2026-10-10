@@ -325,19 +325,16 @@ function wireChat(service) {
      * The focus guard alone suppresses none of that, because the window is never
      * in front during startup.
      *
-     * A message that would not decrypt is skipped outright rather than announced
-     * empty. There is nothing useful to put in a toast — the body is gone and the
-     * sender is all that is left — and the placeholder in the list already says
-     * what happened to anyone who looks. Toasting it, and flashing the taskbar for
-     * it, asks the reader to come and read a warning about a message they cannot
-     * read. notifyMessage flashes as well as notifies, so this one condition
-     * covers both.
+     * A message that would not decrypt never reaches this handler: the service
+     * holds it back before emitting (see ChatService._decrypt). Nothing is left to
+     * filter here, and no toast can be raised for a message that is not in the
+     * list.
      */
     const isSelf = settings.nickname !== '' && msg.from === settings.nickname
     const focused = mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused()
     const arrivedAt = Date.parse(msg.time)
     const isNew = Number.isFinite(arrivedAt) && arrivedAt >= startedAt
-    if (!isSelf && !focused && isNew && !msg.decryptFailed && settings.notifyOnMessage !== false) {
+    if (!isSelf && !focused && isNew && settings.notifyOnMessage !== false) {
       notifyMessage(msg)
     }
     pushStats()

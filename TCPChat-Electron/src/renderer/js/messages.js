@@ -14,8 +14,6 @@ import { renderMarkdown, toPlainText } from './markdown.js'
 import { renderAttachment } from './attachments.js'
 import { openMenu, showToast, confirmDialog } from './overlays.js'
 
-const DECRYPT_FAILED_TEXT = '⚠ 无法解密（密码与发送方不一致，或密文被改动过）'
-
 let onReply = () => {}
 let onWithdraw = () => {}
 let onLoadOlder = () => {}
@@ -119,11 +117,6 @@ export function renderMessage(msg, nickname) {
   const openMenuHere = (event) => {
     event.preventDefault()
     openMenu(buildMenuItems(msg, nickname), event)
-  }
-
-  if (msg.decryptFailed) {
-    el.append(h('div', { class: 'bubble is-placeholder', oncontextmenu: openMenuHere }, [DECRYPT_FAILED_TEXT]))
-    return el
   }
 
   const bubble = h('div', { class: `bubble${msg.status ? ' is-failed' : ''}` })
@@ -410,7 +403,7 @@ export function matchesQuery(msg, query) {
   if (!query) return false
   const needle = query.toLowerCase()
   const haystack = [
-    msg.decryptFailed ? '' : toPlainText(msg.text ?? ''),
+    toPlainText(msg.text ?? ''),
     msg.quote ?? '',
     msg.from ?? '',
     msg.attach?.name ?? '',

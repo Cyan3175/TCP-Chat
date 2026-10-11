@@ -47,11 +47,32 @@ if (!fs.existsSync(moduleDir)) {
  * opinion about, so it now looks for whatever Python3* directories exist and
  * takes the newest, and falls back to the launcher.
  */
+/**
+ * A version key for a Python directory name, across the two layouts a Windows
+ * Python comes in: the python.org installer's `Python315` and the install
+ * manager's `pythoncore-3.15-64`. Both come out as major * 1000 + minor, so
+ * "newest" means the same thing whichever naming is on the machine.
+ */
+function versionKey(name) {
+  const manager = name.match(/^pythoncore-(\d+)[.-](\d+)/i)
+  if (manager) return Number(manager[1]) * 1000 + Number(manager[2])
+  const classic = name.match(/^Python(\d+)$/i)
+  if (classic) return Number(classic[1][0]) * 1000 + Number(classic[1].slice(1) || 0)
+  return 0
+}
+
+/** A directory holding a CPython, in either layout. */
+const PYTHON_DIR = /^(Python3\d*|pythoncore-3[.-]\d+-\d+)$/i
+
 function findPython() {
   if (process.env.PYTHON && fs.existsSync(process.env.PYTHON)) return process.env.PYTHON
 
   const roots = [
     path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python'),
+    // The install manager puts it here instead, as pythoncore-3.15-64, which the
+    // python.org naming above does not describe. Missing this root is what made
+    // a machine with a working Python report "No Python 3 found".
+    path.join(process.env.LOCALAPPDATA || '', 'Python'),
     'C:\\',
     path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Python'),
   ]
@@ -65,9 +86,9 @@ function findPython() {
       continue // not installed there, which is the normal case for most of them
     }
     for (const entry of entries) {
-      if (!entry.isDirectory() || !/^Python3\d*$/i.test(entry.name)) continue
+      if (!entry.isDirectory() || !PYTHON_DIR.test(entry.name)) continue
       const exe = path.join(root, entry.name, 'python.exe')
-      if (fs.existsSync(exe)) found.push({ exe, version: Number((entry.name.match(/\d+$/) || [0])[0]) })
+      if (fs.existsSync(exe)) found.push({ exe, version: versionKey(entry.name) })
     }
   }
   if (found.length) {

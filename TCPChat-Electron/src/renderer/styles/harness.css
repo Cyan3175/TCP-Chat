@@ -1,0 +1,346 @@
+/*
+ * Harness UI set — the DSH desktop window, as the product page draws it.
+ *
+ * Source: the saved DeepSeek Harness page (Desktop  !DOCTYPE html...headmet.html,
+ * www.deepseek.com/harness) and the stylesheet it links,
+ * /_next/static/css/5adb47a13a2794be.css. The page's own chrome is a badge and a
+ * download button; nearly all of that stylesheet — HarnessDesktopPreview_* and
+ * HarnessPluginsPreview_* — draws one thing: a DSH desktop window at
+ * --ui-scale 0.9, 680u tall, with a 260u sidebar, a transcript capped at 730u and
+ * a composer filled #2c2c2e.
+ *
+ * That picture is what is worth having. It is the closest thing to a written
+ * specification of DSH's own window that ships outside the application, and
+ * unlike the palette it is not something this app already has:
+ *
+ *   transcript  width calc(100% - 48u), max-width 730u, centred — the measure
+ *   bubble      fit-content, max-width 70.2%, 22px corner, 10px/16px padding,
+ *               no border and no shadow; the reply text is the window's 14u
+ *               scaled by 0.94, on a 24u line
+ *   spacing     28u between turns, which at --ui-scale 0.9 is 25px
+ *   hairlines   0.5px, not 1px — hsla(0,0%,100%,.12) as the composer's ring and
+ *               inset 0 -0.5px hsla(0,0%,100%,.1) under a window bar
+ *   composer    22px corner, padding 8u, a 0.5px ring plus 0 4px 16px, a 28u
+ *               circular add button in #353638 and a 34u circular send filled
+ *               rgba(122,170,255,.4) under a rgba(249,250,251,.5) glyph
+ *   summary     the "已思考" row: 33u tall, 13u text, #adb2b8, 0.5px rule under
+ *   blue        #7aaaff on the selected folder, #5686fe as a 2px focus ring at
+ *               2px offset
+ *
+ * NOT taken: the palette. #151517, #2c2c2e, #353638 and #adb2b8 are
+ * --dsw-static-neutral-bluish-950/850/800/400, the tokens this app already ports
+ * from DSH Desktop — re-importing them would be a diff of zero, and it is why the
+ * preview looks like this app already. What is below is the geometry, the
+ * hairlines, the mono figures and the two accent blues, written as literals read
+ * from that stylesheet rather than as aliases of tokens that already resolve to
+ * them.
+ *
+ * The preview is a dark window with no light counterpart, so the surfaces come in
+ * two sets: the dark half is the stylesheet's own values, the light half is the
+ * same geometry over DSH's light palette. The measure, the radii, the 0.5px
+ * hairlines, the circular controls and the mono figures are theme-independent and
+ * apply to both.
+ */
+
+/* ------------------------------------------------------------------ */
+/* The preview's measurements                                         */
+/* ------------------------------------------------------------------ */
+
+html[data-ui='harness'] {
+  /* Light half: the same geometry, surfaces from the product's light set. */
+  --harness-measure: 730px;
+  --harness-gutter: 24px;
+  --harness-turn-gap: 25px; /* 28u at the preview's --ui-scale of 0.9 */
+  --harness-bubble-max: 70.2%;
+  --harness-radius-bubble: 22px;
+  --harness-radius-composer: 22px;
+  --harness-radius-row: 8px;
+  --harness-radius-panel: 16px;
+
+  --harness-hairline: rgba(0, 0, 0, 0.1);
+  --harness-rule-bottom: inset 0 -0.5px rgba(0, 0, 0, 0.1);
+  --harness-rule-top: inset 0 0.5px rgba(0, 0, 0, 0.1);
+
+  --harness-composer-bg: #ffffff;
+  --harness-composer-ring: 0 0 0 0.5px rgba(0, 0, 0, 0.1);
+  --harness-composer-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+  --harness-tool-fill: rgba(0, 0, 0, 0.06);
+  --harness-send-fill: rgba(122, 170, 255, 0.4);
+  --harness-send-glyph: rgba(21, 21, 23, 0.5);
+  --harness-send-ready: #5686fe;
+  --harness-active: #5686fe;
+  --harness-focus: #5686fe;
+  --harness-settings-fill: rgba(0, 0, 0, 0.03);
+  --harness-wash: none;
+}
+
+/* Dark half: the stylesheet's own values, and the sidebar's tinted glass. */
+html[data-ui='harness'] body[data-ds-dark-theme] {
+  --harness-hairline: hsla(0, 0%, 100%, 0.12);
+  --harness-rule-bottom: inset 0 -0.5px hsla(0, 0%, 100%, 0.1);
+  --harness-rule-top: inset 0 0.5px hsla(0, 0%, 100%, 0.1);
+
+  --harness-composer-bg: #2c2c2e;
+  --harness-composer-ring: 0 0 0 0.5px hsla(0, 0%, 100%, 0.12);
+  --harness-tool-fill: #353638;
+  --harness-send-glyph: rgba(249, 250, 251, 0.5);
+  --harness-send-ready: #7aaaff;
+  --harness-active: #7aaaff;
+  --harness-settings-fill: hsla(0, 0%, 100%, 0.02);
+
+  /*
+   * The sidebar's fill: a blue tint fading into a violet one over
+   * rgba(95,102,114,.42), behind blur(32px) saturate(125%). The tint is carried
+   * over to the two window bars; the blur is not, because in plain mode they are
+   * opaque surfaces with nothing behind them to blur — the glass mode has the
+   * real native panel for that.
+   */
+  --harness-wash: linear-gradient(
+    180deg,
+    rgba(122, 155, 240, 0.08),
+    rgba(122, 155, 240, 0) 35%,
+    rgba(143, 137, 184, 0) 68%,
+    rgba(143, 137, 184, 0.07)
+  );
+}
+
+/* The bubble is a flat fill in the preview — no border, no shadow — and the
+   fill is layer-2 rather than layer-1. */
+html[data-ui='harness'] body {
+  --bubble-other-bg: var(--dsw-alias-bg-layer-2);
+  --bubble-other-border: transparent;
+  --shadow-bubble: none;
+  --dsw-alias-settings-card-fill: var(--harness-settings-fill);
+}
+
+/* ------------------------------------------------------------------ */
+/* Transcript — the 730u measure, centred                             */
+/* ------------------------------------------------------------------ */
+
+html[data-ui='harness'] .msg-list {
+  padding: var(--harness-gutter) max(var(--harness-gutter), calc((100% - var(--harness-measure)) / 2));
+  gap: var(--harness-turn-gap);
+}
+
+html[data-ui='harness'] .msg {
+  max-width: var(--harness-bubble-max);
+}
+
+html[data-ui='harness'] .bubble {
+  padding: 10px 16px;
+  border-radius: var(--harness-radius-bubble);
+  /* The reply is the window's 14u text scaled by 0.94, on a 24u line. */
+  font-size: calc(14px * 0.94);
+  line-height: calc(24px * 0.94);
+}
+
+/*
+ * The day separator as the preview's turn summary: full width, 33u tall, 13u
+ * text in the caption grey, and a half-pixel rule under it instead of a pill.
+ */
+html[data-ui='harness'] .msg-day {
+  align-self: stretch;
+  justify-content: flex-start;
+  min-height: 33px;
+  margin: 0 0 8px;
+  padding: 0 0 8px;
+  border: 0;
+  border-bottom: 0.5px solid var(--harness-hairline);
+  border-radius: 0;
+  background: transparent;
+  color: var(--dsw-alias-label-caption);
+  font-size: 13px;
+}
+
+html[data-ui='harness'] .msg-head {
+  font-size: 13px;
+  color: var(--dsw-alias-label-caption);
+}
+
+/* ------------------------------------------------------------------ */
+/* Composer — the preview's own                                    */
+/* ------------------------------------------------------------------ */
+
+/* The composer floats above the transcript with no rule of its own; the dock is
+   32u wide less than the transcript and 16u/20u of padding. */
+html[data-ui='harness'] .composer {
+  background: transparent;
+  border-top: 0;
+  padding: 8px 16px 20px;
+}
+
+/* 22px corner, 8u of padding, a half-pixel ring and a 4px/16px shadow. */
+html[data-ui='harness'] .composer-row {
+  gap: 8px;
+  padding: 8px;
+  border-radius: var(--harness-radius-composer);
+  background: var(--harness-composer-bg);
+  box-shadow: var(--harness-composer-ring), var(--harness-composer-shadow);
+}
+
+html[data-ui='harness'] .composer-input {
+  min-height: 36px;
+  padding: 4px 6px 0;
+  border: 0;
+  background: transparent;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+html[data-ui='harness'] .composer-input:focus-visible {
+  border-color: transparent;
+  outline: none;
+}
+
+html[data-ui='harness'] .composer-input::placeholder {
+  color: var(--dsw-alias-markdown-placeholder);
+}
+
+/* The toolbar is 13u text with 16u between its controls. */
+html[data-ui='harness'] .composer-tools {
+  gap: 16px;
+}
+
+/* A 28u disc filled #353638 in the preview; the app's three attachment buttons. */
+html[data-ui='harness'] .composer-tools .btn {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--harness-tool-fill);
+  font-size: 13px;
+}
+
+html[data-ui='harness'] .composer-tools .btn:hover {
+  background: var(--dsw-alias-interactive-bg-hover-solid);
+}
+
+html[data-ui='harness'] .composer-tools .btn.is-active {
+  background: var(--harness-active);
+  color: #fff;
+}
+
+/*
+ * A 34u disc. Its fill in the mock is rgba(122,170,255,.4) under a
+ * rgba(249,250,251,.5) glyph, and the mock's composer is empty — that is the
+ * not-yet-typed state, which the app only marks by disabling the button while a
+ * send is in flight. So the empty look is keyed on the input being empty, which
+ * :has() can ask, and the disabled state says the same thing. With text in the
+ * box the button is live, and #7aaaff is the one lit blue the stylesheet has (the
+ * selected folder's).
+ */
+html[data-ui='harness'] #btn-send {
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  font-size: 12px;
+  background: var(--harness-send-ready);
+  color: #fff;
+}
+
+html[data-ui='harness'] #btn-send:disabled,
+html[data-ui='harness'] .composer-row:not(:has(.composer-input:not(:placeholder-shown))) #btn-send {
+  background: var(--harness-send-fill);
+  color: var(--harness-send-glyph);
+}
+
+html[data-ui='harness'] .composer-reply {
+  border-radius: var(--harness-radius-row);
+}
+
+/* ------------------------------------------------------------------ */
+/* Window bars — half-pixel rules and the sidebar's tint              */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The preview separates its bars with a half-pixel line rather than a border:
+ * box-shadow inset 0 -0.5px under the window bar, and the same in reverse on the
+ * bar below the title. The bars also carry the sidebar's tint in dark.
+ */
+html[data-ui='harness'] .titlebar {
+  border-bottom: 0;
+  box-shadow: var(--harness-rule-bottom);
+  background-image: var(--harness-wash);
+}
+
+html[data-ui='harness'] .statusbar {
+  border-top: 0;
+  box-shadow: var(--harness-rule-top);
+  background-image: var(--harness-wash);
+}
+
+html[data-ui='harness'] .msg-list {
+  background-image: var(--harness-wash);
+}
+
+/* The selected row in the preview is a flat hsla(0,0%,100%,.08) wash at an 8u
+   corner, which is what the product's own hover token already is in dark. The
+   one thing it adds is the blue: #7aaaff marks the active folder. */
+html[data-ui='harness'] .menu-item,
+html[data-ui='harness'] .bg-recent-item {
+  border-radius: var(--harness-radius-row);
+}
+
+html[data-ui='harness'] .titlebar-actions .btn.is-active {
+  color: var(--harness-active);
+}
+
+html[data-ui='harness'] .bg-recent-item:hover {
+  border-color: var(--harness-active);
+}
+
+/* 2px of solid #5686fe at a 2px offset — the pause control's focus ring, which
+   is the only focus treatment in the stylesheet. */
+html[data-ui='harness'] .btn:focus-visible,
+html[data-ui='harness'] .select:focus-visible,
+html[data-ui='harness'] .menu-item:focus-visible,
+html[data-ui='harness'] .switch input:focus-visible + .switch-track {
+  outline: 2px solid var(--harness-focus);
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Figures — the preview's mono face and tabular digits               */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The page sets its badge in font-mono and the plugin's timer — the one place a
+ * number is the point — in the same face with tabular digits. The app's figures
+ * are the status bar's counts and the timestamps beside a name.
+ */
+html[data-ui='harness'] #status-count,
+html[data-ui='harness'] #status-poll,
+html[data-ui='harness'] #status-zoom,
+html[data-ui='harness'] .msg-head .time,
+html[data-ui='harness'] .voice .dur,
+html[data-ui='harness'] .tag {
+  font-family: var(--ds-font-family-code);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------------ */
+/* Panels                                                             */
+/* ------------------------------------------------------------------ */
+
+/* The capability card: a 1px border, a 16px corner and --ds-color-bg-surface-3,
+   which at 40px of padding is the page's spacing rather than a dialog's. */
+html[data-ui='harness'] .settings-group,
+html[data-ui='harness'] .card {
+  border-radius: var(--harness-radius-panel);
+  border-color: var(--harness-hairline);
+}
+
+html[data-ui='harness'] .menu,
+html[data-ui='harness'] .modal {
+  border-radius: var(--harness-radius-panel);
+}
+
+html[data-ui='harness'] .attach-image,
+html[data-ui='harness'] .attach-video {
+  border-radius: var(--harness-radius-row);
+}

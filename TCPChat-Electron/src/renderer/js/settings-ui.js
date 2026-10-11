@@ -6,7 +6,7 @@
  * remaining passwords still take part in decryption.
  */
 
-import { $, h, clear, show, clamp } from './dom.js'
+import { $, h, clear, show, clamp, UI_STYLES } from './dom.js'
 import { showToast, confirmDialog } from './overlays.js'
 
 let current = null
@@ -216,6 +216,8 @@ function buildDialog(state) {
     h('option', { value: 'default', text: '默认' }),
     h('option', { value: 'deepseek', text: 'DeepSeek' }),
     h('option', { value: 'edge', text: 'Edge（Fluent 2）' }),
+    h('option', { value: 'site', text: 'DeepSeek 官网' }),
+    h('option', { value: 'harness', text: 'Harness 桌面端' }),
     h('option', { value: 'glass', text: '液态玻璃' }),
   ])
   /*
@@ -228,7 +230,7 @@ function buildDialog(state) {
    * appearance, and glass is one of the choices. The stored settings stay as they
    * were, `uiStyle` plus `glassEnabled`, and this reads and writes both.
    */
-  uiSelect.value = state.glassEnabled ? 'glass' : ['deepseek', 'edge'].includes(state.uiStyle) ? state.uiStyle : 'default'
+  uiSelect.value = state.glassEnabled ? 'glass' : UI_STYLES.includes(state.uiStyle) ? state.uiStyle : 'default'
 
   /*
    * The slider moves in zoom levels, the same unit Ctrl +/- and Ctrl+wheel use,
@@ -265,7 +267,11 @@ function buildDialog(state) {
       field('界面字体', h('div', {}, [fontInput, fontList]), '下拉选择本机字体，也可以直接输入字体名；留空使用系统默认'),
       fontPreview,
       field('主题', themeSelect),
-      field('界面风格', uiSelect, '默认是产品外观；DeepSeek 用胶囊按钮和 Atom One 代码配色；Edge 用 Fluent 2 的中性灰、更紧的圆角和微软蓝'),
+      field(
+        '界面风格',
+        uiSelect,
+        '默认是产品外观；DeepSeek 用胶囊按钮和 Atom One 代码配色；Edge 用 Fluent 2 的中性灰、更紧的圆角和微软蓝；DeepSeek 官网用官网的胶囊按钮、玻璃输入卡片和蓝色圆形发送键；Harness 桌面端用 Harness 页里那扇 DSH 窗口的 730px 版心、0.5px 细线和圆形控件',
+      ),
       h('div', { class: 'field' }, [
         h('div', { class: 'field-label', text: '缩放' }),
         h('div', { class: 'settings-row' }, [zoomRange, zoomLabel]),
@@ -392,7 +398,7 @@ function buildDialog(state) {
     sendIndex: () => Number(sendSelect.value) || 0,
     font: () => fontInput.value.trim(),
     theme: () => Number(themeSelect.value) || 0,
-    uiStyle: () => (['deepseek', 'edge'].includes(uiSelect.value) ? uiSelect.value : 'default'),
+    uiStyle: () => (UI_STYLES.includes(uiSelect.value) ? uiSelect.value : 'default'),
     zoomLevel: () => clamp(Number(zoomRange.value), -3, 3),
     /*
      * Glass comes from the same picker, so the two cannot disagree.

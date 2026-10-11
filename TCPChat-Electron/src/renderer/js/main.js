@@ -16,6 +16,7 @@ import {
   formatTime,
   clamp,
   copyText,
+  UI_STYLES,
 } from './dom.js'
 import {
   configureMessages,
@@ -263,7 +264,7 @@ function applyTheme() {
  */
 function applyUiStyle() {
   const chosen = state.settings?.uiStyle
-  const style = ['deepseek', 'edge'].includes(chosen) ? chosen : 'default'
+  const style = UI_STYLES.includes(chosen) ? chosen : 'default'
   if (style === 'default') delete document.documentElement.dataset.ui
   else document.documentElement.dataset.ui = style
 }

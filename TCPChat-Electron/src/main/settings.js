@@ -15,6 +15,14 @@ const { settingsFile, ensureDataDir } = require('./paths')
 const { log } = require('./logger')
 
 const DEFAULT_CHAT_FOLDER = 'nw集训/学生资料临存/tcp_chat'
+
+/**
+ * The UI sets, in the order the picker lists them.
+ *
+ * The renderer keeps its own copy — it is a separate process and an ESM bundle,
+ * so it cannot import this one — and the two have to agree: dom.js, UI_STYLES.
+ */
+const UI_STYLES = ['deepseek', 'edge', 'site', 'harness']
 /** 11.2 and earlier defaulted to the shared folder itself; migrated once. */
 const LEGACY_SHARED_CHAT_FOLDER = 'nw集训/学生资料临存'
 /** 10.0/10.1 defaulted to a `聊天` subfolder; migrated once. */
@@ -146,7 +154,9 @@ function defaults() {
     launchAtLogin: false,
 
     /**
-     * UI set: 'default' for the product look, 'deepseek' for the chat client's.
+     * UI set: 'default' for the product look, 'deepseek' for the chat client's,
+     * 'site' for deepseek.com's marketing pages, 'harness' for the DSH desktop
+     * window the Harness page draws.
      *
      * Orthogonal to light/dark, which is what actually decides the palette.
      */
@@ -209,7 +219,7 @@ class Settings {
 
     if (typeof this.nickname !== 'string') this.nickname = ''
     this.launchAtLogin = this.launchAtLogin === true
-    this.uiStyle = ['deepseek', 'edge'].includes(this.uiStyle) ? this.uiStyle : 'default'
+    this.uiStyle = UI_STYLES.includes(this.uiStyle) ? this.uiStyle : 'default'
     this.notifyOnMessage = this.notifyOnMessage !== false
     this.pollSeconds = Math.round(clamp(this.pollSeconds, POLL_MIN, POLL_MAX, POLL_MIN))
     this.historyDays = Math.round(clamp(this.historyDays, HISTORY_MIN, HISTORY_MAX, 7))

@@ -7,6 +7,16 @@ export const $ = (selector, scope = document) => scope.querySelector(selector)
 export const $$ = (selector, scope = document) => [...scope.querySelectorAll(selector)]
 
 /**
+ * The UI sets the renderer knows about, in the order the picker lists them.
+ *
+ * The main process keeps its own copy for validation — it cannot import from
+ * here — so a set added in one place and not the other shows up as a picker entry
+ * that reverts to 默认 on the next save. The two lists are what has to agree:
+ * settings.js, UI_STYLES.
+ */
+export const UI_STYLES = ['deepseek', 'edge', 'site', 'harness']
+
+/**
  * Create an element.
  * @param {string} tag
  * @param {object} [props]  `class`, `text`, `html`, `dataset`, `style`, `on*` handlers

@@ -26,6 +26,14 @@
  * The result is the opposite of the DeepSeek set in character: corners tighten
  * rather than round off, the neutrals go neutral instead of blue-tinted, and the
  * accent is Microsoft blue rather than the product's.
+ *
+ * The palette is declared on `html[data-ui='edge'] body`, not on the root, and
+ * that is a fix rather than a style: the --dsw-alias-* set is declared on body,
+ * and a custom property declared on an element beats the one it would otherwise
+ * inherit, so the root-level block these values used to sit in was never read by
+ * anything. Measured: with ui=edge the root reported #242424 while body still
+ * reported the product's #0f1115, so only the radii and the focus ring below
+ * were ever in effect.
  */
 
 /* ------------------------------------------------------------------ */
@@ -37,7 +45,7 @@
  * neutral — #242424, #e0e0e0 — which is most of why an Edge window reads as
  * greyer than an Office one, and it is the single biggest change here.
  */
-html[data-ui='edge'] {
+html[data-ui='edge'] body {
   --dsw-alias-label-primary: #242424;
   --dsw-alias-label-secondary: #424242;
   --dsw-alias-label-caption: #616161;
@@ -53,7 +61,7 @@ html[data-ui='edge'] {
   --dsw-alias-state-business-primary: #0078d4;
 }
 
-html[data-ui='edge'][data-ds-dark-theme] {
+html[data-ui='edge'] body[data-ds-dark-theme] {
   --dsw-alias-label-primary: #ffffff;
   --dsw-alias-label-secondary: #d6d6d6;
   --dsw-alias-label-caption: #adadad;

@@ -1,0 +1,492 @@
+/*
+ * Site UI set — deepseek.com's own front end.
+ *
+ * Source: the saved homepage (Desktop 新建 文本文档.html, www.deepseek.com) and
+ * the stylesheet that page links, /_next/static/css/25f198211a7e1205.css. That
+ * stylesheet is the site's design system: one :root block of 312 custom
+ * properties (--ds-color-*, --ds-radius-*, --ds-space-*, --ds-btn-*) and the
+ * .ds-* components built on them — the hero, the glass input card, the pill
+ * buttons, the locale toggle. What is copied below is read out of it, and out of
+ * the element styles the page carries inline where they are easier to read there
+ * than in the stylesheet (the hero's own background, the send button's size).
+ *
+ * It is a second system, not the one this app already ports. --dsw-* comes from
+ * DSH Desktop; the site's --ds-* is what its marketing pages are built on, and
+ * the two disagree on nearly everything you can see:
+ *
+ *   radius    one pill radius (100px) for every button, a 24px card, a 16px
+ *             panel, a 12px media corner, a 10px input — against the product's
+ *             4/8/12/16/20/28
+ *   buttons   pills. The hero's send control is a 36px circle filled with
+ *             #4176e6, the "medium reverse" accent, not the brand blue.
+ *   composer  a rounded glass card: 24px radius, white at 30%, blur(12px), a 2px
+ *             white border, the textarea on top and the controls underneath it in
+ *             a row of their own.
+ *   the wash  the hero section's own inline background,
+ *             linear-gradient(180deg, #9cc1e7 0%, rgba(250, 250, 250, 0) 100%)
+ *   measure   the whole content column is min(100% - 48px, 1140px)
+ *
+ * NOT taken: the alias palette. --ds-color-* and --dsw-alias-* resolve to the
+ * same design system's colours — both products are built on it — so re-importing
+ * them would be a diff of zero. The exceptions are the two values the site does
+ * set for itself, the brand and the accent, and those are below.
+ *
+ * The site's own scale is kept under --site-* names rather than folded into
+ * --dsw-*, because a name that reads like an alias of the product palette would
+ * be a lie about where the value came from.
+ *
+ * Keyed on [data-ui='site'] on the root element, which is where main.js puts it.
+ * Palette overrides are written on body rather than on the root: the
+ * --dsw-alias-* set is declared on body, and a custom property declared on an
+ * element beats the one it would otherwise inherit, so a root-level override is
+ * never read by anything. (The Edge set has that bug; it is fixed in this
+ * release.)
+ */
+
+/* ------------------------------------------------------------------ */
+/* The site's own scale                                               */
+/* ------------------------------------------------------------------ */
+
+html[data-ui='site'] {
+  /* Light, from the site's :root block. */
+  --site-brand: #4d6bfe;
+  --site-brand-medium-reverse: #4176e6;
+  --site-brand-deep: #3a65c2;
+  --site-text-primary: #1e232c;
+  --site-text-secondary: rgba(0, 0, 0, 0.7);
+  --site-text-description: rgba(0, 0, 0, 0.65);
+  --site-text-placeholder: #8691a1;
+  --site-bg-page: #f9f8f8;
+  --site-bg-surface-1: hsla(0, 0%, 100%, 0.3);
+  --site-bg-surface-raised: hsla(0, 0%, 100%, 0.45);
+  --site-bg-input: hsla(0, 0%, 100%, 0.2);
+  --site-bg-input-hover: hsla(0, 0%, 100%, 0.36);
+  --site-bg-hover: rgba(0, 0, 0, 0.04);
+  --site-border-subtle: rgba(0, 0, 0, 0.06);
+  --site-border-default: rgba(0, 0, 0, 0.1);
+  --site-border-input: hsla(0, 0%, 100%, 0.8);
+  --site-border-input-focus: hsla(0, 0%, 100%, 0.25);
+  --site-scrollbar: rgba(0, 0, 0, 0.15);
+
+  /* The site's primary button: near-black in light, white in dark. */
+  --site-btn-primary-bg: #1a1615;
+  --site-btn-primary-text: #fff;
+  --site-btn-primary-hover-fill: hsla(0, 0%, 100%, 0.3);
+  --site-send-fill: #4176e6;
+  --site-send-text: #fff;
+
+  --site-radius-pill: 100px;
+  --site-radius-card: 24px;
+  --site-radius-panel: 16px;
+  --site-radius-media: 12px;
+  --site-radius-input: 10px;
+  --site-radius-sm: 8px;
+
+  --site-blur-glass: 12px;
+  --site-measure: 1140px;
+  --site-shadow-card: 0 0 0 1px #f1f5f9, 0 2px 4px rgba(0, 0, 0, 0.05), 0 12px 24px rgba(0, 0, 0, 0.05);
+  --site-shadow-dropdown: 0 0 1px 0 rgba(0, 0, 0, 0.2), 0 0 4px 0 rgba(0, 0, 0, 0.02),
+    0 12px 32px 0 rgba(0, 0, 0, 0.08);
+
+  /* The hero's inline background, verbatim. */
+  --site-hero-wash: linear-gradient(180deg, #9cc1e7 0%, rgba(250, 250, 250, 0) 100%);
+
+  /* The hero's chip, unselected and selected. */
+  --site-chip-selected-bg: rgba(65, 118, 230, 0.12);
+  --site-chip-selected-border: rgba(65, 118, 230, 0.3);
+  --site-chip-selected-hover-bg: rgba(65, 118, 230, 0.18);
+}
+
+/*
+ * The site's dark half, from its own [data-theme=dark] block: the brand goes
+ * lighter (#6799fe), the page goes to #0a0a0a, and the primary button inverts to
+ * white on near-black. The site signals dark with data-theme on a wrapper; this
+ * app signals it with data-ds-dark-theme on body, so that is the selector.
+ */
+html[data-ui='site'] body[data-ds-dark-theme] {
+  --site-brand: #6799fe;
+  --site-brand-medium-reverse: #fff;
+  --site-text-primary: #fff;
+  --site-text-secondary: hsla(0, 0%, 100%, 0.8);
+  --site-text-description: hsla(0, 0%, 100%, 0.56);
+  --site-text-placeholder: hsla(0, 0%, 100%, 0.3);
+  --site-bg-page: #0a0a0a;
+  --site-bg-surface-1: hsla(0, 0%, 100%, 0.06);
+  --site-bg-surface-raised: hsla(0, 0%, 100%, 0.25);
+  --site-bg-input: hsla(0, 0%, 100%, 0.08);
+  --site-bg-input-hover: hsla(0, 0%, 100%, 0.12);
+  --site-bg-hover: hsla(0, 0%, 100%, 0.06);
+  --site-border-subtle: hsla(0, 0%, 100%, 0.08);
+  --site-border-default: hsla(0, 0%, 100%, 0.1);
+  --site-border-input-focus: hsla(0, 0%, 100%, 0.25);
+  --site-scrollbar: hsla(0, 0%, 100%, 0.2);
+  --site-btn-primary-bg: #fff;
+  --site-btn-primary-text: #0a0a0a;
+  --site-btn-primary-hover-fill: rgba(0, 0, 0, 0.2);
+  /*
+   * --ds-color-brand-medium-reverse flips to white in dark, and the hero's own
+   * text-white on top of it would be a white circle with a white word in it. The
+   * label takes the colour the site gives text on its inverted fill instead.
+   */
+  --site-send-fill: #fff;
+  --site-send-text: #0a0a0a;
+
+  --site-shadow-card: hsla(0, 0%, 100%, 0.12) 0 1px 0 0 inset;
+  --site-shadow-dropdown: 0 0 1px 0 rgba(0, 0, 0, 0.4), 0 12px 32px 0 rgba(0, 0, 0, 0.45);
+
+  /* The wash is the light hero's. The dark page has a canvas effect there
+     instead, so the band is switched off rather than tinted blue at the top of
+     a black window. */
+  --site-hero-wash: none;
+  --site-chip-selected-bg: hsla(0, 0%, 100%, 0.1);
+  --site-chip-selected-border: hsla(0, 0%, 100%, 0.2);
+  --site-chip-selected-hover-bg: hsla(0, 0%, 100%, 0.16);
+}
+
+/* ------------------------------------------------------------------ */
+/* Palette — the two colours the site sets for itself                 */
+/* ------------------------------------------------------------------ */
+
+html[data-ui='site'] body {
+  --dsw-alias-state-business-primary: var(--site-brand);
+  --dsw-alias-brand-primary: var(--site-brand);
+  --dsw-alias-brand-text: var(--site-brand);
+}
+
+/* ------------------------------------------------------------------ */
+/* Measure — min(100% - 48px, 1140px), the site's one content column  */
+/* ------------------------------------------------------------------ */
+
+html[data-ui='site'] .msg-list {
+  padding-inline: max(24px, calc((100% - var(--site-measure)) / 2));
+}
+
+/* ------------------------------------------------------------------ */
+/* The hero's wash                                                    */
+/* ------------------------------------------------------------------ */
+
+/*
+ * background-attachment stays scroll (the default), which is what makes this
+ * read as a header band: the wash is fixed to the visible box, not to the top of
+ * the scrolled content, so it does not slide away with the transcript.
+ */
+html[data-ui='site'] .msg-list {
+  background-image: var(--site-hero-wash);
+  background-repeat: no-repeat;
+  background-size: 100% min(100vh, 1020px);
+}
+
+/* ------------------------------------------------------------------ */
+/* Buttons — pills, with the site's expanding-circle hover            */
+/* ------------------------------------------------------------------ */
+
+html[data-ui='site'] .btn {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  border-radius: var(--site-radius-pill);
+  border-color: var(--site-border-default);
+  background: var(--site-bg-surface-1);
+  font-weight: 500;
+}
+
+html[data-ui='site'] .btn:hover {
+  background: var(--site-bg-hover);
+}
+
+/*
+ * The site's hover is a circle that grows out of the centre — a 150% square
+ * turned into a disc, scaled from 0 over 360ms ease-out. z-index -1 puts it above
+ * the button's own background and below its label, which works because
+ * isolation: isolate makes the button the stacking context it paints in.
+ */
+html[data-ui='site'] .btn::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 150%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  opacity: 0;
+  z-index: -1;
+  transform: translate(-50%, -50%) scale(0);
+  transition: transform 0.36s ease-out, opacity 0.1s ease;
+  background: var(--site-btn-hover-fill, var(--site-bg-hover));
+}
+
+html[data-ui='site'] .btn:hover::after {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+/*
+ * The hero's send control: a 36px circle in #4176e6 with a white glyph. This one
+ * carries a word rather than an arrow, so it keeps the fill and the circle and
+ * drops to 12px for the two characters to fit inside 36px.
+ */
+html[data-ui='site'] #btn-send {
+  --site-btn-hover-fill: rgba(255, 255, 255, 0.3);
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  font-size: 12px;
+  background: var(--site-send-fill);
+  color: var(--site-send-text);
+}
+
+html[data-ui='site'] #btn-send:hover {
+  background: var(--site-send-fill);
+}
+
+html[data-ui='site'] #btn-send:disabled {
+  background: var(--site-bg-surface-1);
+  color: var(--site-text-description);
+}
+
+/*
+ * The primary button keeps its own fill, and it needs the rule: the .btn block
+ * above carries one attribute selector more than base.css's .btn-primary, so
+ * without this the primary surface would be flattened into the .btn tint and the
+ * save button in a dialog would come out as a blank pill.
+ *
+ * #1a1615 in light and #fff in dark are the site's --ds-btn-primary-bg/text.
+ * Its hover is the same growing circle as everything else, at white 30% or black
+ * 20% — --ds-btn-primary-hover-bg.
+ */
+html[data-ui='site'] .btn-primary {
+  --site-btn-hover-fill: var(--site-btn-primary-hover-fill);
+  background: var(--site-btn-primary-bg);
+  border-color: transparent;
+  color: var(--site-btn-primary-text);
+}
+
+html[data-ui='site'] .btn-primary:hover {
+  background: var(--site-btn-primary-bg);
+}
+
+html[data-ui='site'] .btn-ghost,
+html[data-ui='site'] .btn-danger {
+  background: transparent;
+}
+
+/* The title bar's controls are square targets with a glyph in them, and a pill
+   on a square crops the glyph, so they keep a small corner. */
+html[data-ui='site'] .titlebar-actions .btn {
+  border-radius: var(--site-radius-sm);
+  border-color: transparent;
+  background: transparent;
+}
+
+/* ------------------------------------------------------------------ */
+/* Composer — the hero's glass input card                             */
+/* ------------------------------------------------------------------ */
+
+html[data-ui='site'] .composer {
+  background: transparent;
+  border-top: 0;
+  padding: 0 10px 10px;
+}
+
+/*
+ * The card is the row, not the textarea. The site wraps the input and the
+ * controls in one .ds-glass-card.ds-input-wrapper — 24px corner, white at 30%,
+ * blur(12px), a 2px border at white 80%, 10px of padding and a 4px gap — and the
+ * layout inside it is the textarea first, then a row of controls.
+ *
+ * So the row wraps here and its three children are ordered: input on top at full
+ * width, the chips under it on the left, the send button under it on the right.
+ * They are the same three elements the app already has.
+ */
+html[data-ui='site'] .composer-row {
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px 10px;
+  border: 2px solid var(--site-border-input);
+  border-radius: var(--site-radius-card);
+  background: var(--site-bg-input);
+  backdrop-filter: blur(var(--site-blur-glass));
+  -webkit-backdrop-filter: blur(var(--site-blur-glass));
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+html[data-ui='site'] .composer-row:focus-within {
+  background: var(--site-bg-input-hover);
+  border-color: var(--site-border-input-focus);
+}
+
+html[data-ui='site'] .composer-input {
+  order: 1;
+  flex: 1 1 100%;
+  min-height: 80px;
+  max-height: 300px;
+  padding: 12px;
+  border: 0;
+  background: transparent;
+  font-size: 16px;
+  line-height: 1.4em;
+}
+
+html[data-ui='site'] .composer-input:focus-visible {
+  border-color: transparent;
+}
+
+html[data-ui='site'] .composer-input::placeholder {
+  color: var(--site-text-placeholder);
+  opacity: 1;
+}
+
+/*
+ * The hero's two toggles sit under the input at 34px tall, 18px round, 13px of
+ * text and a 1px border at black 10%, transparent inside. They are the app's
+ * three attachment buttons.
+ */
+html[data-ui='site'] .composer-tools {
+  order: 2;
+  gap: 8px;
+}
+
+html[data-ui='site'] .composer-tools .btn {
+  width: auto;
+  min-width: 0;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--site-border-default);
+  border-radius: 18px;
+  background: transparent;
+  font-size: 13px;
+  color: var(--site-text-primary);
+}
+
+html[data-ui='site'] .composer-tools .btn:hover {
+  background: var(--site-bg-hover);
+  border-color: var(--site-border-default);
+}
+
+html[data-ui='site'] .composer-tools .btn.is-active {
+  background: var(--site-chip-selected-bg);
+  border-color: var(--site-chip-selected-border);
+  color: var(--site-brand-medium-reverse);
+}
+
+html[data-ui='site'] .composer-tools .btn.is-active:hover {
+  background: var(--site-chip-selected-hover-bg);
+}
+
+/* The card's own row is justify-between: the controls sit left, the send right. */
+html[data-ui='site'] #btn-send {
+  order: 3;
+  margin-left: auto;
+}
+
+/* The quote bar is not on the site; it keeps the card's radius and its accent. */
+html[data-ui='site'] .composer-reply {
+  border-radius: var(--site-radius-media);
+  border-left-color: var(--site-brand-medium-reverse);
+}
+
+/* ------------------------------------------------------------------ */
+/* Header, status bar, panels                                         */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The header bar is transparent until the page scrolls, at which point it takes
+ * --ds-color-bg-surface-raised behind blur(12px) and a 1px border. A window has
+ * no scroll position, so the scrolled state is the permanent one.
+ */
+html[data-ui='site'] .titlebar {
+  background: var(--site-bg-surface-raised);
+  backdrop-filter: blur(var(--site-blur-glass));
+  -webkit-backdrop-filter: blur(var(--site-blur-glass));
+  border-bottom-color: var(--site-border-default);
+}
+
+html[data-ui='site'] .titlebar .brand {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/*
+ * The site's type scale stops at 13px (.ds-text-xs) with a 14px caption; the
+ * 11px the status bar and the message heads are set in is not on it.
+ */
+html[data-ui='site'] .statusbar,
+html[data-ui='site'] .msg-head,
+html[data-ui='site'] .caption,
+html[data-ui='site'] .field-label,
+html[data-ui='site'] .searchbar input,
+html[data-ui='site'] .searchbar .count {
+  font-size: 13px;
+}
+
+html[data-ui='site'] .statusbar {
+  color: var(--site-text-description);
+  border-top-color: var(--site-border-default);
+  background: var(--site-bg-surface-raised);
+}
+
+html[data-ui='site'] .msg-head {
+  color: var(--site-text-description);
+}
+
+html[data-ui='site'] .msg-head .who {
+  color: var(--site-text-secondary);
+}
+
+html[data-ui='site'] .bubble {
+  border-radius: var(--site-radius-media);
+}
+
+html[data-ui='site'] .attach-image,
+html[data-ui='site'] .attach-video,
+html[data-ui='site'] .lightbox img,
+html[data-ui='site'] .lightbox video,
+html[data-ui='site'] .file-card .ico {
+  border-radius: var(--site-radius-media);
+}
+
+/*
+ * .ds-glass-dropdown: white overlay, 16px corner, blur, and a shadow in three
+ * parts — a 1px darkening, a 4px soft one and a 32px drop.
+ */
+html[data-ui='site'] .menu {
+  border-radius: var(--site-radius-panel);
+  border-color: var(--site-border-subtle);
+  box-shadow: var(--site-shadow-dropdown);
+  backdrop-filter: blur(var(--site-blur-glass));
+  -webkit-backdrop-filter: blur(var(--site-blur-glass));
+}
+
+html[data-ui='site'] .modal {
+  border-radius: var(--site-radius-panel);
+  border-color: var(--site-border-subtle);
+  box-shadow: var(--site-shadow-card);
+}
+
+html[data-ui='site'] .settings-group,
+html[data-ui='site'] .card {
+  border-radius: var(--site-radius-panel);
+}
+
+html[data-ui='site'] .input,
+html[data-ui='site'] .textarea,
+html[data-ui='site'] .select {
+  border-radius: var(--site-radius-input);
+}
+
+html[data-ui='site'] .tag,
+html[data-ui='site'] .switch-track,
+html[data-ui='site'] .msg-day {
+  border-radius: var(--site-radius-pill);
+}
+
+/* DSH's scrollbars are opaque greys; the site's is black at 15%, or white at
+   20% in dark, so the bar fades into whichever surface it crosses. */
+html[data-ui='site'] body {
+  --dsw-alias-scrollbar-bg-l1: var(--site-scrollbar);
+  --dsw-alias-scrollbar-bg-l2: var(--site-scrollbar);
+}
